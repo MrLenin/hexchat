@@ -44,7 +44,6 @@ struct _chanview
 	int size;			/* number of channels in view */
 
 	GtkWidget *box;	/* the box we destroy when changing implementations */
-	GtkStyle *style;	/* style used for tree */
 	chan *focused;		/* currently focused channel */
 	int trunc_len;
 
@@ -261,16 +260,14 @@ chanview_box_destroy_cb (GtkWidget *box, chanview *cv)
 }
 
 chanview *
-chanview_new (int type, int trunc_len, gboolean sort, gboolean use_icons,
-				  GtkStyle *style)
+chanview_new (int type, int trunc_len, gboolean sort, gboolean use_icons)
 {
 	chanview *cv;
 
 	cv = g_new0 (chanview, 1);
 	cv->store = gtk_tree_store_new (4, G_TYPE_STRING, G_TYPE_POINTER,
 											  PANGO_TYPE_ATTR_LIST, GDK_TYPE_PIXBUF);
-	cv->style = style;
-	cv->box = gtk_hbox_new (0, 0);
+	cv->box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	cv->trunc_len = trunc_len;
 	cv->sorted = sort;
 	cv->use_icons = use_icons;

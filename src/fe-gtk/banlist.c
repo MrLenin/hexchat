@@ -818,8 +818,8 @@ banlist_opengui (struct session *sess)
 	/* create banlist view */
 	banl->treeview = banlist_treeview_new (vbox, banl);
 
-	table = gtk_table_new (1, MODE_CT, FALSE);
-	gtk_table_set_col_spacings (GTK_TABLE (table), 16);
+	table = gtk_grid_new ();
+	gtk_grid_set_column_spacing (GTK_GRID (table), 16);
 	gtk_box_pack_start (GTK_BOX (vbox), table, 0, 0, 0);
 
 	for (i = 0; i < MODE_CT; i++)
@@ -830,23 +830,23 @@ banlist_opengui (struct session *sess)
 		gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (banl->checkboxes[i]), (banl->checked & 1<<i? TRUE: FALSE));
 		g_signal_connect (G_OBJECT (banl->checkboxes[i]), "toggled",
 								G_CALLBACK (banlist_toggle), banl);
-		gtk_table_attach (GTK_TABLE (table), banl->checkboxes[i], i+1, i+2, 0, 1, GTK_FILL, GTK_FILL, 0, 0);
+		gtk_grid_attach (GTK_GRID (table), banl->checkboxes[i], i+1, 0, 1, 1);
 	}
 
-	bbox = gtk_hbutton_box_new ();
+	bbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (bbox), GTK_BUTTONBOX_SPREAD);
 	gtk_container_set_border_width (GTK_CONTAINER (bbox), 5);
 	gtk_box_pack_end (GTK_BOX (vbox), bbox, 0, 0, 0);
 	gtk_widget_show (bbox);
 
-	banl->but_remove = gtkutil_button (bbox, GTK_STOCK_REMOVE, 0, banlist_unban, banl,
+	banl->but_remove = gtkutil_button (bbox, "list-remove", 0, banlist_unban, banl,
 	                _("Remove"));
-	banl->but_crop = gtkutil_button (bbox, GTK_STOCK_REMOVE, 0, banlist_crop, banl,
+	banl->but_crop = gtkutil_button (bbox, "list-remove", 0, banlist_crop, banl,
 	                _("Crop"));
-	banl->but_clear = gtkutil_button (bbox, GTK_STOCK_CLEAR, 0, banlist_clear, banl,
+	banl->but_clear = gtkutil_button (bbox, "edit-clear", 0, banlist_clear, banl,
 	                _("Clear"));
 
-	banl->but_refresh = gtkutil_button (bbox, GTK_STOCK_REFRESH, 0, banlist_refresh, banl, _("Refresh"));
+	banl->but_refresh = gtkutil_button (bbox, "view-refresh", 0, banlist_refresh, banl, _("Refresh"));
 
 	banlist_do_refresh (banl);
 

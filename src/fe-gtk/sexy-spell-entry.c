@@ -95,11 +95,11 @@ struct _SexySpellEntryPriv
 };
 
 static void sexy_spell_entry_class_init(SexySpellEntryClass *klass);
-static void sexy_spell_entry_editable_init (GtkEditableClass *iface);
+static void sexy_spell_entry_editable_init (GtkEditableInterface *iface);
 static void sexy_spell_entry_init(SexySpellEntry *entry);
 static void sexy_spell_entry_finalize(GObject *obj);
 static void sexy_spell_entry_destroy(GObject *obj);
-static gint sexy_spell_entry_expose(GtkWidget *widget, GdkEventExpose *event);
+static gboolean sexy_spell_entry_draw(GtkWidget *widget, cairo_t *cr);
 static gint sexy_spell_entry_button_press(GtkWidget *widget, GdkEventButton *event);
 
 /* GtkEditable handlers */
@@ -243,7 +243,7 @@ sexy_spell_entry_class_init(SexySpellEntryClass *klass)
 
 	object_class->dispose = sexy_spell_entry_destroy;
 
-	widget_class->expose_event = sexy_spell_entry_expose;
+	widget_class->draw = sexy_spell_entry_draw;
 	widget_class->button_press_event = sexy_spell_entry_button_press;
 
 	/**
@@ -275,8 +275,22 @@ sexy_spell_entry_class_init(SexySpellEntryClass *klass)
 }
 
 static void
-sexy_spell_entry_editable_init (GtkEditableClass *iface)
+sexy_spell_entry_editable_init (GtkEditableInterface *iface)
 {
+}
+
+/* Helper to get preedit length by comparing entry text with layout text */
+static gint
+sexy_spell_entry_get_preedit_length (GtkEntry *entry)
+{
+	const gchar *text = gtk_entry_get_text (entry);
+	PangoLayout *layout = gtk_entry_get_layout (entry);
+	const gchar *layout_text = pango_layout_get_text (layout);
+	gint text_len = strlen (text);
+	gint layout_len = strlen (layout_text);
+
+	/* Preedit text is included in layout but not in entry text */
+	return (layout_len > text_len) ? (layout_len - text_len) : 0;
 }
 
 static gint
@@ -288,20 +302,31 @@ gtk_entry_find_position (GtkEntry *entry, gint x)
 	gint cursor_index;
 	gint index;
 	gint pos;
+	gint current_pos;
+	gint preedit_length;
+	gint layout_x;
 	gboolean trailing;
 
-	x = x + entry->scroll_offset;
+	/* Get layout offset to convert x coordinate */
+	gtk_entry_get_layout_offsets (entry, &layout_x, NULL);
+	x = x - layout_x;
 
 	layout = gtk_entry_get_layout(entry);
 	text = pango_layout_get_text(layout);
-	cursor_index = g_utf8_offset_to_pointer(text, entry->current_pos) - text;
+
+	/* Get cursor position using accessor function */
+	current_pos = gtk_editable_get_position (GTK_EDITABLE (entry));
+	cursor_index = g_utf8_offset_to_pointer(text, current_pos) - text;
 
 	line = pango_layout_get_lines(layout)->data;
 	pango_layout_line_x_to_index(line, x * PANGO_SCALE, &index, &trailing);
 
-	if (index >= cursor_index && entry->preedit_length) {
-		if (index >= cursor_index + entry->preedit_length) {
-			index -= entry->preedit_length;
+	/* Get preedit length */
+	preedit_length = sexy_spell_entry_get_preedit_length (entry);
+
+	if (index >= cursor_index && preedit_length) {
+		if (index >= cursor_index + preedit_length) {
+			index -= preedit_length;
 		} else {
 			index = cursor_index;
 			trailing = FALSE;
@@ -667,10 +692,8 @@ build_spelling_menu(SexySpellEntry *entry, const gchar *word)
 
 	/* + Add to Dictionary */
 	label = g_strdup_printf(_("Add \"%s\" to Dictionary"), word);
-	mi = gtk_image_menu_item_new_with_label(label);
+	mi = gtk_menu_item_new_with_label(label);
 	g_free(label);
-
-	gtk_image_menu_item_set_image(GTK_IMAGE_MENU_ITEM(mi), gtk_image_new_from_stock(GTK_STOCK_ADD, GTK_ICON_SIZE_MENU));
 
 	if (g_slist_length(entry->priv->dict_list) == 1) {
 		dict = (struct EnchantDict *) entry->priv->dict_list->data;
@@ -711,8 +734,7 @@ build_spelling_menu(SexySpellEntry *entry, const gchar *word)
 	gtk_menu_shell_append(GTK_MENU_SHELL(topmenu), mi);
 
 	/* - Ignore All */
-	mi = gtk_image_menu_item_new_with_label(_("Ignore All"));
-	gtk_image_menu_item_set_image(GTK_IMAGE_MENU_ITEM(mi), gtk_image_new_from_stock(GTK_STOCK_REMOVE, GTK_ICON_SIZE_MENU));
+	mi = gtk_menu_item_new_with_label(_("Ignore All"));
 	g_signal_connect(G_OBJECT(mi), "activate", G_CALLBACK(ignore_all), entry);
 	gtk_widget_show_all(mi);
 	gtk_menu_shell_append(GTK_MENU_SHELL(topmenu), mi);
@@ -723,7 +745,7 @@ build_spelling_menu(SexySpellEntry *entry, const gchar *word)
 static void
 sexy_spell_entry_populate_popup(SexySpellEntry *entry, GtkMenu *menu, gpointer data)
 {
-	GtkWidget *icon, *mi;
+	GtkWidget *mi;
 	gint start, end;
 	gchar *word;
 
@@ -745,9 +767,7 @@ sexy_spell_entry_populate_popup(SexySpellEntry *entry, GtkMenu *menu, gpointer d
 	gtk_menu_shell_prepend(GTK_MENU_SHELL(menu), mi);
 
 	/* Above the separator, show the suggestions menu */
-	icon = gtk_image_new_from_stock(GTK_STOCK_SPELL_CHECK, GTK_ICON_SIZE_MENU);
-	mi = gtk_image_menu_item_new_with_label(_("Spelling Suggestions"));
-	gtk_image_menu_item_set_image(GTK_IMAGE_MENU_ITEM(mi), icon);
+	mi = gtk_menu_item_new_with_label(_("Spelling Suggestions"));
 
 	word = gtk_editable_get_chars(GTK_EDITABLE(entry), start, end);
 	g_assert(word != NULL);
@@ -1115,16 +1135,18 @@ sexy_spell_entry_recheck_all(SexySpellEntry *entry)
 	}
 }
 
-static gint
-sexy_spell_entry_expose(GtkWidget *widget, GdkEventExpose *event)
+static gboolean
+sexy_spell_entry_draw(GtkWidget *widget, cairo_t *cr)
 {
 	SexySpellEntry *entry = SEXY_SPELL_ENTRY(widget);
 	GtkEntry *gtk_entry = GTK_ENTRY(widget);
 	PangoLayout *layout;
+	gint preedit_length;
 
-	
 	layout = gtk_entry_get_layout(gtk_entry);
-	if (gtk_entry->preedit_length == 0)
+	preedit_length = sexy_spell_entry_get_preedit_length (gtk_entry);
+
+	if (preedit_length == 0)
 	{
 		pango_layout_set_attributes(layout, entry->priv->attr_list);
 	}
@@ -1133,7 +1155,7 @@ sexy_spell_entry_expose(GtkWidget *widget, GdkEventExpose *event)
 		pango_layout_set_attributes(layout, empty_attrs_list);
 	}
 
-	return GTK_WIDGET_CLASS(parent_class)->expose_event (widget, event);
+	return GTK_WIDGET_CLASS(parent_class)->draw (widget, cr);
 }
 
 static gint

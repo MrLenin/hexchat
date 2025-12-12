@@ -450,7 +450,7 @@ pevent_dialog_show ()
 											 TRUE, FALSE, pevent_dialog_close, NULL,
 											 600, 455, &vbox, 0);
 
-	pane = gtk_vpaned_new ();
+	pane = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
 	gtk_box_pack_start (GTK_BOX (vbox), pane, TRUE, TRUE, 0);
 	
 	pevent_dialog_list = pevent_treeview_new (pane);
@@ -468,16 +468,16 @@ pevent_dialog_show ()
 	gtk_container_add (GTK_CONTAINER (wid), pevent_dialog_twid);
 	gtk_xtext_set_font (GTK_XTEXT (pevent_dialog_twid), prefs.hex_text_font);
 
-	hbox = gtk_hbutton_box_new ();
+	hbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (hbox), GTK_BUTTONBOX_SPREAD);
 	gtk_box_pack_start (GTK_BOX (vbox), hbox, FALSE, FALSE, 4);
-	gtkutil_button (hbox, GTK_STOCK_SAVE_AS, NULL, pevent_save_cb,
+	gtkutil_button (hbox, "document-save-as", NULL, pevent_save_cb,
 						 (void *) 1, _("Save As..."));
-	gtkutil_button (hbox, GTK_STOCK_OPEN, NULL, pevent_load_cb,
+	gtkutil_button (hbox, "document-open", NULL, pevent_load_cb,
 						 NULL, _("Load From..."));
 	gtkutil_button (hbox, NULL, NULL, pevent_test_cb,
 						pevent_dialog_twid, _("Test All"));
-	gtkutil_button (hbox, GTK_STOCK_OK, NULL, pevent_ok_cb,
+	gtkutil_button (hbox, "emblem-ok", NULL, pevent_ok_cb,
 						NULL, _("OK"));
 
 	gtk_widget_show_all (pevent_dialog);

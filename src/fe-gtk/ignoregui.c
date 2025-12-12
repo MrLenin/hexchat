@@ -360,7 +360,7 @@ ignore_gui_open ()
 	frame = gtk_frame_new (_("Ignore Stats:"));
 	gtk_widget_show (frame);
 
-	stat_box = gtk_hbox_new (0, 2);
+	stat_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2);
 	gtk_container_set_border_width (GTK_CONTAINER (stat_box), 6);
 	gtk_container_add (GTK_CONTAINER (frame), stat_box);
 	gtk_widget_show (stat_box);
@@ -373,17 +373,17 @@ ignore_gui_open ()
 
 	gtk_box_pack_start (GTK_BOX (vbox), frame, 0, 0, 5);
 
-	box = gtk_hbutton_box_new ();
+	box = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (box), GTK_BUTTONBOX_SPREAD);
 	gtk_box_pack_start (GTK_BOX (vbox), box, FALSE, FALSE, 2);
 	gtk_container_set_border_width (GTK_CONTAINER (box), 5);
 	gtk_widget_show (box);
 
-	gtkutil_button (box, GTK_STOCK_NEW, 0, ignore_new_entry_clicked, 0,
+	gtkutil_button (box, "document-new", 0, ignore_new_entry_clicked, 0,
 						 _("Add..."));
-	gtkutil_button (box, GTK_STOCK_DELETE, 0, ignore_delete_entry_clicked,
+	gtkutil_button (box, "edit-delete", 0, ignore_delete_entry_clicked,
 						 0, _("Delete"));
-	gtkutil_button (box, GTK_STOCK_CLEAR, 0, ignore_clear_entry_clicked,
+	gtkutil_button (box, "edit-clear", 0, ignore_clear_entry_clicked,
 						 0, _("Clear"));
 
 	store = GTK_LIST_STORE (gtk_tree_view_get_model (GTK_TREE_VIEW (view)));

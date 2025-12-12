@@ -20,7 +20,12 @@
 #ifndef HEXCHAT_MAINGUI_H
 #define HEXCHAT_MAINGUI_H
 
-extern GtkStyle *input_style;
+/* Custom structure to replace deprecated GtkStyle for input box styling */
+typedef struct _InputStyle {
+	PangoFontDescription *font_desc;
+} InputStyle;
+
+extern InputStyle *input_style;
 extern GtkWidget *parent_window;
 
 void mg_changui_new (session *sess, restore_gui *res, int tab, int focus);

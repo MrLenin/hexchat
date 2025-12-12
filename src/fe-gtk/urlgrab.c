@@ -204,17 +204,17 @@ url_opengui ()
 	g_object_set_data (G_OBJECT (urlgrabberwindow), "model",
 	                   gtk_tree_view_get_model (GTK_TREE_VIEW (view)));
 
-	hbox = gtk_hbutton_box_new ();
+	hbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (hbox), GTK_BUTTONBOX_SPREAD);
 	gtk_container_set_border_width (GTK_CONTAINER (hbox), 5);
 	gtk_box_pack_end (GTK_BOX (vbox), hbox, 0, 0, 0);
 	gtk_widget_show (hbox);
 
-	gtkutil_button (hbox, GTK_STOCK_CLEAR,
+	gtkutil_button (hbox, "edit-clear",
 						 _("Clear list"), url_button_clear, 0, _("Clear"));
-	gtkutil_button (hbox, GTK_STOCK_COPY,
+	gtkutil_button (hbox, "edit-copy",
 						 _("Copy selected URL"), url_button_copy, view, _("Copy"));
-	gtkutil_button (hbox, GTK_STOCK_SAVE_AS,
+	gtkutil_button (hbox, "document-save-as",
 						 _("Save list to a file"), url_button_save, 0, _("Save As..."));
 
 	gtk_widget_show (urlgrabberwindow);

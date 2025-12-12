@@ -20,7 +20,7 @@
 #ifndef HEXCHAT_PALETTE_H
 #define HEXCHAT_PALETTE_H
 
-extern GdkColor colors[];
+extern GdkRGBA colors[];
 
 #define COL_MARK_FG 32
 #define COL_MARK_BG 33
@@ -33,6 +33,9 @@ extern GdkColor colors[];
 #define COL_AWAY 40
 #define COL_SPELL 41
 #define MAX_COL 41
+
+/* Helper macro to convert 16-bit color (0-65535) to gdouble (0.0-1.0) */
+#define COLOR16_TO_FLOAT(x) ((x) / 65535.0)
 
 void palette_alloc (GtkWidget * widget);
 void palette_load (void);

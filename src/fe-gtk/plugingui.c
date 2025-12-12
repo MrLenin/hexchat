@@ -247,18 +247,18 @@ plugingui_open (void)
 	g_object_set_data (G_OBJECT (plugin_window), "view", view);
 
 
-	hbox = gtk_hbutton_box_new ();
+	hbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (hbox), GTK_BUTTONBOX_SPREAD);
 	gtk_container_set_border_width (GTK_CONTAINER (hbox), 5);
 	gtk_box_pack_end (GTK_BOX (vbox), hbox, 0, 0, 0);
 
-	gtkutil_button (hbox, GTK_STOCK_REVERT_TO_SAVED, NULL,
+	gtkutil_button (hbox, "document-revert", NULL,
 	                plugingui_loadbutton_cb, NULL, _("_Load..."));
 
-	gtkutil_button (hbox, GTK_STOCK_DELETE, NULL,
+	gtkutil_button (hbox, "edit-delete", NULL,
 	                plugingui_unload, NULL, _("_Unload"));
 
-	gtkutil_button (hbox, GTK_STOCK_REFRESH, NULL,
+	gtkutil_button (hbox, "view-refresh", NULL,
 	                plugingui_reloadbutton_cb, view, _("_Reload"));
 
 	fe_pluginlist_update ();

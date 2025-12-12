@@ -40,7 +40,7 @@ extern GdkPixbuf *pix_tree_util;
 extern GdkPixbuf *pix_book;
 extern GdkPixbuf *pix_hexchat;
 
-extern GdkPixmap *pixmap_load_from_file (char *file);
+extern cairo_surface_t *pixmap_load_from_file (char *file);
 extern void pixmaps_init (void);
 
 #endif

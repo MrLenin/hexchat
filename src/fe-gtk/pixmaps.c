@@ -49,26 +49,28 @@ GdkPixbuf *pix_tree_util;
 GdkPixbuf *pix_book;
 GdkPixbuf *pix_hexchat;
 
-static GdkPixmap *
+static cairo_surface_t *
 pixmap_load_from_file_real (char *file)
 {
 	GdkPixbuf *img;
-	GdkPixmap *pixmap;
+	cairo_surface_t *surface;
 
 	img = gdk_pixbuf_new_from_file (file, 0);
 	if (!img)
 		return NULL;
-	gdk_pixbuf_render_pixmap_and_mask (img, &pixmap, NULL, 128);
+
+	/* Convert GdkPixbuf to cairo_surface_t */
+	surface = gdk_cairo_surface_create_from_pixbuf (img, 1, NULL);
 	g_object_unref (img);
 
-	return pixmap;
+	return surface;
 }
 
-GdkPixmap *
+cairo_surface_t *
 pixmap_load_from_file (char *filename)
 {
 	char buf[256];
-	GdkPixmap *pix;
+	cairo_surface_t *pix;
 
 	if (filename[0] == '\0')
 		return NULL;

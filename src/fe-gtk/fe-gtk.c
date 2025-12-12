@@ -58,7 +58,7 @@
 #include <canberra.h>
 #endif
 
-GdkPixmap *channelwin_pix;
+cairo_surface_t *channelwin_pix;
 
 #ifdef USE_LIBCANBERRA
 static ca_context *ca_con;
@@ -247,36 +247,25 @@ fe_args (int argc, char *argv[])
 	return -1;
 }
 
-const char cursor_color_rc[] =
-	"style \"xc-ib-st\""
-	"{"
-		"GtkEntry::cursor-color=\"#%02x%02x%02x\""
-	"}"
-	"widget \"*.hexchat-inputbox\" style : application \"xc-ib-st\"";
+/* GTK3: Use CSS provider for input box styling instead of deprecated gtk_rc_parse_string */
+static GtkCssProvider *input_css_provider = NULL;
 
-static const char adwaita_workaround_rc[] =
-	"style \"hexchat-input-workaround\""
-	"{"
-		"engine \"pixmap\" {"
-			"image {"
-				"function = FLAT_BOX\n"
-				"state    = NORMAL\n"
-			"}"
-			"image {"
-				"function = FLAT_BOX\n"
-				"state    = ACTIVE\n"
-			"}"
-		"}"
-	"}"
-	"widget \"*.hexchat-inputbox\" style \"hexchat-input-workaround\"";
-
-GtkStyle *
-create_input_style (GtkStyle *style)
+InputStyle *
+create_input_style (InputStyle *style)
 {
 	char buf[256];
-	static int done_rc = FALSE;
+	char css_buf[512];
+	static int done_css = FALSE;
 
-	pango_font_description_free (style->font_desc);
+	if (style == NULL)
+	{
+		style = g_new0 (InputStyle, 1);
+	}
+	else if (style->font_desc)
+	{
+		pango_font_description_free (style->font_desc);
+	}
+
 	style->font_desc = pango_font_description_from_string (prefs.hex_text_font);
 
 	/* fall back */
@@ -288,27 +277,39 @@ create_input_style (GtkStyle *style)
 		style->font_desc = pango_font_description_from_string ("sans 11");
 	}
 
-	if (prefs.hex_gui_input_style && !done_rc)
+	if (prefs.hex_gui_input_style && !done_css)
 	{
-		GtkSettings *settings = gtk_settings_get_default ();
-		char *theme_name;
+		done_css = TRUE;
 
-		/* gnome-themes-standard 3.20+ relies on images to do theming
-		 * so we have to override that. */
-		g_object_get (settings, "gtk-theme-name", &theme_name, NULL);
-		if (g_str_has_prefix (theme_name, "Adwaita") || g_str_has_prefix (theme_name, "Yaru"))
-			gtk_rc_parse_string (adwaita_workaround_rc);
-		g_free (theme_name);
+		/* Create CSS provider for input box styling */
+		if (!input_css_provider)
+		{
+			input_css_provider = gtk_css_provider_new ();
+			gtk_style_context_add_provider_for_screen (
+				gdk_screen_get_default (),
+				GTK_STYLE_PROVIDER (input_css_provider),
+				GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+		}
 
-		done_rc = TRUE;
-		sprintf (buf, cursor_color_rc, (colors[COL_FG].red >> 8),
-			(colors[COL_FG].green >> 8), (colors[COL_FG].blue >> 8));
-		gtk_rc_parse_string (buf);
+		/* GdkRGBA uses 0.0-1.0 floats, convert to 0-255 for CSS */
+		g_snprintf (css_buf, sizeof (css_buf),
+			"#hexchat-inputbox { "
+			"  caret-color: rgb(%d, %d, %d); "
+			"  background-color: rgb(%d, %d, %d); "
+			"  color: rgb(%d, %d, %d); "
+			"}",
+			(int)(colors[COL_FG].red * 255),
+			(int)(colors[COL_FG].green * 255),
+			(int)(colors[COL_FG].blue * 255),
+			(int)(colors[COL_BG].red * 255),
+			(int)(colors[COL_BG].green * 255),
+			(int)(colors[COL_BG].blue * 255),
+			(int)(colors[COL_FG].red * 255),
+			(int)(colors[COL_FG].green * 255),
+			(int)(colors[COL_FG].blue * 255));
+
+		gtk_css_provider_load_from_data (input_css_provider, css_buf, -1, NULL);
 	}
-
-	style->bg[GTK_STATE_NORMAL] = colors[COL_FG];
-	style->base[GTK_STATE_NORMAL] = colors[COL_BG];
-	style->text[GTK_STATE_NORMAL] = colors[COL_FG];
 
 	return style;
 }
@@ -324,7 +325,7 @@ fe_init (void)
 	gtkosx_application_set_dock_icon_pixbuf (osx_app, pix_hexchat);
 #endif
 	channelwin_pix = pixmap_load_from_file (prefs.hex_text_background);
-	input_style = create_input_style (gtk_style_new ());
+	input_style = create_input_style (NULL);
 }
 
 #ifdef HAVE_GTK_MAC

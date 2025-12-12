@@ -187,8 +187,8 @@ dcc_prepare_row_send (struct DCC *dcc, GtkListStore *store, GtkTreeIter *iter,
 	float per;
 
 	if (!pix_up)
-		pix_up = gtk_widget_render_icon (dccfwin.window, "gtk-go-up",
-													GTK_ICON_SIZE_MENU, NULL);
+		pix_up = gtk_widget_render_icon_pixbuf (dccfwin.window, "gtk-go-up",
+													GTK_ICON_SIZE_MENU);
 
 	/* percentage ack'ed */
 	per = (float) ((dcc->ack * 100.00) / dcc->size);
@@ -244,8 +244,8 @@ dcc_prepare_row_recv (struct DCC *dcc, GtkListStore *store, GtkTreeIter *iter,
 	int to_go;
 
 	if (!pix_dn)
-		pix_dn = gtk_widget_render_icon (dccfwin.window, "gtk-go-down",
-													GTK_ICON_SIZE_MENU, NULL);
+		pix_dn = gtk_widget_render_icon_pixbuf (dccfwin.window, "gtk-go-down",
+													GTK_ICON_SIZE_MENU);
 
 	proper_unit (dcc->size, size, sizeof (size));
 	if (dcc->dccstat == STAT_QUEUED)
@@ -744,13 +744,15 @@ dcc_detail_label (char *text, GtkWidget *box, int num)
 	label = gtk_label_new (NULL);
 	g_snprintf (buf, sizeof (buf), "<b>%s</b>", text);
 	gtk_label_set_markup (GTK_LABEL (label), buf);
-	gtk_misc_set_alignment (GTK_MISC (label), 0, 0);
-	gtk_table_attach (GTK_TABLE (box), label, 0, 1, 0 + num, 1 + num, GTK_FILL, GTK_FILL, 0, 0);
+	gtk_widget_set_halign (label, GTK_ALIGN_START);
+	gtk_widget_set_valign (label, GTK_ALIGN_START);
+	gtk_grid_attach (GTK_GRID (box), label, 0, num, 1, 1);
 
 	label = gtk_label_new (NULL);
 	gtk_label_set_selectable (GTK_LABEL (label), TRUE);
-	gtk_misc_set_alignment (GTK_MISC (label), 0, 0);
-	gtk_table_attach (GTK_TABLE (box), label, 1, 2, 0 + num, 1 + num, GTK_FILL, GTK_FILL, 0, 0);
+	gtk_widget_set_halign (label, GTK_ALIGN_START);
+	gtk_widget_set_valign (label, GTK_ALIGN_START);
+	gtk_grid_attach (GTK_GRID (box), label, 1, num, 1, 1);
 
 	return label;
 }
@@ -844,49 +846,51 @@ fe_dcc_open_recv_win (int passive)
 	g_signal_connect (G_OBJECT (view), "row-activated",
 							G_CALLBACK (dcc_dclick_cb), NULL);
 
-	table = gtk_table_new (1, 3, FALSE);
-	gtk_table_set_col_spacings (GTK_TABLE (table), 16);
+	table = gtk_grid_new ();
+	gtk_grid_set_column_spacing (GTK_GRID (table), 16);
 	gtk_box_pack_start (GTK_BOX (vbox), table, 0, 0, 0);
 
 	radio = gtk_radio_button_new_with_mnemonic (NULL, _("Both"));
 	g_signal_connect (G_OBJECT (radio), "toggled",
 							G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_BOTH));
-	gtk_table_attach (GTK_TABLE (table), radio, 3, 4, 0, 1, GTK_FILL, GTK_FILL, 0, 0);
+	gtk_grid_attach (GTK_GRID (table), radio, 3, 0, 1, 1);
 	group = gtk_radio_button_get_group (GTK_RADIO_BUTTON (radio));
 
 	radio = gtk_radio_button_new_with_mnemonic (group, _("Uploads"));
 	g_signal_connect (G_OBJECT (radio), "toggled",
 							G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_UPLOAD));
-	gtk_table_attach (GTK_TABLE (table), radio, 1, 2, 0, 1, GTK_FILL, GTK_FILL, 0, 0);
+	gtk_grid_attach (GTK_GRID (table), radio, 1, 0, 1, 1);
 	group = gtk_radio_button_get_group (GTK_RADIO_BUTTON (radio));
 
 	radio = gtk_radio_button_new_with_mnemonic (group, _("Downloads"));
 	g_signal_connect (G_OBJECT (radio), "toggled",
 							G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_DOWNLOAD));
-	gtk_table_attach (GTK_TABLE (table), radio, 2, 3, 0, 1, GTK_FILL, GTK_FILL, 0, 0);
+	gtk_grid_attach (GTK_GRID (table), radio, 2, 0, 1, 1);
 
 	exp = gtk_expander_new (_("Details"));
-	gtk_table_attach (GTK_TABLE (table), exp, 0, 1, 0, 1, GTK_EXPAND | GTK_FILL, GTK_FILL, 0, 0);
+	gtk_widget_set_hexpand (exp, TRUE);
+	gtk_grid_attach (GTK_GRID (table), exp, 0, 0, 1, 1);
 
-	detailbox = gtk_table_new (3, 3, FALSE);
-	gtk_table_set_col_spacings (GTK_TABLE (detailbox), 6);
-	gtk_table_set_row_spacings (GTK_TABLE (detailbox), 2);
+	detailbox = gtk_grid_new ();
+	gtk_grid_set_column_spacing (GTK_GRID (detailbox), 6);
+	gtk_grid_set_row_spacing (GTK_GRID (detailbox), 2);
 	gtk_container_set_border_width (GTK_CONTAINER (detailbox), 6);
 	g_signal_connect (G_OBJECT (exp), "activate",
 							G_CALLBACK (dcc_exp_cb), detailbox);
-	gtk_table_attach (GTK_TABLE (table), detailbox, 0, 4, 1, 2, GTK_EXPAND | GTK_FILL, GTK_FILL, 0, 0);
+	gtk_widget_set_hexpand (detailbox, TRUE);
+	gtk_grid_attach (GTK_GRID (table), detailbox, 0, 1, 4, 1);
 
 	dccfwin.file_label = dcc_detail_label (_("File:"), detailbox, 0);
 	dccfwin.address_label = dcc_detail_label (_("Address:"), detailbox, 1);
 
-	bbox = gtk_hbutton_box_new ();
+	bbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (bbox), GTK_BUTTONBOX_SPREAD);
 	gtk_box_pack_end (GTK_BOX (vbox), bbox, FALSE, FALSE, 2);
 
-	dccfwin.abort_button = gtkutil_button (bbox, GTK_STOCK_CANCEL, 0, abort_clicked, 0, _("Abort"));
-	dccfwin.accept_button = gtkutil_button (bbox, GTK_STOCK_APPLY, 0, accept_clicked, 0, _("Accept"));
-	dccfwin.resume_button = gtkutil_button (bbox, GTK_STOCK_REFRESH, 0, resume_clicked, 0, _("Resume"));
-	dccfwin.clear_button = gtkutil_button (bbox, GTK_STOCK_CLEAR, 0, clear_completed, 0, _("Clear"));
+	dccfwin.abort_button = gtkutil_button (bbox, "process-stop", 0, abort_clicked, 0, _("Abort"));
+	dccfwin.accept_button = gtkutil_button (bbox, "emblem-default", 0, accept_clicked, 0, _("Accept"));
+	dccfwin.resume_button = gtkutil_button (bbox, "view-refresh", 0, resume_clicked, 0, _("Resume"));
+	dccfwin.clear_button = gtkutil_button (bbox, "edit-clear", 0, clear_completed, 0, _("Clear"));
 	dccfwin.open_button = gtkutil_button (bbox, 0, 0, browse_dcc_folder, 0, _("Open Folder..."));
 	gtk_widget_set_sensitive (dccfwin.accept_button, FALSE);
 	gtk_widget_set_sensitive (dccfwin.resume_button, FALSE);
@@ -1080,12 +1084,12 @@ fe_dcc_open_chat_win (int passive)
 	g_signal_connect (G_OBJECT (view), "row-activated",
 							G_CALLBACK (dcc_chat_dclick_cb), NULL);
 
-	bbox = gtk_hbutton_box_new ();
+	bbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (bbox), GTK_BUTTONBOX_SPREAD);
 	gtk_box_pack_end (GTK_BOX (vbox), bbox, FALSE, FALSE, 2);
 
-	dcccwin.abort_button = gtkutil_button (bbox, GTK_STOCK_CANCEL, 0, abort_chat_clicked, 0, _("Abort"));
-	dcccwin.accept_button = gtkutil_button (bbox, GTK_STOCK_APPLY, 0, accept_chat_clicked, 0, _("Accept"));
+	dcccwin.abort_button = gtkutil_button (bbox, "process-stop", 0, abort_chat_clicked, 0, _("Abort"));
+	dcccwin.accept_button = gtkutil_button (bbox, "emblem-default", 0, accept_chat_clicked, 0, _("Accept"));
 	gtk_widget_set_sensitive (dcccwin.accept_button, FALSE);
 	gtk_widget_set_sensitive (dcccwin.abort_button, FALSE);
 

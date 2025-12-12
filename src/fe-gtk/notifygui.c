@@ -344,45 +344,47 @@ fe_notify_ask (char *nick, char *networks)
 	char buf[256];
 
 	dialog = gtk_dialog_new_with_buttons (msg, NULL, 0,
-										GTK_STOCK_CANCEL, GTK_RESPONSE_REJECT,
-										GTK_STOCK_OK, GTK_RESPONSE_ACCEPT,
+										"_Cancel", GTK_RESPONSE_REJECT,
+										"_OK", GTK_RESPONSE_ACCEPT,
 										NULL);
 	if (parent_window)
 		gtk_window_set_transient_for (GTK_WINDOW (dialog), GTK_WINDOW (parent_window));
 	gtk_window_set_position (GTK_WINDOW (dialog), GTK_WIN_POS_MOUSE);
 
-	table = gtk_table_new (2, 3, FALSE);
+	table = gtk_grid_new ();
 	gtk_container_set_border_width (GTK_CONTAINER (table), 12);
-	gtk_table_set_row_spacings (GTK_TABLE (table), 3);
-	gtk_table_set_col_spacings (GTK_TABLE (table), 8);
+	gtk_grid_set_row_spacing (GTK_GRID (table), 3);
+	gtk_grid_set_column_spacing (GTK_GRID (table), 8);
 	gtk_container_add (GTK_CONTAINER (gtk_dialog_get_content_area (GTK_DIALOG (dialog))), table);
 
 	label = gtk_label_new (msg);
-	gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 0, 1);
+	gtk_grid_attach (GTK_GRID (table), label, 0, 0, 1, 1);
 
 	entry = gtk_entry_new ();
 	gtk_entry_set_text (GTK_ENTRY (entry), nick);
 	g_signal_connect (G_OBJECT (entry), "activate",
 						 	G_CALLBACK (notifygui_add_enter), dialog);
-	gtk_table_attach_defaults (GTK_TABLE (table), entry, 1, 2, 0, 1);
+	gtk_widget_set_hexpand (entry, TRUE);
+	gtk_grid_attach (GTK_GRID (table), entry, 1, 0, 1, 1);
 
 	g_signal_connect (G_OBJECT (dialog), "response",
 						   G_CALLBACK (notifygui_add_cb), entry);
 
 	label = gtk_label_new (_("Notify on these networks:"));
-	gtk_table_attach_defaults (GTK_TABLE (table), label, 0, 1, 2, 3);
+	gtk_grid_attach (GTK_GRID (table), label, 0, 2, 1, 1);
 
 	wid = gtk_entry_new ();
 	g_object_set_data (G_OBJECT (entry), "net", wid);
 	g_signal_connect (G_OBJECT (wid), "activate",
 						 	G_CALLBACK (notifygui_add_enter), dialog);
 	gtk_entry_set_text (GTK_ENTRY (wid), networks ? networks : "ALL");
-	gtk_table_attach_defaults (GTK_TABLE (table), wid, 1, 2, 2, 3);
+	gtk_widget_set_hexpand (wid, TRUE);
+	gtk_grid_attach (GTK_GRID (table), wid, 1, 2, 1, 1);
 
 	label = gtk_label_new (NULL);
 	g_snprintf (buf, sizeof (buf), "<i><span size=\"smaller\">%s</span></i>", _("Comma separated list of networks is accepted."));
 	gtk_label_set_markup (GTK_LABEL (label), buf);
-	gtk_table_attach_defaults (GTK_TABLE (table), label, 1, 2, 3, 4);
+	gtk_grid_attach (GTK_GRID (table), label, 1, 3, 1, 1);
 
 	gtk_widget_show_all (dialog);
 }
@@ -415,17 +417,17 @@ notify_opengui (void)
 	view = notify_treeview_new (vbox);
 	g_object_set_data (G_OBJECT (notify_window), "view", view);
   
-	bbox = gtk_hbutton_box_new ();
+	bbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	gtk_button_box_set_layout (GTK_BUTTON_BOX (bbox), GTK_BUTTONBOX_SPREAD);
 	gtk_container_set_border_width (GTK_CONTAINER (bbox), 5);
 	gtk_box_pack_end (GTK_BOX (vbox), bbox, 0, 0, 0);
 	gtk_widget_show (bbox);
 
-	gtkutil_button (bbox, GTK_STOCK_NEW, 0, notify_add_clicked, 0,
+	gtkutil_button (bbox, "document-new", 0, notify_add_clicked, 0,
 	                _("Add..."));
 
 	notify_button_remove =
-	gtkutil_button (bbox, GTK_STOCK_DELETE, 0, notify_remove_clicked, 0,
+	gtkutil_button (bbox, "edit-delete", 0, notify_remove_clicked, 0,
 	                _("Remove"));
 
 	notify_button_opendialog =

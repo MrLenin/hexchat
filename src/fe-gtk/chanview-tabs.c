@@ -73,11 +73,11 @@ cv_tabs_sizealloc (GtkWidget *widget, GtkAllocation *allocation, chanview *cv)
 	if (cv->vertical)
 	{
 		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (gtk_widget_get_parent (inner)));
-		gdk_window_get_geometry (parent_win, 0, 0, 0, &viewport_size, 0);
+		gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
 	} else
 	{
 		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (gtk_widget_get_parent (inner)));
-		gdk_window_get_geometry (parent_win, 0, 0, &viewport_size, 0, 0);
+		gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
 	}
 
 	if (gtk_adjustment_get_upper (adj) <= viewport_size)
@@ -150,11 +150,11 @@ tab_scroll_left_up_clicked (GtkWidget *widget, chanview *cv)
 	if (cv->vertical)
 	{
 		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, 0, 0, 0, &viewport_size, 0);
+		gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
 	} else
 	{
 		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, 0, 0, &viewport_size, 0, 0);
+		gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
 	}
 
 	new_value = tab_search_offset (inner, gtk_adjustment_get_value (adj), 0, cv->vertical);
@@ -199,11 +199,11 @@ tab_scroll_right_down_clicked (GtkWidget *widget, chanview *cv)
 	if (cv->vertical)
 	{
 		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, 0, 0, 0, &viewport_size, 0);
+		gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
 	} else
 	{
 		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, 0, 0, &viewport_size, 0, 0);
+		gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
 	}
 
 	new_value = tab_search_offset (inner, gtk_adjustment_get_value (adj), 1, cv->vertical);
@@ -265,17 +265,38 @@ cv_tabs_xclick_cb (GtkWidget *button, chanview *cv)
 static GtkWidget *
 make_sbutton (GtkArrowType type, void *click_cb, void *userdata)
 {
-	GtkWidget *button, *arrow;
+	GtkWidget *button, *image;
+	const char *icon_name;
+
+	/* Map arrow types to icon names */
+	switch (type)
+	{
+		case GTK_ARROW_UP:
+			icon_name = "pan-up-symbolic";
+			break;
+		case GTK_ARROW_DOWN:
+			icon_name = "pan-down-symbolic";
+			break;
+		case GTK_ARROW_LEFT:
+			icon_name = "pan-start-symbolic";
+			break;
+		case GTK_ARROW_RIGHT:
+			icon_name = "pan-end-symbolic";
+			break;
+		default:
+			icon_name = "pan-down-symbolic";
+			break;
+	}
 
 	button = gtk_button_new ();
-	arrow = gtk_arrow_new (type, GTK_SHADOW_NONE);
-	gtk_container_add (GTK_CONTAINER (button), arrow);
+	image = gtk_image_new_from_icon_name (icon_name, GTK_ICON_SIZE_MENU);
+	gtk_container_add (GTK_CONTAINER (button), image);
 	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
 	g_signal_connect (G_OBJECT (button), "clicked",
 							G_CALLBACK (click_cb), userdata);
 	g_signal_connect (G_OBJECT (button), "scroll_event",
 							G_CALLBACK (tab_scroll_cb), userdata);
-	gtk_widget_show (arrow);
+	gtk_widget_show (image);
 
 	return button;
 }
@@ -289,9 +310,9 @@ cv_tabs_init (chanview *cv)
 	GtkWidget *button;
 
 	if (cv->vertical)
-		outer = gtk_vbox_new (0, 0);
+		outer = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 	else
-		outer = gtk_hbox_new (0, 0);
+		outer = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	((tabview *)cv)->outer = outer;
 	g_signal_connect (G_OBJECT (outer), "size_allocate",
 							G_CALLBACK (cv_tabs_sizealloc), cv);
@@ -308,9 +329,9 @@ cv_tabs_init (chanview *cv)
 	gtk_widget_show (viewport);
 
 	if (cv->vertical)
-		box = gtk_vbox_new (FALSE, 0);
+		box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 	else
-		box = gtk_hbox_new (FALSE, 0);
+		box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	((tabview *)cv)->inner = box;
 	gtk_container_add (GTK_CONTAINER (viewport), box);
 	gtk_widget_show (box);
@@ -318,7 +339,7 @@ cv_tabs_init (chanview *cv)
 	/* if vertical, the buttons can be side by side */
 	if (cv->vertical)
 	{
-		hbox = gtk_hbox_new (FALSE, 0);
+		hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 		gtk_box_pack_start (GTK_BOX (outer), hbox, 0, 0, 0);
 		gtk_widget_show (hbox);
 	}
@@ -344,7 +365,7 @@ cv_tabs_init (chanview *cv)
 		gtk_box_pack_start (GTK_BOX (outer), ((tabview *)cv)->b1, 0, 0, 0);
 	}
 
-	button = gtkutil_button (outer, GTK_STOCK_CLOSE, NULL, cv_tabs_xclick_cb,
+	button = gtkutil_button (outer, "window-close", NULL, cv_tabs_xclick_cb,
 									 cv, 0);
 	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
 	gtk_widget_set_can_focus (button, FALSE);
@@ -486,13 +507,13 @@ tab_add_real (chanview *cv, GtkWidget *tab, chan *ch)
 	if (cv->vertical)
 	{
 		/* vertical */
-		box = gtk_vbox_new (FALSE, 0);
-		sep = gtk_hseparator_new ();
+		box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+		sep = gtk_separator_new (GTK_ORIENTATION_HORIZONTAL);
 	} else
 	{
 		/* horiz */
-		box = gtk_hbox_new (FALSE, 0);
-		sep = gtk_vseparator_new ();
+		box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+		sep = gtk_separator_new (GTK_ORIENTATION_VERTICAL);
 	}
 
 	gtk_box_pack_end (GTK_BOX (box), sep, 0, 0, 4);

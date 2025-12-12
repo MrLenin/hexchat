@@ -36,71 +36,67 @@
 #include "../common/cfgfiles.h"
 #include "../common/typedef.h"
 
+/* Helper macro to convert 16-bit color (0-65535) to gdouble (0.0-1.0) */
+#define C16(x) ((x) / 65535.0)
 
-GdkColor colors[] = {
-	/* colors for xtext */
-	{0, 0xd3d3, 0xd7d7, 0xcfcf}, /* 0 white */
-	{0, 0x2e2e, 0x3434, 0x3636}, /* 1 black */
-	{0, 0x3434, 0x6565, 0xa4a4}, /* 2 blue */
-	{0, 0x4e4e, 0x9a9a, 0x0606}, /* 3 green */
-	{0, 0xcccc, 0x0000, 0x0000}, /* 4 red */
-	{0, 0x8f8f, 0x3939, 0x0202}, /* 5 light red */
-	{0, 0x5c5c, 0x3535, 0x6666}, /* 6 purple */
-	{0, 0xcece, 0x5c5c, 0x0000}, /* 7 orange */
-	{0, 0xc4c4, 0xa0a0, 0x0000}, /* 8 yellow */
-	{0, 0x7373, 0xd2d2, 0x1616}, /* 9 green */
-	{0, 0x1111, 0xa8a8, 0x7979}, /* 10 aqua */
-	{0, 0x5858, 0xa1a1, 0x9d9d}, /* 11 light aqua */
-	{0, 0x5757, 0x7979, 0x9e9e}, /* 12 blue */
-	{0, 0xa0d0, 0x42d4, 0x6562}, /* 13 light purple */
-	{0, 0x5555, 0x5757, 0x5353}, /* 14 grey */
-	{0, 0x8888, 0x8a8a, 0x8585}, /* 15 light grey */
+GdkRGBA colors[] = {
+	/* colors for xtext - GdkRGBA uses {red, green, blue, alpha} with 0.0-1.0 range */
+	{C16(0xd3d3), C16(0xd7d7), C16(0xcfcf), 1.0}, /* 0 white */
+	{C16(0x2e2e), C16(0x3434), C16(0x3636), 1.0}, /* 1 black */
+	{C16(0x3434), C16(0x6565), C16(0xa4a4), 1.0}, /* 2 blue */
+	{C16(0x4e4e), C16(0x9a9a), C16(0x0606), 1.0}, /* 3 green */
+	{C16(0xcccc), C16(0x0000), C16(0x0000), 1.0}, /* 4 red */
+	{C16(0x8f8f), C16(0x3939), C16(0x0202), 1.0}, /* 5 light red */
+	{C16(0x5c5c), C16(0x3535), C16(0x6666), 1.0}, /* 6 purple */
+	{C16(0xcece), C16(0x5c5c), C16(0x0000), 1.0}, /* 7 orange */
+	{C16(0xc4c4), C16(0xa0a0), C16(0x0000), 1.0}, /* 8 yellow */
+	{C16(0x7373), C16(0xd2d2), C16(0x1616), 1.0}, /* 9 green */
+	{C16(0x1111), C16(0xa8a8), C16(0x7979), 1.0}, /* 10 aqua */
+	{C16(0x5858), C16(0xa1a1), C16(0x9d9d), 1.0}, /* 11 light aqua */
+	{C16(0x5757), C16(0x7979), C16(0x9e9e), 1.0}, /* 12 blue */
+	{C16(0xa0d0), C16(0x42d4), C16(0x6562), 1.0}, /* 13 light purple */
+	{C16(0x5555), C16(0x5757), C16(0x5353), 1.0}, /* 14 grey */
+	{C16(0x8888), C16(0x8a8a), C16(0x8585), 1.0}, /* 15 light grey */
 
-	{0, 0xd3d3, 0xd7d7, 0xcfcf}, /* 16 white */
-	{0, 0x2e2e, 0x3434, 0x3636}, /* 17 black */
-	{0, 0x3434, 0x6565, 0xa4a4}, /* 18 blue */
-	{0, 0x4e4e, 0x9a9a, 0x0606}, /* 19 green */
-	{0, 0xcccc, 0x0000, 0x0000}, /* 20 red */
-	{0, 0x8f8f, 0x3939, 0x0202}, /* 21 light red */
-	{0, 0x5c5c, 0x3535, 0x6666}, /* 22 purple */
-	{0, 0xcece, 0x5c5c, 0x0000}, /* 23 orange */
-	{0, 0xc4c4, 0xa0a0, 0x0000}, /* 24 yellow */
-	{0, 0x7373, 0xd2d2, 0x1616}, /* 25 green */
-	{0, 0x1111, 0xa8a8, 0x7979}, /* 26 aqua */
-	{0, 0x5858, 0xa1a1, 0x9d9d}, /* 27 light aqua */
-	{0, 0x5757, 0x7979, 0x9e9e}, /* 28 blue */
-	{0, 0xa0d0, 0x42d4, 0x6562}, /* 29 light purple */
-	{0, 0x5555, 0x5757, 0x5353}, /* 30 grey */
-	{0, 0x8888, 0x8a8a, 0x8585}, /* 31 light grey */
+	{C16(0xd3d3), C16(0xd7d7), C16(0xcfcf), 1.0}, /* 16 white */
+	{C16(0x2e2e), C16(0x3434), C16(0x3636), 1.0}, /* 17 black */
+	{C16(0x3434), C16(0x6565), C16(0xa4a4), 1.0}, /* 18 blue */
+	{C16(0x4e4e), C16(0x9a9a), C16(0x0606), 1.0}, /* 19 green */
+	{C16(0xcccc), C16(0x0000), C16(0x0000), 1.0}, /* 20 red */
+	{C16(0x8f8f), C16(0x3939), C16(0x0202), 1.0}, /* 21 light red */
+	{C16(0x5c5c), C16(0x3535), C16(0x6666), 1.0}, /* 22 purple */
+	{C16(0xcece), C16(0x5c5c), C16(0x0000), 1.0}, /* 23 orange */
+	{C16(0xc4c4), C16(0xa0a0), C16(0x0000), 1.0}, /* 24 yellow */
+	{C16(0x7373), C16(0xd2d2), C16(0x1616), 1.0}, /* 25 green */
+	{C16(0x1111), C16(0xa8a8), C16(0x7979), 1.0}, /* 26 aqua */
+	{C16(0x5858), C16(0xa1a1), C16(0x9d9d), 1.0}, /* 27 light aqua */
+	{C16(0x5757), C16(0x7979), C16(0x9e9e), 1.0}, /* 28 blue */
+	{C16(0xa0d0), C16(0x42d4), C16(0x6562), 1.0}, /* 29 light purple */
+	{C16(0x5555), C16(0x5757), C16(0x5353), 1.0}, /* 30 grey */
+	{C16(0x8888), C16(0x8a8a), C16(0x8585), 1.0}, /* 31 light grey */
 
-	{0, 0xd3d3, 0xd7d7, 0xcfcf}, /* 32 marktext Fore (white) */
-	{0, 0x2020, 0x4a4a, 0x8787}, /* 33 marktext Back (blue) */
-	{0, 0x2512, 0x29e8, 0x2b85}, /* 34 foreground (black) */
-	{0, 0xfae0, 0xfae0, 0xf8c4}, /* 35 background (white) */
-	{0, 0x8f8f, 0x3939, 0x0202}, /* 36 marker line (red) */
+	{C16(0xd3d3), C16(0xd7d7), C16(0xcfcf), 1.0}, /* 32 marktext Fore (white) */
+	{C16(0x2020), C16(0x4a4a), C16(0x8787), 1.0}, /* 33 marktext Back (blue) */
+	{C16(0x2512), C16(0x29e8), C16(0x2b85), 1.0}, /* 34 foreground (black) */
+	{C16(0xfae0), C16(0xfae0), C16(0xf8c4), 1.0}, /* 35 background (white) */
+	{C16(0x8f8f), C16(0x3939), C16(0x0202), 1.0}, /* 36 marker line (red) */
 
 	/* colors for GUI */
-	{0, 0x3434, 0x6565, 0xa4a4}, /* 37 tab New Data (dark red) */
-	{0, 0x4e4e, 0x9a9a, 0x0606}, /* 38 tab Nick Mentioned (blue) */
-	{0, 0xcece, 0x5c5c, 0x0000}, /* 39 tab New Message (red) */
-	{0, 0x8888, 0x8a8a, 0x8585}, /* 40 away user (grey) */
-	{0, 0xa4a4, 0x0000, 0x0000}, /* 41 spell checker color (red) */
+	{C16(0x3434), C16(0x6565), C16(0xa4a4), 1.0}, /* 37 tab New Data (dark red) */
+	{C16(0x4e4e), C16(0x9a9a), C16(0x0606), 1.0}, /* 38 tab Nick Mentioned (blue) */
+	{C16(0xcece), C16(0x5c5c), C16(0x0000), 1.0}, /* 39 tab New Message (red) */
+	{C16(0x8888), C16(0x8a8a), C16(0x8585), 1.0}, /* 40 away user (grey) */
+	{C16(0xa4a4), C16(0x0000), C16(0x0000), 1.0}, /* 41 spell checker color (red) */
 };
+
+#undef C16
 
 void
 palette_alloc (GtkWidget * widget)
 {
-	int i;
-	static int done_alloc = FALSE;
-	GdkColormap *cmap;
-
-	if (!done_alloc)		  /* don't do it again */
-	{
-		done_alloc = TRUE;
-		cmap = gtk_widget_get_colormap (widget);
-		for (i = MAX_COL; i >= 0; i--)
-			gdk_colormap_alloc_color (cmap, &colors[i], FALSE, TRUE);
-	}
+	/* In GTK3+, GdkRGBA colors don't need allocation.
+	 * This function is kept for API compatibility but does nothing. */
+	(void)widget;
 }
 
 void
@@ -124,9 +120,11 @@ palette_load (void)
 		{
 			g_snprintf (prefname, sizeof prefname, "color_%d", i);
 			cfg_get_color (cfg, prefname, &red, &green, &blue);
-			colors[i].red = red;
-			colors[i].green = green;
-			colors[i].blue = blue;
+			/* Convert 16-bit values to 0.0-1.0 range */
+			colors[i].red = red / 65535.0;
+			colors[i].green = green / 65535.0;
+			colors[i].blue = blue / 65535.0;
+			colors[i].alpha = 1.0;
 		}
 
 		/* our special colors are mapped at 256+ */
@@ -134,9 +132,11 @@ palette_load (void)
 		{
 			g_snprintf (prefname, sizeof prefname, "color_%d", i);
 			cfg_get_color (cfg, prefname, &red, &green, &blue);
-			colors[j].red = red;
-			colors[j].green = green;
-			colors[j].blue = blue;
+			/* Convert 16-bit values to 0.0-1.0 range */
+			colors[j].red = red / 65535.0;
+			colors[j].green = green / 65535.0;
+			colors[j].blue = blue / 65535.0;
+			colors[j].alpha = 1.0;
 		}
 		g_free (cfg);
 		close (fh);
@@ -153,17 +153,26 @@ palette_save (void)
 	if (fh != -1)
 	{
 		/* mIRC colors 0-31 are here */
+		/* Convert 0.0-1.0 back to 16-bit for file storage */
 		for (i = 0; i < 32; i++)
 		{
 			g_snprintf (prefname, sizeof prefname, "color_%d", i);
-			cfg_put_color (fh, colors[i].red, colors[i].green, colors[i].blue, prefname);
+			cfg_put_color (fh,
+				(guint16)(colors[i].red * 65535.0),
+				(guint16)(colors[i].green * 65535.0),
+				(guint16)(colors[i].blue * 65535.0),
+				prefname);
 		}
 
 		/* our special colors are mapped at 256+ */
 		for (i = 256, j = 32; j < MAX_COL+1; i++, j++)
 		{
 			g_snprintf (prefname, sizeof prefname, "color_%d", i);
-			cfg_put_color (fh, colors[j].red, colors[j].green, colors[j].blue, prefname);
+			cfg_put_color (fh,
+				(guint16)(colors[j].red * 65535.0),
+				(guint16)(colors[j].green * 65535.0),
+				(guint16)(colors[j].blue * 65535.0),
+				prefname);
 		}
 
 		close (fh);
