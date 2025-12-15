@@ -184,12 +184,49 @@ endif
 3. Update checker plugin (WinSparkle)
 4. Installer generation (Inno Setup)
 
-### Phase 6: Verification and Cleanup
+### Phase 6: MSYS2/MinGW Support (Optional)
+
+**Goal:** Enable builds using MSYS2/MinGW-w64 toolchain as an alternative to MSVC
+
+**Benefits:**
+- Standard pkg-config dependency discovery (no manual paths needed)
+- Familiar environment for Linux/GTK developers
+- Lower barrier to entry (no Visual Studio required)
+- Better CI/CD integration (MSYS2 available in GitHub Actions)
+
+**MSYS2 Setup:**
+```bash
+# Install MSYS2 from https://www.msys2.org/
+# Open MINGW64 shell and install dependencies:
+pacman -S mingw-w64-x86_64-toolchain
+pacman -S mingw-w64-x86_64-gtk4  # or mingw-w64-x86_64-gtk3
+pacman -S mingw-w64-x86_64-openssl
+pacman -S mingw-w64-x86_64-libxml2
+pacman -S mingw-w64-x86_64-luajit
+pacman -S mingw-w64-x86_64-meson mingw-w64-x86_64-ninja
+```
+
+**Build Commands:**
+```bash
+# In MINGW64 shell - pkg-config handles dependencies automatically
+meson setup build -Dgtk4=true
+meson compile -C build
+```
+
+**Meson Changes Required:**
+- Existing MinGW linker flags already present (`-Wl,--nxcompat`, etc.)
+- May need minor adjustments for resource compilation
+- Plugin builds should work with MSYS2 interpreters (Lua, Python, Perl)
+
+**Priority:** Lower than MSVC path, but valuable for maintainability
+
+### Phase 7: Verification and Cleanup
 
 **Goal:** Remove VS solution after Meson is proven working
 
 **Verification Checklist:**
-- [ ] hexchat.exe builds and runs
+- [ ] hexchat.exe builds and runs (MSVC)
+- [ ] hexchat.exe builds and runs (MinGW) - optional
 - [ ] All plugins build and load
 - [ ] GTK3 build works
 - [ ] GTK4 build works
@@ -322,8 +359,8 @@ Both can coexist without conflict.
 | Phase 3: Core build | 2-3 days | Phase 2 |
 | Phase 4: Plugins | 2-3 days | Phase 3 |
 | Phase 5: Advanced features | 3-4 days | Phase 4 |
-| Phase 6: Verification & cleanup | 1-2 days | Phase 5 |
-| **Total** | **~2-3 weeks** | |
+| Phase 6: MSYS2/MinGW (optional) | 1-2 days | Phase 3 |
+| Phase 7: Verification & cleanup | 1-2 days | Phase 5 (+ Phase 6 if pursued) |
 
 ---
 
