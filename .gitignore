@@ -31,4 +31,8 @@ osx/.HexChat.app
 *.dmg
 *.VC.db
 *.VC.opendb
-*.vcxproj.*
+plugins/sasl/sasl.vcxproj.filters
+plugins/sasl/sasl-xp.vcxproj.filters
+plugins/fishlim/fishlim.vcxproj.filters
+src/common/common.vcxproj.filters
+win32/copy/copy.vcxproj.filters
