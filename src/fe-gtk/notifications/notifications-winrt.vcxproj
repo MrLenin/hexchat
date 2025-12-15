@@ -20,10 +20,11 @@
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>notifications-winrt</RootNamespace>
     <ProjectName>notifications-winrt</ProjectName>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -53,6 +54,7 @@
       <SDLCheck>true</SDLCheck>
       <AdditionalUsingDirectories>$(VC_LibraryPath_VC_x86_Store)\references;$(WindowsSDK_UnionMetadataPath);$(VCInstallDir)vcpackages;$(FrameworkSdkDir)References\CommonConfiguration\Neutral;%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <CompileAsWinRT>true</CompileAsWinRT>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
     </ClCompile>
     <Link>
       <AdditionalDependencies>$(DepLibs);mincore.lib;runtimeobject.lib;%(AdditionalDependencies)</AdditionalDependencies>

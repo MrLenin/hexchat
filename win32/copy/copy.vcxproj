@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Label="Configuration">
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <ConfigurationType>Application</ConfigurationType>
   </PropertyGroup>
   <ItemGroup Label="ProjectConfigurations">
@@ -40,8 +40,6 @@
     <None Include="$(DepsRoot)\bin\gthread-2.0-0.dll" />
     <None Include="$(DepsRoot)\bin\gtk-win32-2.0.dll" />
     <None Include="$(DepsRoot)\bin\iconv.dll" />
-    <None Include="$(DepsRoot)\bin\libcrypto*.dll" />
-    <None Include="$(DepsRoot)\bin\libssl*.dll" />
     <None Include="$(DepsRoot)\bin\libenchant.dll" />
     <None Include="$(DepsRoot)\bin\ffi-7.dll" />
     <None Include="$(DepsRoot)\bin\intl.dll" />
@@ -56,7 +54,6 @@
     <None Include="$(HexChatBin)thememan.exe" />
     <None Include="changelog.url" />
     <None Include="readme.url" />
-
     <None Include="$(DepsRoot)\bin\lua51.dll" />
     <None Include="$(DepsRoot)\bin\girepository-1.0-1.dll" />
     <LuaLib Include="$(DepsRoot)\lib\lua\**\*.dll" />
@@ -64,19 +61,15 @@
     <LuaShare Include="$(DepsRoot)\share\lua\**\*.lua" />
     <LuaShare Include="$(DepsRoot)\share\lua\**\**\*.lua" />
     <Typelib Include="$(DepsRoot)\lib\girepository-1.0\*.typelib" />
-    <None Include="$(Python3Path)\Lib\site-packages\_cffi_backend.*.pyd" />
-
     <Engines Include="$(DepsRoot)\lib\gtk-2.0\i686-pc-vs14\engines\**\*" />
-
-    <FontConfig Include="$(DepsRoot)\etc\fonts\*"/>
-
+    <FontConfig Include="$(DepsRoot)\etc\fonts\*" />
     <Share Include="share\**\*" />
-
     <DepsRootDocs Include="$(DepsRoot)\share\doc\**\*" />
-
     <Locale Include="$(HexChatBin)locale\**\*;$(DepsRoot)\share\locale\**\*" />
-
     <MSWindowsTheme Include="$(DepsRoot)\share\themes\MS-Windows\**\*" />
+    <None Include="..\..\..\..\..\..\..\gtk-build\gtk\x64\release\bin\libcrypto-3-x64.dll" />
+    <None Include="..\..\..\..\..\..\..\gtk-build\gtk\x64\release\bin\libssl-3-x64.dll" />
+    <None Include="..\..\..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\_cffi_backend.cp313-win_amd64.pyd" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <Target Name="Build">
@@ -95,9 +88,7 @@
     <Copy SourceFiles="..\..\plugins\python\xchat.py" DestinationFolder="$(HexChatRel)\python" />
     <Copy SourceFiles="..\..\plugins\python\hexchat.py" DestinationFolder="$(HexChatRel)\python" />
     <Copy SourceFiles="..\..\plugins\python\_hexchat.py" DestinationFolder="$(HexChatRel)\python" />
-
     <WriteLinesToFile File="$(HexChatRel)portable-mode" Lines="2" Overwrite="true" />
-
     <Copy SourceFiles="@(DepsRootDocs)" DestinationFiles="@(DepsRootDocs->'$(HexChatRel)\share\doc\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
 </Project>

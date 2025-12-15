@@ -18,6 +18,7 @@
     <ProjectGuid>{E4BDB4C8-2335-415A-ACEE-BA88B19BFE82}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>fegtk</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -67,6 +68,9 @@ powershell "Get-Content -Encoding UTF8 '$(HexChatLib)hexchat.rc.utf8' | Out-File
       ]]></Command>
       <Message>Build hexchat.rc and gresource file</Message>
     </PreBuildEvent>
+    <ClCompile>
+      <LanguageStandard_C Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdc11</LanguageStandard_C>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="ascii.h" />
