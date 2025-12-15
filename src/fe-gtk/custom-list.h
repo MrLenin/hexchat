@@ -20,7 +20,49 @@
 #ifndef HEXCHAT_CUSTOM_LIST_H
 #define HEXCHAT_CUSTOM_LIST_H
 
-#include <gtk/gtk.h>
+#include "gtk-compat.h"
+
+#if HC_GTK4
+/*
+ * =============================================================================
+ * GTK4: HcChannelItem - GObject for channel list row data
+ * =============================================================================
+ * In GTK4, we use GListStore with GObject items instead of a custom GtkTreeModel.
+ */
+
+#define HC_TYPE_CHANNEL_ITEM (hc_channel_item_get_type())
+G_DECLARE_FINAL_TYPE(HcChannelItem, hc_channel_item, HC, CHANNEL_ITEM, GObject)
+
+struct _HcChannelItem
+{
+	GObject parent_instance;
+
+	gchar *channel;
+	gchar *topic;
+	gchar *collation_key;
+	guint users;
+};
+
+HcChannelItem *hc_channel_item_new (const gchar *channel, guint users, const gchar *topic);
+
+/* Sorting column IDs - same as GTK3 */
+enum
+{
+	SORT_ID_CHANNEL,
+	SORT_ID_USERS,
+	SORT_ID_TOPIC
+};
+
+/* Column indices for display */
+enum
+{
+	CUSTOM_LIST_COL_NAME,
+	CUSTOM_LIST_COL_USERS,
+	CUSTOM_LIST_COL_TOPIC,
+	CUSTOM_LIST_N_COLUMNS
+};
+
+#else /* GTK3 */
 
 GType custom_list_get_type (void);
 
@@ -102,5 +144,7 @@ CustomList *custom_list_new (void);
 void custom_list_append (CustomList *, chanlistrow *);
 void custom_list_resort (CustomList *);
 void custom_list_clear (CustomList *);
+
+#endif /* !HC_GTK4 */
 
 #endif /* HEXCHAT_CUSTOM_LIST_H */

@@ -53,6 +53,7 @@ enum
 	N_COLUMNS
 };
 
+#if !HC_GTK4
 #ifndef CUSTOM_LIST
 typedef struct	/* this is now in custom-list.h */
 {
@@ -65,8 +66,48 @@ typedef struct	/* this is now in custom-list.h */
 }
 chanlistrow;
 #endif
+#endif
+
+#if HC_GTK4
+/*
+ * =============================================================================
+ * GTK4: GtkColumnView with GListStore + GtkFilterListModel + GtkSortListModel
+ * =============================================================================
+ */
+
+/* Get the GListStore from the chain: store -> filter -> sort -> selection -> view */
+static GListStore *
+chanlist_get_store (server *serv)
+{
+	return G_LIST_STORE (serv->gui->chanlist_store);
+}
+
+/* Get the sort model for triggering re-sort */
+static GtkSortListModel *
+chanlist_get_sort_model (server *serv)
+{
+	GtkSelectionModel *sel_model;
+	GListModel *model;
+
+	sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (serv->gui->chanlist_list));
+	model = gtk_single_selection_get_model (GTK_SINGLE_SELECTION (sel_model));
+
+	return GTK_SORT_LIST_MODEL (model);
+}
+
+/* Get filter model for changing the filter */
+static GtkFilterListModel *
+chanlist_get_filter_model (server *serv)
+{
+	GtkSortListModel *sort_model = chanlist_get_sort_model (serv);
+	return GTK_FILTER_LIST_MODEL (gtk_sort_list_model_get_model (sort_model));
+}
+
+#else /* GTK3 */
 
 #define GET_MODEL(xserv) (gtk_tree_view_get_model(GTK_TREE_VIEW(xserv->gui->chanlist_list)))
+
+#endif /* HC_GTK4 */
 
 
 static gboolean
@@ -138,10 +179,20 @@ static void
 chanlist_data_free (server *serv)
 {
 	GSList *rows;
+#if !HC_GTK4
 	chanlistrow *data;
+#endif
 
 	if (serv->gui->chanlist_data_stored_rows)
 	{
+#if HC_GTK4
+		/* In GTK4, stored rows are HcChannelItem objects */
+		for (rows = serv->gui->chanlist_data_stored_rows; rows != NULL;
+			  rows = rows->next)
+		{
+			g_object_unref (rows->data);
+		}
+#else
 		for (rows = serv->gui->chanlist_data_stored_rows; rows != NULL;
 			  rows = rows->next)
 		{
@@ -150,11 +201,20 @@ chanlist_data_free (server *serv)
 			g_free (data->collation_key);
 			g_free (data);
 		}
+#endif
 
 		g_slist_free (serv->gui->chanlist_data_stored_rows);
 		serv->gui->chanlist_data_stored_rows = NULL;
 	}
 
+#if HC_GTK4
+	/* In GTK4, pending rows are HcChannelItem objects */
+	for (rows = serv->gui->chanlist_pending_rows; rows != NULL;
+		  rows = rows->next)
+	{
+		g_object_unref (rows->data);
+	}
+#endif
 	g_slist_free (serv->gui->chanlist_pending_rows);
 	serv->gui->chanlist_pending_rows = NULL;
 }
@@ -165,8 +225,13 @@ static void
 chanlist_flush_pending (server *serv)
 {
 	GSList *list = serv->gui->chanlist_pending_rows;
+#if HC_GTK4
+	HcChannelItem *item;
+	GListStore *store;
+#else
 	GtkTreeModel *model;
 	chanlistrow *row;
+#endif
 
 	if (!list)
 	{
@@ -174,14 +239,25 @@ chanlist_flush_pending (server *serv)
 			chanlist_update_caption (serv);
 		return;
 	}
-	model = GET_MODEL (serv);
 
+#if HC_GTK4
+	store = chanlist_get_store (serv);
+	while (list)
+	{
+		item = list->data;
+		g_list_store_append (store, item);
+		g_object_unref (item); /* store holds reference */
+		list = list->next;
+	}
+#else
+	model = GET_MODEL (serv);
 	while (list)
 	{
 		row = list->data;
 		custom_list_append (CUSTOM_LIST (model), row);
 		list = list->next;
 	}
+#endif
 
 	g_slist_free (serv->gui->chanlist_pending_rows);
 	serv->gui->chanlist_pending_rows = NULL;
@@ -194,6 +270,49 @@ chanlist_timeout (server *serv)
 	chanlist_flush_pending (serv);
 	return TRUE;
 }
+
+#if HC_GTK4
+/**
+ * Places a data row into the gui GtkColumnView.
+ * In GTK4, filtering is handled by GtkFilterListModel, so we add all rows.
+ * The filter function will decide what to show.
+ */
+static void
+chanlist_place_row_in_gui (server *serv, HcChannelItem *item, gboolean force)
+{
+	GListStore *store;
+
+	/* First, update the 'found' counter values */
+	serv->gui->chanlist_users_found_count += item->users;
+	serv->gui->chanlist_channels_found_count++;
+
+	if (serv->gui->chanlist_channels_shown_count == 1)
+		/* join & save buttons become live */
+		chanlist_update_buttons (serv);
+
+	/* In GTK4, we always add the item to the store. Filtering is done by
+	 * GtkFilterListModel. The shown counts are updated when the filter changes.
+	 */
+	if (force || serv->gui->chanlist_channels_shown_count < 20)
+	{
+		store = chanlist_get_store (serv);
+		g_list_store_append (store, item);
+		g_object_unref (item); /* store holds reference */
+		chanlist_update_caption (serv);
+	}
+	else
+	{
+		/* add it to GUI at the next update interval */
+		serv->gui->chanlist_pending_rows = g_slist_prepend (serv->gui->chanlist_pending_rows, item);
+		/* Don't unref here - the pending list holds the reference */
+	}
+
+	/* Update the 'shown' counter values */
+	serv->gui->chanlist_users_shown_count += item->users;
+	serv->gui->chanlist_channels_shown_count++;
+}
+
+#else /* GTK3 */
 
 /**
  * Places a data row into the gui GtkTreeView, if and only if the row matches
@@ -228,7 +347,7 @@ chanlist_place_row_in_gui (server *serv, chanlistrow *next_row, gboolean force)
 	if (hc_entry_get_text (serv->gui->chanlist_wild)[0])
 	{
 		/* Check what the user wants to match. If both buttons or _neither_
-		 * button is checked, look for match in both by default. 
+		 * button is checked, look for match in both by default.
 		 */
 		if (serv->gui->chanlist_match_wants_channel ==
 			 serv->gui->chanlist_match_wants_topic)
@@ -276,6 +395,8 @@ chanlist_place_row_in_gui (server *serv, chanlistrow *next_row, gboolean force)
 	serv->gui->chanlist_channels_shown_count++;
 }
 
+#endif /* HC_GTK4 */
+
 /* Performs the LIST download from the IRC server. */
 
 static void
@@ -293,7 +414,11 @@ chanlist_do_refresh (server *serv)
 		return;
 	}
 
+#if HC_GTK4
+	g_list_store_remove_all (chanlist_get_store (serv));
+#else
 	custom_list_clear ((CustomList *)GET_MODEL (serv));
+#endif
 	gtk_widget_set_sensitive (serv->gui->chanlist_refresh, FALSE);
 
 	chanlist_data_free (serv);
@@ -323,6 +448,51 @@ chanlist_refresh (GtkWidget * wid, server *serv)
 {
 	chanlist_do_refresh (serv);
 }
+
+#if HC_GTK4
+/**
+ * Fills the gui GtkColumnView with stored items from the GSList.
+ * In GTK4, the filter handles visibility based on search criteria.
+ */
+static void
+chanlist_build_gui_list (server *serv)
+{
+	GSList *rows;
+	HcChannelItem *item;
+	GtkFilterListModel *filter_model;
+
+	/* first check if the list is present */
+	if (serv->gui->chanlist_data_stored_rows == NULL)
+	{
+		/* start a download */
+		chanlist_do_refresh (serv);
+		return;
+	}
+
+	g_list_store_remove_all (chanlist_get_store (serv));
+
+	/* discard pending rows */
+	g_slist_free (serv->gui->chanlist_pending_rows);
+	serv->gui->chanlist_pending_rows = NULL;
+
+	/* Reset the counters */
+	chanlist_reset_counters (serv);
+
+	/* Refill the list */
+	for (rows = serv->gui->chanlist_data_stored_rows; rows != NULL;
+		  rows = rows->next)
+	{
+		item = rows->data;
+		chanlist_place_row_in_gui (serv, g_object_ref (item), TRUE);
+	}
+
+	/* Trigger filter re-evaluation */
+	filter_model = chanlist_get_filter_model (serv);
+	gtk_filter_changed (gtk_filter_list_model_get_filter (filter_model),
+	                    GTK_FILTER_CHANGE_DIFFERENT);
+}
+
+#else /* GTK3 */
 
 /**
  * Fills the gui GtkTreeView with stored items from the GSList.
@@ -359,6 +529,33 @@ chanlist_build_gui_list (server *serv)
 	custom_list_resort ((CustomList *)GET_MODEL (serv));
 }
 
+#endif /* HC_GTK4 */
+
+#if HC_GTK4
+/**
+ * Accepts incoming channel data from inbound.c, creates an HcChannelItem,
+ * adds it to our linked list and calls chanlist_place_row_in_gui.
+ */
+void
+fe_add_chan_list (server *serv, char *chan, char *users, char *topic)
+{
+	HcChannelItem *item;
+	char *stripped_topic;
+
+	stripped_topic = strip_color (topic, -1, STRIP_ALL);
+	item = hc_channel_item_new (chan, atoi (users), stripped_topic);
+	g_free (stripped_topic);
+
+	/* add this row to the data */
+	serv->gui->chanlist_data_stored_rows =
+		g_slist_prepend (serv->gui->chanlist_data_stored_rows, g_object_ref (item));
+
+	/* _possibly_ add the row to the gui */
+	chanlist_place_row_in_gui (serv, item, FALSE);
+}
+
+#else /* GTK3 */
+
 /**
  * Accepts incoming channel data from inbound.c, allocates new space for a
  * chanlistrow, adds it to our linked list and calls chanlist_place_row_in_gui.
@@ -386,20 +583,39 @@ fe_add_chan_list (server *serv, char *chan, char *users, char *topic)
 	chanlist_place_row_in_gui (serv, next_row, FALSE);
 }
 
+#endif /* HC_GTK4 */
+
 void
 fe_chan_list_end (server *serv)
 {
 	/* download complete */
 	chanlist_flush_pending (serv);
 	gtk_widget_set_sensitive (serv->gui->chanlist_refresh, TRUE);
+#if HC_GTK4
+	/* Sorting is handled by GtkSortListModel automatically */
+#else
 	custom_list_resort ((CustomList *)GET_MODEL (serv));
+#endif
 }
 
+#if HC_GTK4
+static void
+chanlist_search_pressed (GtkButton * button, server *serv)
+{
+	GtkFilterListModel *filter_model;
+
+	/* Trigger filter re-evaluation */
+	filter_model = chanlist_get_filter_model (serv);
+	gtk_filter_changed (gtk_filter_list_model_get_filter (filter_model),
+	                    GTK_FILTER_CHANGE_DIFFERENT);
+}
+#else
 static void
 chanlist_search_pressed (GtkButton * button, server *serv)
 {
 	chanlist_build_gui_list (serv);
 }
+#endif
 
 static void
 chanlist_find_cb (GtkWidget * wid, server *serv)
@@ -432,6 +648,26 @@ chanlist_match_topic_button_toggled (GtkWidget * wid, server *serv)
 	serv->gui->chanlist_match_wants_topic = hc_check_button_get_active (wid);
 }
 
+#if HC_GTK4
+static char *
+chanlist_get_selected (server *serv, gboolean get_topic)
+{
+	GtkSelectionModel *sel_model;
+	HcChannelItem *item;
+	char *result = NULL;
+
+	sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (serv->gui->chanlist_list));
+	item = hc_selection_model_get_selected_item (sel_model);
+
+	if (item)
+	{
+		result = g_strdup (get_topic ? item->topic : item->channel);
+		g_object_unref (item);
+	}
+
+	return result;
+}
+#else /* GTK3 */
 static char *
 chanlist_get_selected (server *serv, gboolean get_topic)
 {
@@ -446,6 +682,7 @@ chanlist_get_selected (server *serv, gboolean get_topic)
 	gtk_tree_model_get (model, &iter, get_topic ? COL_TOPIC : COL_CHANNEL, &chan, -1);
 	return chan;
 }
+#endif /* HC_GTK4 */
 
 static void
 chanlist_join (GtkWidget * wid, server *serv)
@@ -468,11 +705,18 @@ static void
 chanlist_filereq_done (server *serv, char *file)
 {
 	time_t t = time (0);
-	int fh, users;
-	char *chan, *topic;
+	int fh;
 	char buf[1024];
+#if HC_GTK4
+	GListStore *store;
+	guint i, n_items;
+	HcChannelItem *item;
+#else
+	int users;
+	char *chan, *topic;
 	GtkTreeModel *model = GET_MODEL (serv);
 	GtkTreeIter iter;
+#endif
 
 	if (!file)
 		return;
@@ -486,6 +730,19 @@ chanlist_filereq_done (server *serv, char *file)
 				 serv->servername, ctime (&t));
 	write (fh, buf, strlen (buf));
 
+#if HC_GTK4
+	store = chanlist_get_store (serv);
+	n_items = g_list_model_get_n_items (G_LIST_MODEL (store));
+
+	for (i = 0; i < n_items; i++)
+	{
+		item = g_list_model_get_item (G_LIST_MODEL (store), i);
+		g_snprintf (buf, sizeof buf, "%-16s %-5u%s\n",
+		            item->channel, item->users, item->topic);
+		write (fh, buf, strlen (buf));
+		g_object_unref (item);
+	}
+#else
 	if (gtk_tree_model_get_iter_first (model, &iter))
 	{
 		do
@@ -501,6 +758,7 @@ chanlist_filereq_done (server *serv, char *file)
 		}
 		while (gtk_tree_model_iter_next (model, &iter));
 	}
+#endif
 
 	close (fh);
 }
@@ -508,12 +766,20 @@ chanlist_filereq_done (server *serv, char *file)
 static void
 chanlist_save (GtkWidget * wid, server *serv)
 {
+#if HC_GTK4
+	GListStore *store = chanlist_get_store (serv);
+
+	if (g_list_model_get_n_items (G_LIST_MODEL (store)) > 0)
+		gtkutil_file_req (NULL, _("Select an output filename"), chanlist_filereq_done,
+								serv, NULL, NULL, FRF_WRITE);
+#else
 	GtkTreeIter iter;
 	GtkTreeModel *model = GET_MODEL (serv);
 
 	if (gtk_tree_model_get_iter_first (model, &iter))
 		gtkutil_file_req (NULL, _("Select an output filename"), chanlist_filereq_done,
 								serv, NULL, NULL, FRF_WRITE);
+#endif
 }
 
 static gboolean
@@ -689,7 +955,12 @@ chanlist_button_cb (GtkTreeView *tree, GdkEventButton *event, server *serv)
 static void
 chanlist_destroy_widget (GtkWidget *wid, server *serv)
 {
+#if HC_GTK4
+	g_list_store_remove_all (chanlist_get_store (serv));
+	g_clear_object (&serv->gui->chanlist_store);
+#else
 	custom_list_clear ((CustomList *)GET_MODEL (serv));
+#endif
 	chanlist_data_free (serv);
 
 	if (serv->gui->chanlist_flash_tag)
@@ -753,12 +1024,270 @@ chanlist_combo_cb (GtkWidget *combo, server *serv)
 	serv->gui->chanlist_search_type = gtk_combo_box_get_active (GTK_COMBO_BOX (combo));
 }
 
+#if HC_GTK4
+
+/*
+ * =============================================================================
+ * GTK4: Column factory callbacks for GtkColumnView
+ * =============================================================================
+ */
+
+/* Channel column setup */
+static void
+chanlist_channel_setup_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_label_new (NULL);
+	gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+	gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+	gtk_list_item_set_child (item, label);
+}
+
+static void
+chanlist_channel_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcChannelItem *channel_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), channel_item->channel);
+}
+
+/* Users column setup */
+static void
+chanlist_users_setup_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_label_new (NULL);
+	gtk_label_set_xalign (GTK_LABEL (label), 1.0); /* Right-align */
+	gtk_list_item_set_child (item, label);
+}
+
+static void
+chanlist_users_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcChannelItem *channel_item = gtk_list_item_get_item (item);
+	char buf[32];
+	g_snprintf (buf, sizeof buf, "%u", channel_item->users);
+	gtk_label_set_text (GTK_LABEL (label), buf);
+}
+
+/* Topic column setup */
+static void
+chanlist_topic_setup_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_label_new (NULL);
+	gtk_label_set_xalign (GTK_LABEL (label), 0.0);
+	gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+	gtk_list_item_set_child (item, label);
+}
+
+static void
+chanlist_topic_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcChannelItem *channel_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), channel_item->topic ? channel_item->topic : "");
+}
+
+/*
+ * =============================================================================
+ * GTK4: Filter function for channel list
+ * =============================================================================
+ */
+static gboolean
+chanlist_filter_func (gpointer item, gpointer user_data)
+{
+	HcChannelItem *channel_item = HC_CHANNEL_ITEM (item);
+	server *serv = user_data;
+
+	/* User count filter */
+	if (channel_item->users < serv->gui->chanlist_minusers)
+		return FALSE;
+
+	if (channel_item->users > serv->gui->chanlist_maxusers
+		 && serv->gui->chanlist_maxusers > 0)
+		return FALSE;
+
+	/* Text/regex filter */
+	if (hc_entry_get_text (serv->gui->chanlist_wild)[0])
+	{
+		if (serv->gui->chanlist_match_wants_channel ==
+			 serv->gui->chanlist_match_wants_topic)
+		{
+			/* Both or neither checked - search both */
+			if (!chanlist_match (serv, channel_item->channel)
+				 && !chanlist_match (serv, channel_item->topic))
+				return FALSE;
+		}
+		else if (serv->gui->chanlist_match_wants_channel)
+		{
+			if (!chanlist_match (serv, channel_item->channel))
+				return FALSE;
+		}
+		else if (serv->gui->chanlist_match_wants_topic)
+		{
+			if (!chanlist_match (serv, channel_item->topic))
+				return FALSE;
+		}
+	}
+
+	return TRUE;
+}
+
+/*
+ * =============================================================================
+ * GTK4: Sorter functions for channel list columns
+ * =============================================================================
+ */
+
+/* fast as possible compare func for sorting (same as GTK3 version) */
+#define TOSML(c) (((c) >= 'A' && (c) <= 'Z') ? (c) - 'A' + 'a' : (c))
+
+static inline int
+fast_ascii_stricmp (const char *s1, const char *s2)
+{
+	int c1, c2;
+
+	while (*s1 && *s2)
+	{
+		c1 = (int) (unsigned char) TOSML (*s1);
+		c2 = (int) (unsigned char) TOSML (*s2);
+		if (c1 != c2)
+			return (c1 - c2);
+		s1++;
+		s2++;
+	}
+
+	return (((int) (unsigned char) *s1) - ((int) (unsigned char) *s2));
+}
+
+static int
+chanlist_channel_sorter_func (gconstpointer a, gconstpointer b, gpointer user_data)
+{
+	HcChannelItem *item_a = HC_CHANNEL_ITEM ((gpointer) a);
+	HcChannelItem *item_b = HC_CHANNEL_ITEM ((gpointer) b);
+
+	return strcmp (item_a->collation_key, item_b->collation_key);
+}
+
+static int
+chanlist_users_sorter_func (gconstpointer a, gconstpointer b, gpointer user_data)
+{
+	HcChannelItem *item_a = HC_CHANNEL_ITEM ((gpointer) a);
+	HcChannelItem *item_b = HC_CHANNEL_ITEM ((gpointer) b);
+
+	return (int) item_a->users - (int) item_b->users;
+}
+
+static int
+chanlist_topic_sorter_func (gconstpointer a, gconstpointer b, gpointer user_data)
+{
+	HcChannelItem *item_a = HC_CHANNEL_ITEM ((gpointer) a);
+	HcChannelItem *item_b = HC_CHANNEL_ITEM ((gpointer) b);
+
+	return fast_ascii_stricmp (item_a->topic ? item_a->topic : "",
+	                           item_b->topic ? item_b->topic : "");
+}
+
+/*
+ * =============================================================================
+ * GTK4: Create the channel list GtkColumnView
+ * =============================================================================
+ */
+static GtkWidget *
+chanlist_create_columnview (server *serv)
+{
+	GListStore *store;
+	GtkCustomFilter *custom_filter;
+	GtkFilterListModel *filter_model;
+	GtkSortListModel *sort_model;
+	GtkSingleSelection *sel_model;
+	GtkWidget *view;
+	GtkColumnViewColumn *column;
+	GtkListItemFactory *factory;
+	GtkSorter *sorter;
+
+	/* Create the base store */
+	store = g_list_store_new (HC_TYPE_CHANNEL_ITEM);
+	serv->gui->chanlist_store = G_OBJECT (store);
+
+	/* Wrap with filter model */
+	custom_filter = gtk_custom_filter_new (chanlist_filter_func, serv, NULL);
+	filter_model = gtk_filter_list_model_new (G_LIST_MODEL (store),
+	                                          GTK_FILTER (custom_filter));
+
+	/* Wrap with sort model - initially no sorter, columns will set it */
+	sort_model = gtk_sort_list_model_new (G_LIST_MODEL (filter_model), NULL);
+
+	/* Selection model */
+	sel_model = gtk_single_selection_new (G_LIST_MODEL (sort_model));
+
+	/* Create the column view */
+	view = gtk_column_view_new (GTK_SELECTION_MODEL (sel_model));
+	gtk_column_view_set_show_column_separators (GTK_COLUMN_VIEW (view), TRUE);
+
+	/* Enable sorting on the column view */
+	gtk_sort_list_model_set_sorter (sort_model,
+		gtk_column_view_get_sorter (GTK_COLUMN_VIEW (view)));
+
+	/* Channel column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (chanlist_channel_setup_cb), serv);
+	g_signal_connect (factory, "bind", G_CALLBACK (chanlist_channel_bind_cb), serv);
+	column = gtk_column_view_column_new (_("Channel"), factory);
+	gtk_column_view_column_set_resizable (column, TRUE);
+	gtk_column_view_column_set_fixed_width (column, 150);
+	sorter = GTK_SORTER (gtk_custom_sorter_new (chanlist_channel_sorter_func, NULL, NULL));
+	gtk_column_view_column_set_sorter (column, sorter);
+	g_object_unref (sorter);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), column);
+	g_object_unref (column);
+
+	/* Users column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (chanlist_users_setup_cb), serv);
+	g_signal_connect (factory, "bind", G_CALLBACK (chanlist_users_bind_cb), serv);
+	column = gtk_column_view_column_new (_("Users"), factory);
+	gtk_column_view_column_set_resizable (column, FALSE);
+	sorter = GTK_SORTER (gtk_custom_sorter_new (chanlist_users_sorter_func, NULL, NULL));
+	gtk_column_view_column_set_sorter (column, sorter);
+	g_object_unref (sorter);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), column);
+	g_object_unref (column);
+
+	/* Topic column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (chanlist_topic_setup_cb), serv);
+	g_signal_connect (factory, "bind", G_CALLBACK (chanlist_topic_bind_cb), serv);
+	column = gtk_column_view_column_new (_("Topic"), factory);
+	gtk_column_view_column_set_resizable (column, TRUE);
+	gtk_column_view_column_set_expand (column, TRUE);
+	sorter = GTK_SORTER (gtk_custom_sorter_new (chanlist_topic_sorter_func, NULL, NULL));
+	gtk_column_view_column_set_sorter (column, sorter);
+	g_object_unref (sorter);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), column);
+	g_object_unref (column);
+
+	return view;
+}
+
+/* Double-click handler for GTK4 */
+static void
+chanlist_activate_cb (GtkColumnView *view, guint position, server *serv)
+{
+	chanlist_join (NULL, serv);
+}
+
+#endif /* HC_GTK4 */
+
 void
 chanlist_opengui (server *serv, int do_refresh)
 {
 	GtkWidget *vbox, *hbox, *table, *wid, *view;
 	char tbuf[256];
+#if HC_GTK4
+	GtkWidget *scrolled;
+#else
 	GtkListStore *store;
+#endif
 
 	if (serv->gui->chanlist_window)
 	{
@@ -814,32 +1343,49 @@ chanlist_opengui (server *serv, int do_refresh)
 
 	/* ============================================================= */
 
+#if HC_GTK4
+	/* GTK4: Create GtkColumnView */
+	view = chanlist_create_columnview (serv);
+	serv->gui->chanlist_list = view;
+
+	/* Put column view in scrolled window */
+	scrolled = hc_scrolled_window_new ();
+	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled),
+	                                GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	hc_scrolled_window_set_child (scrolled, view);
+	gtk_widget_set_vexpand (scrolled, TRUE);
+	gtk_widget_set_hexpand (scrolled, TRUE);
+	hc_box_pack_start (vbox, scrolled, TRUE, TRUE, 0);
+	hc_widget_show (scrolled);
+
+	/* Double-click handler */
+	g_signal_connect (G_OBJECT (view), "activate",
+	                  G_CALLBACK (chanlist_activate_cb), serv);
+
+	/* Right-click context menu */
+	hc_add_click_gesture (view, G_CALLBACK (chanlist_button_cb), NULL, serv);
+
+#else /* GTK3 */
+
 	store = (GtkListStore *) custom_list_new();
 	view = gtkutil_treeview_new (vbox, GTK_TREE_MODEL (store), NULL, -1);
-#if !HC_GTK4
 	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (gtk_widget_get_parent (view)),
 													 GTK_SHADOW_IN);
-#endif
 	serv->gui->chanlist_list = view;
 
 	g_signal_connect (G_OBJECT (view), "row_activated",
 							G_CALLBACK (chanlist_dclick_cb), serv);
-#if HC_GTK4
-	/* GTK4: Use gesture controller for button press */
-	hc_add_click_gesture (view, G_CALLBACK (chanlist_button_cb), NULL, serv);
-#else
 	g_signal_connect (G_OBJECT (view), "button-press-event",
 							G_CALLBACK (chanlist_button_cb), serv);
-#endif
 
 	chanlist_add_column (view, COL_CHANNEL, 96, _("Channel"), FALSE);
 	chanlist_add_column (view, COL_USERS,   50, _("Users"),   TRUE);
 	chanlist_add_column (view, COL_TOPIC,   50, _("Topic"),   FALSE);
-#if !HC_GTK4
 	gtk_tree_view_set_rules_hint (GTK_TREE_VIEW (view), TRUE);
-#endif
 	/* this is a speed up, but no horizontal scrollbar :( */
 	/*gtk_tree_view_set_fixed_height_mode (GTK_TREE_VIEW (view), TRUE);*/
+#endif
+
 	gtk_widget_show (view);
 
 	/* ============================================================= */

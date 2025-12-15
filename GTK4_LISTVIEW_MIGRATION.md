@@ -197,15 +197,35 @@ Key techniques:
 - Selection helpers: `userlist_selection_list_gtk4()` iterates `GtkBitset` from selection model
 - Click/key handlers updated to work with `GtkColumnView` and `GtkSelectionModel`
 
-### Phase 6: Custom Model with Filtering
+### Phase 6: Custom Model with Filtering - COMPLETE
 
-**Files:** `chanlist.c`, `custom-list.c`
+**Files:** `chanlist.c`, `custom-list.c`, `custom-list.h`
 
-Major work:
-- Rewrite `CustomList` to implement `GListModel` instead of `GtkTreeModel`
-- Use `GtkFilterListModel` + `GtkCustomFilter` for filtering
-- Use `GtkSortListModel` for sorting
-- Batch updates via `g_list_model_items_changed(model, start, 0, count)`
+**Strategy:** Use `GListStore` with custom `HcChannelItem` GObject + `GtkColumnView` with `GtkFilterListModel` for live filtering and `GtkSortListModel` for sorting
+
+**Implementation:**
+- Created `HcChannelItem` GObject subclass with fields: channel, topic, collation_key, users
+- Used `G_DECLARE_FINAL_TYPE` and `G_DEFINE_TYPE` macros for proper GObject registration
+- Kept GTK3's custom GtkTreeModel implementation unchanged via `#if !HC_GTK4`
+- Created `chanlist_create_columnview()` with 3 columns:
+  - Channel column: `GtkLabel` with ellipsize
+  - Users column: `GtkLabel` right-aligned
+  - Topic column: `GtkLabel` with ellipsize, expanding
+- **Filtering**: `GtkFilterListModel` with `GtkCustomFilter` callback:
+  - Filters by min/max users count
+  - Filters by channel name, topic, or both based on user selection
+  - Supports simple search, wildcard patterns, and regex
+- **Sorting**: `GtkSortListModel` with `GtkCustomSorter` per column:
+  - Channel column: sorts by collation key (case-insensitive)
+  - Users column: numeric sort
+  - Topic column: case-insensitive ASCII comparison
+- Column headers are clickable to sort (using GtkColumnView built-in sorting)
+- `chanlist_search_pressed()` triggers `gtk_filter_changed()` to re-evaluate filter
+- `fe_add_chan_list()` creates `HcChannelItem` and adds to both GSList (backup) and GListStore
+- Selection via `hc_selection_model_get_selected_item()` helper
+- Double-click handled via `activate` signal on GtkColumnView
+- Right-click context menu via `GtkGestureClick` controller
+- Added `chanlist_store` field to server GUI struct for GTK4
 
 ### Phase 7: Hierarchical Tree
 
@@ -275,12 +295,13 @@ static GtkWidget *my_view_new(void) {
 12. **ignoregui.c** - Migrated to GListStore + GtkColumnView with GtkCheckButton toggle columns (Phase 4)
 13. **userlistgui.c** - Migrated to GListStore + GtkColumnView with icons, colors, sorting, DND (Phase 5)
 14. **fe-gtk.h** - Updated `sess->res->user_model` type for GTK4 compatibility (Phase 5)
+15. **custom-list.c** - Added HcChannelItem GObject for GTK4, kept GTK3 GtkTreeModel implementation (Phase 6)
+16. **custom-list.h** - Added GTK4 type declarations (Phase 6)
+17. **chanlist.c** - Migrated to GListStore + GtkColumnView + GtkFilterListModel + GtkSortListModel (Phase 6)
 
 ## Files Remaining
 
-1. **custom-list.c** - GListModel implementation (Phase 6)
-2. **chanlist.c** - Uses custom model, filtering (Phase 6)
-3. **chanview-tree.c** - Hierarchical with GtkTreeListModel (Phase 7)
+1. **chanview-tree.c** - Hierarchical with GtkTreeListModel (Phase 7)
 
 ## Progress Tracking
 
@@ -292,7 +313,7 @@ static GtkWidget *my_view_new(void) {
 | 3 | COMPLETE | banlist.c, notifygui.c, dccgui.c | CSS for colors, GtkCustomSorter, GtkBitset for multi-select |
 | 4 | COMPLETE | ignoregui.c | GtkCheckButton for toggle columns |
 | 5 | COMPLETE | userlistgui.c, fe-gtk.h | GtkPicture for icons, PangoAttrList for colors, GtkSortListModel |
-| 6 | PENDING | custom-list.c, chanlist.c | |
+| 6 | COMPLETE | custom-list.c, custom-list.h, chanlist.c | HcChannelItem GObject, GtkFilterListModel, GtkCustomSorter |
 | 7 | PENDING | chanview-tree.c | |
 
 ## Key GTK4 APIs Used
@@ -305,5 +326,7 @@ static GtkWidget *my_view_new(void) {
 - `GtkSingleSelection` / `GtkMultiSelection` - Selection models
 - `GtkSortListModel` - Sorting wrapper
 - `GtkFilterListModel` - Filtering wrapper
+- `GtkCustomFilter` - Custom filter function for complex filtering logic
+- `GtkCustomSorter` - Custom sorter function for complex sorting logic
 - `GtkTreeListModel` - Hierarchical model (for tree views)
 - `GtkTreeExpander` - Expand/collapse widget for tree items
