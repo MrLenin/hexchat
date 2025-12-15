@@ -843,7 +843,11 @@ chanlist_copychannel (GtkWidget *item, server *serv)
 	char *chan = chanlist_get_selected (serv, FALSE);
 	if (chan)
 	{
+#if HC_GTK4
+		gtkutil_copy_to_clipboard (item, FALSE, chan);
+#else
 		gtkutil_copy_to_clipboard (item, NULL, chan);
+#endif
 		g_free (chan);
 	}
 }
@@ -854,7 +858,11 @@ chanlist_copytopic (GtkWidget *item, server *serv)
 	char *topic = chanlist_get_selected (serv, TRUE);
 	if (topic)
 	{
+#if HC_GTK4
+		gtkutil_copy_to_clipboard (item, FALSE, topic);
+#else
 		gtkutil_copy_to_clipboard (item, NULL, topic);
+#endif
 		g_free (topic);
 	}
 }

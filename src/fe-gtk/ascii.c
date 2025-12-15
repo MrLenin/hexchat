@@ -84,6 +84,22 @@ static const unsigned char table[]=
 0xd1,0x89,0xd1,0x8a,0xd1,0x8b,0xd1,0x8c,0xd1,0x8d,0xd1,0x8e,0xd1,0x8f,0
 };
 
+#if HC_GTK4
+static void
+ascii_enter (GtkEventControllerMotion *controller, double x, double y, GtkWidget *label)
+{
+	char buf[64];
+	const char *text;
+	gunichar u;
+	GtkWidget *wid = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+	(void)x; (void)y;
+
+	text = gtk_button_get_label (GTK_BUTTON (wid));
+	u = g_utf8_get_char (text);
+	sprintf (buf, "%s U+%04X", text, u);
+	gtk_label_set_text (GTK_LABEL (label), buf);
+}
+#else
 static gboolean
 ascii_enter (GtkWidget * wid, GdkEventCrossing *event, GtkWidget *label)
 {
@@ -98,6 +114,7 @@ ascii_enter (GtkWidget * wid, GdkEventCrossing *event, GtkWidget *label)
 
 	return FALSE;
 }
+#endif
 
 static void
 ascii_click (GtkWidget * wid, gpointer userdata)

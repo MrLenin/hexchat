@@ -687,7 +687,8 @@ static void
 tab_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chan *ch)
 {
 	guint button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
-	(void)n_press; (void)x; (void)y;
+	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+	(void)n_press;
 
 	/* Middle-click to close tab */
 	if (button == 2 && prefs.hex_gui_tab_middleclose)
@@ -699,7 +700,7 @@ tab_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chan *c
 	/* Right-click for context menu */
 	if (button == 3)
 	{
-		ch->cv->cb_contextmenu (ch->cv, ch, ch->tag, ch->userdata, NULL);
+		ch->cv->cb_contextmenu (ch->cv, ch, ch->tag, ch->userdata, widget, x, y);
 	}
 }
 #else /* GTK3 */

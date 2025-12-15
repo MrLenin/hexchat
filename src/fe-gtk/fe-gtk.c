@@ -23,7 +23,11 @@
 #include "fe-gtk.h"
 
 #ifdef WIN32
+#if HC_GTK4
+#include <gdk/win32/gdkwin32.h>
+#else
 #include <gdk/gdkwin32.h>
+#endif
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -169,7 +173,11 @@ fe_args (int argc, char *argv[])
 			if (strstr (error->message, "--help-all") != NULL)
 			{
 				buffer = g_option_context_get_help (context, FALSE, NULL);
+#if HC_GTK4
+				gtk_init ();
+#else
 				gtk_init (&argc, &argv);
+#endif
 				create_msg_dialog ("Long Help", buffer);
 				g_free (buffer);
 				return 0;
@@ -177,15 +185,23 @@ fe_args (int argc, char *argv[])
 			else if (strstr (error->message, "--help") != NULL || strstr (error->message, "-?") != NULL)
 			{
 				buffer = g_option_context_get_help (context, TRUE, NULL);
+#if HC_GTK4
+				gtk_init ();
+#else
 				gtk_init (&argc, &argv);
+#endif
 				create_msg_dialog ("Help", buffer);
 				g_free (buffer);
 				return 0;
 			}
-			else 
+			else
 			{
 				buffer = g_strdup_printf ("%s\n", error->message);
+#if HC_GTK4
+				gtk_init ();
+#else
 				gtk_init (&argc, &argv);
+#endif
 				create_msg_dialog ("Error", buffer);
 				g_free (buffer);
 				return 1;
@@ -207,7 +223,11 @@ fe_args (int argc, char *argv[])
 	{
 		buffer = g_strdup_printf ("%s %s", PACKAGE_NAME, PACKAGE_VERSION);
 #ifdef WIN32
+#if HC_GTK4
+		gtk_init ();
+#else
 		gtk_init (&argc, &argv);
+#endif
 		create_msg_dialog ("Version Information", buffer);
 #else
 		puts (buffer);
@@ -221,7 +241,11 @@ fe_args (int argc, char *argv[])
 	{
 		buffer = g_strdup_printf ("%s%caddons%c", get_xdir(), G_DIR_SEPARATOR, G_DIR_SEPARATOR);
 #ifdef WIN32
+#if HC_GTK4
+		gtk_init ();
+#else
 		gtk_init (&argc, &argv);
+#endif
 		create_msg_dialog ("Plugin/Script Auto-load Directory", buffer);
 #else
 		puts (buffer);
@@ -235,7 +259,11 @@ fe_args (int argc, char *argv[])
 	{
 		buffer = g_strdup_printf ("%s%c", get_xdir(), G_DIR_SEPARATOR);
 #ifdef WIN32
+#if HC_GTK4
+		gtk_init ();
+#else
 		gtk_init (&argc, &argv);
+#endif
 		create_msg_dialog ("User Config Directory", buffer);
 #else
 		puts (buffer);
@@ -264,7 +292,11 @@ fe_args (int argc, char *argv[])
 	}
 #endif
 
+#if HC_GTK4
+	gtk_init ();
+#else
 	gtk_init (&argc, &argv);
+#endif
 
 #ifdef HAVE_GTK_MAC
 	osx_app = g_object_new(GTKOSX_TYPE_APPLICATION, NULL);
@@ -335,7 +367,11 @@ create_input_style (InputStyle *style)
 			(int)(colors[COL_FG].green * 255),
 			(int)(colors[COL_FG].blue * 255));
 
+#if HC_GTK4
+		gtk_css_provider_load_from_data (input_css_provider, css_buf, -1);
+#else
 		gtk_css_provider_load_from_data (input_css_provider, css_buf, -1, NULL);
+#endif
 	}
 
 	return style;
@@ -404,7 +440,11 @@ apply_tree_css (void)
 		(int)(colors[COL_BG].green * 255),
 		(int)(colors[COL_BG].blue * 255));
 
+#if HC_GTK4
+	gtk_css_provider_load_from_data (tree_css_provider, css_buf, -1);
+#else
 	gtk_css_provider_load_from_data (tree_css_provider, css_buf, -1, NULL);
+#endif
 }
 
 void
@@ -1087,7 +1127,16 @@ fe_gui_info_ptr (session *sess, int info_type)
 	{
 	case 0:	/* native window pointer (for plugins) */
 #ifdef WIN32
+#if HC_GTK4
+		{
+			GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (sess->gui->window));
+			if (surface)
+				return gdk_win32_surface_get_handle (surface);
+			return NULL;
+		}
+#else
 		return gdk_win32_window_get_impl_hwnd (gtk_widget_get_window (sess->gui->window));
+#endif
 #else
 		return sess->gui->window;
 #endif

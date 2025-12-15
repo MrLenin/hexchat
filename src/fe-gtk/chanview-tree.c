@@ -248,7 +248,7 @@ cv_tree_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, cha
 
 	if (item && item->ch)
 	{
-		cv->cb_contextmenu (cv, item->ch, item->ch->tag, item->ch->userdata, NULL);
+		cv->cb_contextmenu (cv, item->ch, item->ch->tag, item->ch->userdata, widget, x, y);
 	}
 
 	if (item)

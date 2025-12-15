@@ -589,11 +589,40 @@ servlist_move_item (GtkTreeView *view, GSList *list, gpointer item, int delta)
 	return list;
 }
 
+#if HC_GTK4
+static gboolean
+servlist_net_keypress_cb (GtkEventControllerKey *controller, guint keyval,
+                          guint keycode, GdkModifierType state, gpointer tree)
+{
+	gboolean handled = FALSE;
+	(void)controller; (void)keycode;
+
+	if (!selected_net || prefs.hex_gui_slist_fav)
+		return FALSE;
+
+	if (state & STATE_SHIFT)
+	{
+		if (keyval == GDK_KEY_Up)
+		{
+			handled = TRUE;
+			network_list = servlist_move_item (GTK_TREE_VIEW (tree), network_list, selected_net, -1);
+		}
+		else if (keyval == GDK_KEY_Down)
+		{
+			handled = TRUE;
+			network_list = servlist_move_item (GTK_TREE_VIEW (tree), network_list, selected_net, +1);
+		}
+	}
+
+	return handled;
+}
+#else
 static gboolean
 servlist_net_keypress_cb (GtkWidget *wid, GdkEventKey *evt, gpointer tree)
 {
 	gboolean handled = FALSE;
-	
+	(void)wid;
+
 	if (!selected_net || prefs.hex_gui_slist_fav)
 		return FALSE;
 
@@ -613,6 +642,7 @@ servlist_net_keypress_cb (GtkWidget *wid, GdkEventKey *evt, gpointer tree)
 
 	return handled;
 }
+#endif
 
 static gint
 servlist_compare (ircnet *net1, ircnet *net2)
@@ -708,9 +738,39 @@ servlist_edit_close_cb (GtkWidget *button, gpointer userdata)
 	edit_win = NULL;
 }
 
+#if HC_GTK4
+static gboolean
+servlist_editwin_delete_cb (GtkWidget *win, gpointer none)
+{
+	(void)win; (void)none;
+	servlist_edit_close_cb (NULL, NULL);
+	return FALSE;
+}
+
+static void
+servlist_configure_cb (GObject *obj, GParamSpec *pspec, gpointer none)
+{
+	GtkWindow *win = GTK_WINDOW (obj);
+	(void)pspec; (void)none;
+	/* remember the window size */
+	netlist_win_width = gtk_widget_get_width (GTK_WIDGET (win));
+	netlist_win_height = gtk_widget_get_height (GTK_WIDGET (win));
+}
+
+static void
+servlist_edit_configure_cb (GObject *obj, GParamSpec *pspec, gpointer none)
+{
+	GtkWindow *win = GTK_WINDOW (obj);
+	(void)pspec; (void)none;
+	/* remember the window size */
+	netedit_win_width = gtk_widget_get_width (GTK_WIDGET (win));
+	netedit_win_height = gtk_widget_get_height (GTK_WIDGET (win));
+}
+#else
 static gint
 servlist_editwin_delete_cb (GtkWidget *win, GdkEventAny *event, gpointer none)
 {
+	(void)win; (void)event; (void)none;
 	servlist_edit_close_cb (NULL, NULL);
 	return FALSE;
 }
@@ -718,6 +778,7 @@ servlist_editwin_delete_cb (GtkWidget *win, GdkEventAny *event, gpointer none)
 static gboolean
 servlist_configure_cb (GtkWindow *win, GdkEventConfigure *event, gpointer none)
 {
+	(void)event; (void)none;
 	/* remember the window size */
 	gtk_window_get_size (win, &netlist_win_width, &netlist_win_height);
 	return FALSE;
@@ -726,10 +787,12 @@ servlist_configure_cb (GtkWindow *win, GdkEventConfigure *event, gpointer none)
 static gboolean
 servlist_edit_configure_cb (GtkWindow *win, GdkEventConfigure *event, gpointer none)
 {
+	(void)event; (void)none;
 	/* remember the window size */
 	gtk_window_get_size (win, &netedit_win_width, &netedit_win_height);
 	return FALSE;
 }
+#endif
 
 static void
 servlist_edit_cb (GtkWidget *but, gpointer none)
@@ -742,10 +805,19 @@ servlist_edit_cb (GtkWidget *but, gpointer none)
 	servlist_servers_populate (selected_net, edit_trees[SERVER_TREE]);
 	servlist_channels_populate (selected_net, edit_trees[CHANNEL_TREE]);
 	servlist_commands_populate (selected_net, edit_trees[CMD_TREE]);
+#if HC_GTK4
+	g_signal_connect (G_OBJECT (edit_win), "close-request",
+						 	G_CALLBACK (servlist_editwin_delete_cb), 0);
+	g_signal_connect (G_OBJECT (edit_win), "notify::default-width",
+							G_CALLBACK (servlist_edit_configure_cb), 0);
+	g_signal_connect (G_OBJECT (edit_win), "notify::default-height",
+							G_CALLBACK (servlist_edit_configure_cb), 0);
+#else
 	g_signal_connect (G_OBJECT (edit_win), "delete_event",
 						 	G_CALLBACK (servlist_editwin_delete_cb), 0);
 	g_signal_connect (G_OBJECT (edit_win), "configure_event",
 							G_CALLBACK (servlist_edit_configure_cb), 0);
+#endif
 	gtk_widget_show (edit_win);
 }
 
@@ -1038,12 +1110,66 @@ servlist_deletebutton_cb (GtkWidget *item, GtkNotebook *notebook)
 		}
 }
 
+#if HC_GTK4
+static gboolean
+servlist_keypress_cb (GtkEventControllerKey *controller, guint keyval, guint keycode,
+                      GdkModifierType state, GtkNotebook *notebook)
+{
+	gboolean handled = FALSE;
+	int delta = 0;
+
+	(void)controller; (void)keycode;
+
+	if (!selected_net)
+		return FALSE;
+
+	if (state & STATE_SHIFT)
+	{
+		if (keyval == GDK_KEY_Up)
+		{
+			handled = TRUE;
+			delta = -1;
+		}
+		else if (keyval == GDK_KEY_Down)
+		{
+			handled = TRUE;
+			delta = +1;
+		}
+	}
+
+	if (handled)
+	{
+		switch (gtk_notebook_get_current_page (notebook))
+		{
+			case SERVER_TREE:
+				if (selected_serv)
+					selected_net->servlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[SERVER_TREE]),
+																selected_net->servlist, selected_serv, delta);
+				break;
+			case CHANNEL_TREE:
+				if (selected_chan)
+					selected_net->favchanlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[CHANNEL_TREE]),
+																	selected_net->favchanlist, selected_chan, delta);
+				break;
+			case CMD_TREE:
+				if (selected_cmd)
+					selected_net->commandlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[CMD_TREE]),
+																	selected_net->commandlist, selected_cmd, delta);
+				break;
+		}
+	}
+
+	return handled;
+}
+#else
 static gboolean
 servlist_keypress_cb (GtkWidget *wid, GdkEventKey *evt, GtkNotebook *notebook)
 {
 	gboolean handled = FALSE;
 	int delta = 0;
-	
+
+	(void)wid;
+
 	if (!selected_net)
 		return FALSE;
 
@@ -1060,31 +1186,32 @@ servlist_keypress_cb (GtkWidget *wid, GdkEventKey *evt, GtkNotebook *notebook)
 			delta = +1;
 		}
 	}
-	
+
 	if (handled)
 	{
 		switch (gtk_notebook_get_current_page (notebook))
 		{
 			case SERVER_TREE:
 				if (selected_serv)
-					selected_net->servlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[SERVER_TREE]), 
+					selected_net->servlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[SERVER_TREE]),
 																selected_net->servlist, selected_serv, delta);
 				break;
 			case CHANNEL_TREE:
 				if (selected_chan)
-					selected_net->favchanlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[CHANNEL_TREE]), 
+					selected_net->favchanlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[CHANNEL_TREE]),
 																	selected_net->favchanlist, selected_chan, delta);
 				break;
 			case CMD_TREE:
 				if (selected_cmd)
-					selected_net->commandlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[CMD_TREE]), 
+					selected_net->commandlist = servlist_move_item (GTK_TREE_VIEW (edit_trees[CMD_TREE]),
 																	selected_net->commandlist, selected_cmd, delta);
 				break;
 		}
 	}
-	
+
 	return handled;
 }
+#endif
 
 void
 servlist_autojoinedit (ircnet *net, char *channel, gboolean add)
@@ -1304,9 +1431,11 @@ servlist_create_entry (GtkWidget *table, char *labeltext, int row,
 	return entry;
 }
 
-static gint
-servlist_delete_cb (GtkWidget *win, GdkEventAny *event, gpointer userdata)
+#if HC_GTK4
+static gboolean
+servlist_delete_cb (GtkWidget *win, gpointer userdata)
 {
+	(void)win; (void)userdata;
 	servlist_savegui ();
 	serverlist_win = NULL;
 	selected_net = NULL;
@@ -1316,6 +1445,21 @@ servlist_delete_cb (GtkWidget *win, GdkEventAny *event, gpointer userdata)
 
 	return FALSE;
 }
+#else
+static gint
+servlist_delete_cb (GtkWidget *win, GdkEventAny *event, gpointer userdata)
+{
+	(void)win; (void)event; (void)userdata;
+	servlist_savegui ();
+	serverlist_win = NULL;
+	selected_net = NULL;
+
+	if (sess_list == NULL)
+		hexchat_exit ();
+
+	return FALSE;
+}
+#endif
 
 static void
 servlist_close_cb (GtkWidget *button, gpointer userdata)
@@ -1732,7 +1876,11 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	GtkCellRenderer *renderer;
 	char buf[128];
 
+#if HC_GTK4
+	editwindow = gtk_window_new ();
+#else
 	editwindow = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+#endif
 	hc_container_set_border_width (editwindow, 4);
 	g_snprintf (buf, sizeof (buf), _("Edit %s - %s"), net->name, _(DISPLAY_NAME));
 	gtk_window_set_title (GTK_WINDOW (editwindow), buf);
@@ -1777,8 +1925,12 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	model = GTK_TREE_MODEL (store);
 
 	edit_trees[SERVER_TREE] = treeview_servers = gtk_tree_view_new_with_model (model);
+#if HC_GTK4
+	hc_add_key_controller (treeview_servers, G_CALLBACK (servlist_keypress_cb), NULL, notebook);
+#else
 	g_signal_connect (G_OBJECT (treeview_servers), "key_press_event",
 							G_CALLBACK (servlist_keypress_cb), notebook);
+#endif
 	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW (treeview_servers))),
 							"changed", G_CALLBACK (servlist_server_row_cb), NULL);
 	g_object_unref (model);
@@ -1802,8 +1954,12 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	model = GTK_TREE_MODEL (store);
 
 	edit_trees[CHANNEL_TREE] = treeview_channels = gtk_tree_view_new_with_model (model);
+#if HC_GTK4
+	hc_add_key_controller (treeview_channels, G_CALLBACK (servlist_keypress_cb), NULL, notebook);
+#else
 	g_signal_connect (G_OBJECT (treeview_channels), "key_press_event",
 							G_CALLBACK (servlist_keypress_cb), notebook);
+#endif
 	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW (treeview_channels))),
 							"changed", G_CALLBACK (servlist_channel_row_cb), NULL);
 	g_object_unref (model);
@@ -1839,8 +1995,12 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	model = GTK_TREE_MODEL (store);
 
 	edit_trees[CMD_TREE] = treeview_commands = gtk_tree_view_new_with_model (model);
+#if HC_GTK4
+	hc_add_key_controller (treeview_commands, G_CALLBACK (servlist_keypress_cb), NULL, notebook);
+#else
 	g_signal_connect (G_OBJECT (treeview_commands), "key_press_event",
 							G_CALLBACK (servlist_keypress_cb), notebook);
+#endif
 	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW (treeview_commands))),
 							"changed", G_CALLBACK (servlist_command_row_cb), NULL);
 	g_object_unref (model);
@@ -1957,7 +2117,9 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	g_signal_connect (G_OBJECT (button10), "clicked",
 							G_CALLBACK (servlist_edit_close_cb), 0);
 	hc_box_add (hbuttonbox4, button10);
+#if !HC_GTK4
 	gtk_widget_set_can_default (button10, TRUE);
+#endif
 
 	if (net->flags & FLAG_USE_GLOBAL)
 	{
@@ -1965,7 +2127,9 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	}
 
 	gtk_widget_grab_focus (button10);
+#if !HC_GTK4
 	gtk_widget_grab_default (button10);
+#endif
 
 	hc_widget_show_all (editwindow);
 
@@ -2017,7 +2181,11 @@ servlist_open_networks (void)
 	GtkCellRenderer *renderer;
 	char buf[128];
 
+#if HC_GTK4
+	servlist = gtk_window_new ();
+#else
 	servlist = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+#endif
 	hc_container_set_border_width (servlist, 4);
 	g_snprintf(buf, sizeof(buf), _("Network List - %s"), _(DISPLAY_NAME));
 	gtk_window_set_title (GTK_WINDOW (servlist), buf);
@@ -2268,14 +2436,27 @@ fe_serverlist_open (session *sess)
 
 	servlist_networks_populate (networks_tree, network_list);
 
+#if HC_GTK4
+	g_signal_connect (G_OBJECT (serverlist_win), "close-request",
+						 	G_CALLBACK (servlist_delete_cb), 0);
+	g_signal_connect (G_OBJECT (serverlist_win), "notify::default-width",
+							G_CALLBACK (servlist_configure_cb), 0);
+	g_signal_connect (G_OBJECT (serverlist_win), "notify::default-height",
+							G_CALLBACK (servlist_configure_cb), 0);
+#else
 	g_signal_connect (G_OBJECT (serverlist_win), "delete_event",
 						 	G_CALLBACK (servlist_delete_cb), 0);
 	g_signal_connect (G_OBJECT (serverlist_win), "configure_event",
 							G_CALLBACK (servlist_configure_cb), 0);
+#endif
 	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW (networks_tree))),
 							"changed", G_CALLBACK (servlist_network_row_cb), NULL);
+#if HC_GTK4
+	hc_add_key_controller (networks_tree, G_CALLBACK (servlist_net_keypress_cb), NULL, networks_tree);
+#else
 	g_signal_connect (G_OBJECT (networks_tree), "key_press_event",
 							G_CALLBACK (servlist_net_keypress_cb), networks_tree);
+#endif
 
 	gtk_widget_show (serverlist_win);
 }

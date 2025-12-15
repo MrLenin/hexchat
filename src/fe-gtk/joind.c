@@ -56,11 +56,20 @@ joind_entryenter_cb (GtkWidget *entry, GtkWidget *ok)
 	gtk_widget_grab_focus (ok);
 }
 
+#if HC_GTK4
+static void
+joind_entryfocus_cb (GtkEventControllerFocus *controller, server *serv)
+{
+	(void)controller;
+	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (serv->gui->joind_radio2), TRUE);
+}
+#else
 static void
 joind_entryfocus_cb (GtkWidget *entry, GdkEventFocus *event, server *serv)
 {
 	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (serv->gui->joind_radio2), TRUE);
 }
+#endif
 
 static void
 joind_destroy_cb (GtkWidget *win, server *serv)

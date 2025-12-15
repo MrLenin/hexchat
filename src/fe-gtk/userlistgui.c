@@ -1183,7 +1183,7 @@ userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gp
 		nicks = userlist_selection_list_gtk4 (view, &i);
 		if (nicks && i > 1)
 		{
-			menu_nickmenu (current_sess, NULL, nicks[0], i);
+			menu_nickmenu (current_sess, widget, x, y, nicks[0], i);
 			while (i)
 			{
 				i--;
@@ -1204,7 +1204,7 @@ userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gp
 		nicks = userlist_selection_list_gtk4 (view, &i);
 		if (nicks && i > 0)
 		{
-			menu_nickmenu (current_sess, NULL, nicks[0], i);
+			menu_nickmenu (current_sess, widget, x, y, nicks[0], i);
 			while (i)
 			{
 				i--;

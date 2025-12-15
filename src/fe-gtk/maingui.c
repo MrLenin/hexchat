@@ -275,14 +275,23 @@ mg_set_access_icon (session_gui *gui, GdkPixbuf *pix, gboolean away)
 	mg_set_myself_away (gui, away);
 }
 
+#if HC_GTK4
+static void
+mg_inputbox_focus (GtkEventControllerFocus *controller, session_gui *gui)
+#else
 static gboolean
 mg_inputbox_focus (GtkWidget *widget, GdkEventFocus *event, session_gui *gui)
+#endif
 {
 	GSList *list;
 	session *sess;
 
 	if (gui->is_tab)
+#if HC_GTK4
+		return;
+#else
 		return FALSE;
+#endif
 
 	list = sess_list;
 	while (list)
@@ -298,7 +307,9 @@ mg_inputbox_focus (GtkWidget *widget, GdkEventFocus *event, session_gui *gui)
 		list = list->next;
 	}
 
+#if !HC_GTK4
 	return FALSE;
+#endif
 }
 
 void
@@ -440,6 +451,31 @@ fe_set_title (session *sess)
 	gtk_window_set_title (GTK_WINDOW (sess->gui->window), tbuf);
 }
 
+#if HC_GTK4
+/* GTK4: Window state changes are monitored differently - track via property notifications */
+static void
+mg_windowstate_cb (GObject *gobject, GParamSpec *pspec, gpointer userdata)
+{
+	GtkWindow *wid = GTK_WINDOW (gobject);
+	GdkToplevelState state = 0;
+	GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (wid));
+
+	if (surface && GDK_IS_TOPLEVEL (surface))
+		state = gdk_toplevel_get_state (GDK_TOPLEVEL (surface));
+
+	/* GTK4 doesn't have minimize-to-tray in the same way - skip this check */
+
+	prefs.hex_gui_win_state = 0;
+	if (state & GDK_TOPLEVEL_STATE_MAXIMIZED)
+		prefs.hex_gui_win_state = 1;
+
+	prefs.hex_gui_win_fullscreen = 0;
+	if (state & GDK_TOPLEVEL_STATE_FULLSCREEN)
+		prefs.hex_gui_win_fullscreen = 1;
+
+	menu_set_fullscreen (current_sess->gui, prefs.hex_gui_win_fullscreen);
+}
+#else
 static gboolean
 mg_windowstate_cb (GtkWindow *wid, GdkEventWindowState *event, gpointer userdata)
 {
@@ -464,7 +500,38 @@ mg_windowstate_cb (GtkWindow *wid, GdkEventWindowState *event, gpointer userdata
 
 	return FALSE;
 }
+#endif
 
+#if HC_GTK4
+/* GTK4: Use "notify::default-width/height" signal - position isn't available */
+static void
+mg_configure_cb (GtkWidget *wid, GParamSpec *pspec, session *sess)
+{
+	if (sess == NULL)			/* for the main_window */
+	{
+		if (mg_gui)
+		{
+			if (prefs.hex_gui_win_save && !prefs.hex_gui_win_state && !prefs.hex_gui_win_fullscreen)
+			{
+				sess = current_sess;
+				/* GTK4: Can't get position, only size */
+				prefs.hex_gui_win_width = gtk_widget_get_width (wid);
+				prefs.hex_gui_win_height = gtk_widget_get_height (wid);
+			}
+		}
+	}
+
+	if (sess)
+	{
+		if (sess->type == SESS_DIALOG && prefs.hex_gui_win_save)
+		{
+			/* GTK4: Can't get position, only size */
+			prefs.hex_gui_dialog_width = gtk_widget_get_width (wid);
+			prefs.hex_gui_dialog_height = gtk_widget_get_height (wid);
+		}
+	}
+}
+#else
 static gboolean
 mg_configure_cb (GtkWidget *wid, GdkEventConfigure *event, session *sess)
 {
@@ -496,6 +563,7 @@ mg_configure_cb (GtkWidget *wid, GdkEventConfigure *event, session *sess)
 
 	return FALSE;
 }
+#endif
 
 /* move to a non-irc tab */
 
@@ -1614,6 +1682,25 @@ mg_create_color_menu (GtkWidget *menu, session *sess)
 	}
 }
 
+#if HC_GTK4
+static void
+mg_set_guint8 (GtkCheckButton *item, guint8 *setting)
+{
+	session *sess = current_sess;
+	guint8 logging = sess->text_logging;
+
+	*setting = SET_OFF;
+	if (gtk_check_button_get_active (item))
+		*setting = SET_ON;
+
+	/* has the logging setting changed? */
+	if (logging != sess->text_logging)
+		log_open_or_close (sess);
+
+	chanopt_save (sess);
+	chanopt_save_all (FALSE);
+}
+#else
 static void
 mg_set_guint8 (GtkCheckMenuItem *item, guint8 *setting)
 {
@@ -1631,6 +1718,7 @@ mg_set_guint8 (GtkCheckMenuItem *item, guint8 *setting)
 	chanopt_save (sess);
 	chanopt_save_all (FALSE);
 }
+#endif
 
 static void
 mg_perchan_menu_item (char *label, GtkWidget *menu, guint8 *setting, guint global)
@@ -1786,15 +1874,13 @@ tab_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 }
 
 static void
-mg_create_tabmenu (session *sess, GdkEventButton *event, chan *ch)
+mg_create_tabmenu (session *sess, chan *ch)
 {
 	GMenu *gmenu;
 	GtkWidget *popover;
 	GtkWidget *parent_widget;
 	GSimpleActionGroup *action_group;
 	char buf[256];
-
-	(void)event;  /* NULL in GTK4 */
 
 	tab_menu_sess = sess;
 	tab_menu_ch = ch;
@@ -1848,18 +1934,21 @@ mg_create_tabmenu (session *sess, GdkEventButton *event, chan *ch)
 }
 #endif
 
+#if HC_GTK4
+static gboolean
+mg_tab_contextmenu_cb (chanview *cv, chan *ch, int tag, gpointer ud, GtkWidget *parent, double x, double y)
+{
+	(void)cv; (void)parent; (void)x; (void)y;
+	if (tag == TAG_IRC)
+		mg_create_tabmenu (ud, ch);
+	else
+		mg_create_tabmenu (NULL, ch);
+	return TRUE;
+}
+#else
 static gboolean
 mg_tab_contextmenu_cb (chanview *cv, chan *ch, int tag, gpointer ud, GdkEventButton *event)
 {
-#if HC_GTK4
-	/* In GTK4, event is NULL - the gesture handler already filtered for right-click */
-	(void)event;
-	if (tag == TAG_IRC)
-		mg_create_tabmenu (ud, NULL, ch);
-	else
-		mg_create_tabmenu (NULL, NULL, ch);
-	return TRUE;
-#else
 	/* middle-click to close a tab */
 	if (((prefs.hex_gui_tab_middleclose && event->button == 2))
 		&& event->type == GDK_BUTTON_PRESS)
@@ -1877,8 +1966,8 @@ mg_tab_contextmenu_cb (chanview *cv, chan *ch, int tag, gpointer ud, GdkEventBut
 		mg_create_tabmenu (NULL, event, ch);
 
 	return TRUE;
-#endif
 }
+#endif
 
 void
 mg_dnd_drop_file (session *sess, char *target, char *uri)
@@ -2467,32 +2556,99 @@ mg_word_check (GtkWidget * xtext, char *word)
 
 /* mouse click inside text area */
 
+#if HC_GTK4
+static void
+mg_word_clicked (GtkWidget *xtext, char *word, guint button, GdkModifierType state, double x, double y)
+{
+	session *sess = current_sess;
+	int word_type = 0, start, end;
+	char *tmp;
+	GtkXText *xt = GTK_XTEXT (xtext);
+	int n_press = xt->last_click_n_press;
+
+	if (word)
+	{
+		word_type = mg_word_check (xtext, word);
+		url_last (&start, &end);
+	}
+
+	if (button == 1)			/* left button */
+	{
+		if (word == NULL)
+		{
+			mg_focus (sess);
+			return;
+		}
+
+		if ((state & 13) == (GdkModifierType)prefs.hex_gui_url_mod)
+		{
+			switch (word_type)
+			{
+			case WORD_URL:
+			case WORD_HOST6:
+			case WORD_HOST:
+				word[end] = 0;
+				fe_open_url (word + start);
+			}
+		}
+		return;
+	}
+
+	if (button == 2)
+	{
+		if (sess->type == SESS_DIALOG)
+			menu_middlemenu (sess, xtext, x, y);
+		else if (n_press == 2)
+			userlist_select (sess, word);
+		return;
+	}
+	if (word == NULL)
+		return;
+
+	switch (word_type)
+	{
+	case 0:
+	case WORD_PATH:
+		menu_middlemenu (sess, xtext, x, y);
+		break;
+	case WORD_URL:
+	case WORD_HOST6:
+	case WORD_HOST:
+		word[end] = 0;
+		word += start;
+		menu_urlmenu (xtext, x, y, word);
+		break;
+	case WORD_NICK:
+		word[end] = 0;
+		word += start;
+		menu_nickmenu (sess, xtext, x, y, word, FALSE);
+		break;
+	case WORD_CHANNEL:
+		word[end] = 0;
+		word += start;
+		menu_chanmenu (sess, xtext, x, y, word);
+		break;
+	case WORD_EMAIL:
+		word[end] = 0;
+		word += start;
+		tmp = g_strdup_printf ("mailto:%s", word + (ispunct (*word) ? 1 : 0));
+		menu_urlmenu (xtext, x, y, tmp);
+		g_free (tmp);
+		break;
+	case WORD_DIALOG:
+		menu_nickmenu (sess, xtext, x, y, sess->channel, FALSE);
+		break;
+	}
+}
+#else
 static void
 mg_word_clicked (GtkWidget *xtext, char *word, GdkEventButton *even)
 {
 	session *sess = current_sess;
 	int word_type = 0, start, end;
 	char *tmp;
-	guint button;
-	guint state;
-#if HC_GTK4
-	int n_press;
-#endif
-
-	/*
-	 * GTK4: event is NULL, get click info from xtext widget fields
-	 * GTK3: get click info from the event
-	 */
-#if HC_GTK4
-	GtkXText *xt = GTK_XTEXT (xtext);
-	button = xt->last_click_button;
-	state = xt->last_click_state;
-	n_press = xt->last_click_n_press;
-	(void)even; /* unused in GTK4 */
-#else
-	button = even->button;
-	state = even->state;
-#endif
+	guint button = even->button;
+	guint state = even->state;
 
 	if (word)
 	{
@@ -2526,13 +2682,8 @@ mg_word_clicked (GtkWidget *xtext, char *word, GdkEventButton *even)
 	{
 		if (sess->type == SESS_DIALOG)
 			menu_middlemenu (sess, even);
-#if HC_GTK4
-		else if (n_press == 2)
-			userlist_select (sess, word);
-#else
 		else if (even->type == GDK_2BUTTON_PRESS)
 			userlist_select (sess, word);
-#endif
 		return;
 	}
 	if (word == NULL)
@@ -2549,11 +2700,7 @@ mg_word_clicked (GtkWidget *xtext, char *word, GdkEventButton *even)
 	case WORD_HOST:
 		word[end] = 0;
 		word += start;
-#if HC_GTK4
-		menu_urlmenu (xtext, xt->last_click_x, xt->last_click_y, word);
-#else
 		menu_urlmenu (even, word);
-#endif
 		break;
 	case WORD_NICK:
 		word[end] = 0;
@@ -2569,11 +2716,7 @@ mg_word_clicked (GtkWidget *xtext, char *word, GdkEventButton *even)
 		word[end] = 0;
 		word += start;
 		tmp = g_strdup_printf ("mailto:%s", word + (ispunct (*word) ? 1 : 0));
-#if HC_GTK4
-		menu_urlmenu (xtext, xt->last_click_x, xt->last_click_y, tmp);
-#else
 		menu_urlmenu (even, tmp);
-#endif
 		g_free (tmp);
 		break;
 	case WORD_DIALOG:
@@ -2581,6 +2724,7 @@ mg_word_clicked (GtkWidget *xtext, char *word, GdkEventButton *even)
 		break;
 	}
 }
+#endif
 
 void
 mg_update_xtext (GtkWidget *wid)
@@ -3205,14 +3349,25 @@ mg_search_toggle(session *sess)
 	}
 }
 
+#if HC_GTK4
+static gboolean
+search_handle_esc (GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, session *sess)
+{
+	(void)controller; (void)keycode; (void)state;
+	if (keyval == GDK_KEY_Escape)
+		mg_search_toggle(sess);
+	return FALSE;
+}
+#else
 static gboolean
 search_handle_esc (GtkWidget *win, GdkEventKey *key, session *sess)
 {
 	if (key->keyval == GDK_KEY_Escape)
 		mg_search_toggle(sess);
-			
+
 	return FALSE;
 }
+#endif
 
 static void
 mg_create_search(session *sess, GtkWidget *box)
@@ -3386,6 +3541,33 @@ mg_create_tabs (session_gui *gui)
 	mg_place_userlist_and_chanview (gui);
 }
 
+#if HC_GTK4
+static void
+mg_tabwin_focus_cb (GtkEventControllerFocus *controller, gpointer userdata)
+{
+	GtkWidget *win = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+	(void)userdata;
+	current_sess = current_tab;
+	if (current_sess)
+	{
+		gtk_xtext_check_marker_visibility (GTK_XTEXT (current_sess->gui->xtext));
+		plugin_emit_dummy_print (current_sess, "Focus Window");
+	}
+	unflash_window (win);
+}
+
+static void
+mg_topwin_focus_cb (GtkEventControllerFocus *controller, session *sess)
+{
+	GtkWidget *win = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+	current_sess = sess;
+	if (!sess->server->server_session)
+		sess->server->server_session = sess;
+	gtk_xtext_check_marker_visibility(GTK_XTEXT (current_sess->gui->xtext));
+	unflash_window (win);
+	plugin_emit_dummy_print (sess, "Focus Window");
+}
+#else
 static gboolean
 mg_tabwin_focus_cb (GtkWindow * win, GdkEventFocus *event, gpointer userdata)
 {
@@ -3410,6 +3592,7 @@ mg_topwin_focus_cb (GtkWindow * win, GdkEventFocus *event, session *sess)
 	plugin_emit_dummy_print (sess, "Focus Window");
 	return FALSE;
 }
+#endif
 
 static void
 mg_create_menu (session_gui *gui, GtkWidget *table, int away_state)
@@ -3521,6 +3704,30 @@ mg_create_topwindow (session *sess)
 	gtk_widget_show (win);
 }
 
+#if HC_GTK4
+static gboolean
+mg_tabwindow_de_cb (GtkWindow *win)
+{
+	GSList *list;
+	session *sess;
+
+	if (prefs.hex_gui_tray_close && gtkutil_tray_icon_supported (win) && tray_toggle_visibility (FALSE))
+		return TRUE;
+
+	/* check for remaining toplevel windows */
+	list = sess_list;
+	while (list)
+	{
+		sess = list->data;
+		if (!sess->gui->is_tab)
+			return FALSE;
+		list = list->next;
+	}
+
+	mg_open_quit_dialog (TRUE);
+	return TRUE;
+}
+#else
 static gboolean
 mg_tabwindow_de_cb (GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
@@ -3544,8 +3751,10 @@ mg_tabwindow_de_cb (GtkWidget *widget, GdkEvent *event, gpointer user_data)
 	mg_open_quit_dialog (TRUE);
 	return TRUE;
 }
+#endif
 
-#ifdef G_OS_WIN32
+/* GTK3 only: Windows time change detection via native event filter */
+#if defined(G_OS_WIN32) && !HC_GTK4
 static GdkFilterReturn
 mg_time_change (GdkXEvent *xevent, GdkEvent *event, gpointer data)
 {
@@ -3565,7 +3774,7 @@ mg_create_tabwindow (session *sess)
 {
 	GtkWidget *win;
 	GtkWidget *table;
-#ifdef G_OS_WIN32
+#if defined(G_OS_WIN32) && !HC_GTK4
 	GdkWindow *parent_win;
 #endif
 
@@ -3632,7 +3841,8 @@ mg_create_tabwindow (session *sess)
 
 	gtk_widget_show (win);
 
-#ifdef G_OS_WIN32
+/* GTK3 only: Register Windows time change filter */
+#if defined(G_OS_WIN32) && !HC_GTK4
 	parent_win = gtk_widget_get_window (win);
 	gdk_window_add_filter (parent_win, mg_time_change, NULL);
 #endif

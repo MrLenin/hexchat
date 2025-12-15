@@ -21,6 +21,7 @@
 #define HEXCHAT_XTEXT_H
 
 #include <gtk/gtk.h>
+#include "gtk-compat.h"
 
 #define GTK_TYPE_XTEXT              (gtk_xtext_get_type ())
 #define GTK_XTEXT(object)           (G_TYPE_CHECK_INSTANCE_CAST ((object), GTK_TYPE_XTEXT, GtkXText))
@@ -257,7 +258,11 @@ struct _GtkXText
 struct _GtkXTextClass
 {
 	GtkWidgetClass parent_class;
+#if HC_GTK4
+	void (*word_click) (GtkXText * xtext, char *word, guint button, GdkModifierType state, double x, double y);
+#else
 	void (*word_click) (GtkXText * xtext, char *word, GdkEventButton * event);
+#endif
 	void (*set_scroll_adjustments) (GtkXText *xtext, GtkAdjustment *hadj, GtkAdjustment *vadj);
 };
 

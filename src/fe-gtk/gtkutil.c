@@ -158,15 +158,37 @@ gtkutil_file_req_done (GtkWidget * wid, struct file_req *freq)
 	{
 		if (freq->flags & FRF_CHOOSEFOLDER)
 		{
+#if HC_GTK4
+			GFile *folder = gtk_file_chooser_get_current_folder (fs);
+			if (folder)
+			{
+				gchar *filename = g_file_get_path (folder);
+				gtkutil_check_file (filename, freq);
+				g_free (filename);
+				g_object_unref (folder);
+			}
+#else
 			gchar *filename = gtk_file_chooser_get_current_folder (fs);
 			gtkutil_check_file (filename, freq);
 			g_free (filename);
+#endif
 		}
 		else
 		{
+#if HC_GTK4
+			GFile *file = gtk_file_chooser_get_file (fs);
+			if (file)
+			{
+				gchar *filename = g_file_get_path (file);
+				gtkutil_check_file (filename, freq);
+				g_free (filename);
+				g_object_unref (file);
+			}
+#else
 			gchar *filename = gtk_file_chooser_get_filename (fs);
 			gtkutil_check_file (gtk_file_chooser_get_filename (fs), freq);
 			g_free (filename);
+#endif
 		}
 	}
 
@@ -224,14 +246,30 @@ gtkutil_file_req (GtkWindow *parent, const char *title, void *callback, void *us
 		{
 			char temp[1024];
 			path_part (filter, temp, sizeof (temp));
+#if HC_GTK4
+			hc_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), temp);
+#else
 			gtk_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), temp);
+#endif
 			gtk_file_chooser_set_current_name (GTK_FILE_CHOOSER (dialog), file_part (filter));
 		}
 		else
+		{
+#if HC_GTK4
+			hc_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), filter);
+#else
 			gtk_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), filter);
+#endif
+		}
 	}
 	else if (!(flags & FRF_RECENTLYUSED))
+	{
+#if HC_GTK4
+		hc_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), get_xdir ());
+#else
 		gtk_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), get_xdir ());
+#endif
+	}
 
 	if (flags & FRF_MULTIPLE)
 		gtk_file_chooser_set_select_multiple (GTK_FILE_CHOOSER (dialog), TRUE);
@@ -257,7 +295,15 @@ gtkutil_file_req (GtkWindow *parent, const char *title, void *callback, void *us
 		gtk_file_chooser_set_filter (GTK_FILE_CHOOSER (dialog), filefilter);
 	}
 
+#if HC_GTK4
+	{
+		GFile *shortcut = g_file_new_for_path (get_xdir ());
+		gtk_file_chooser_add_shortcut_folder (GTK_FILE_CHOOSER (dialog), shortcut, NULL);
+		g_object_unref (shortcut);
+	}
+#else
 	gtk_file_chooser_add_shortcut_folder (GTK_FILE_CHOOSER (dialog), get_xdir (), NULL);
+#endif
 
 	freq = g_new (struct file_req, 1);
 	freq->dialog = dialog;
@@ -282,6 +328,27 @@ gtkutil_file_req (GtkWindow *parent, const char *title, void *callback, void *us
 	gtk_widget_show (dialog);
 }
 
+#if HC_GTK4
+static gboolean
+gtkutil_esc_destroy (GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer userdata)
+{
+	GtkWidget *win = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+	(void)keycode; (void)state; (void)userdata;
+
+	if (keyval == GDK_KEY_Escape)
+		hc_widget_destroy (win);
+
+	return FALSE;
+}
+
+void
+gtkutil_destroy_on_esc (GtkWidget *win)
+{
+	GtkEventController *controller = gtk_event_controller_key_new ();
+	g_signal_connect (controller, "key-pressed", G_CALLBACK (gtkutil_esc_destroy), win);
+	gtk_widget_add_controller (win, controller);
+}
+#else
 static gboolean
 gtkutil_esc_destroy (GtkWidget * win, GdkEventKey * key, gpointer userdata)
 {
@@ -309,6 +376,7 @@ gtkutil_destroy_on_esc (GtkWidget *win)
 {
 	g_signal_connect (G_OBJECT (win), "key_press_event", G_CALLBACK (gtkutil_esc_destroy), win);
 }
+#endif
 
 void
 gtkutil_destroy (GtkWidget * igad, GtkWidget * dgad)
@@ -596,7 +664,11 @@ gtkutil_window_new (char *title, char *role, int width, int height, int flags)
 {
 	GtkWidget *win;
 
+#if HC_GTK4
+	win = gtk_window_new ();
+#else
 	win = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+#endif
 	gtkutil_set_icon (win);
 #ifdef WIN32
 	gtk_window_set_wmclass (GTK_WINDOW (win), "HexChat", "hexchat");
@@ -616,7 +688,34 @@ gtkutil_window_new (char *title, char *role, int width, int height, int flags)
 	return win;
 }
 
-/* pass NULL as selection to paste to both clipboard & X11 text */
+/* pass NULL/FALSE as selection to paste to both clipboard & X11 text */
+#if HC_GTK4
+void
+gtkutil_copy_to_clipboard (GtkWidget *widget, gboolean primary_only,
+                           const gchar *str)
+{
+	GdkDisplay *display;
+	GdkClipboard *clip;
+
+	display = gtk_widget_get_display (widget);
+	if (display)
+	{
+		if (primary_only)
+		{
+			clip = gdk_display_get_primary_clipboard (display);
+			gdk_clipboard_set_text (clip, str);
+		}
+		else
+		{
+			/* copy to both primary selection and clipboard */
+			clip = gdk_display_get_clipboard (display);
+			gdk_clipboard_set_text (clip, str);
+			clip = gdk_display_get_primary_clipboard (display);
+			gdk_clipboard_set_text (clip, str);
+		}
+	}
+}
+#else /* GTK3 */
 void
 gtkutil_copy_to_clipboard (GtkWidget *widget, GdkAtom selection,
                            const gchar *str)
@@ -643,6 +742,7 @@ gtkutil_copy_to_clipboard (GtkWidget *widget, GdkAtom selection,
 		}
 	}
 }
+#endif /* HC_GTK4 */
 
 /* Treeview util functions */
 

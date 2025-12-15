@@ -255,7 +255,7 @@ url_button_copy (GtkWidget *widget, gpointer data)
 	url = url_listview_get_selected_url (view);
 	if (url)
 	{
-		gtkutil_copy_to_clipboard (view, NULL, url);
+		gtkutil_copy_to_clipboard (view, FALSE, url);
 		g_free (url);
 	}
 }

@@ -438,7 +438,7 @@ banlist_copy_action_cb (GSimpleAction *action, GVariant *parameter, gpointer use
 		str = g_strdup_printf (_("%s on %s by %s"), item->mask, item->date, item->from);
 
 	if (str && str[0] != 0)
-		gtkutil_copy_to_clipboard (ctx->view, NULL, str);
+		gtkutil_copy_to_clipboard (ctx->view, FALSE, str);
 
 	g_free (str);
 	g_object_unref (item);
@@ -518,7 +518,7 @@ banlist_copy_mask_action (GSimpleAction *action, GVariant *parameter, gpointer u
 	if (item)
 	{
 		if (item->mask && item->mask[0] != 0)
-			gtkutil_copy_to_clipboard (view, NULL, item->mask);
+			gtkutil_copy_to_clipboard (view, FALSE, item->mask);
 		g_object_unref (item);
 	}
 }
@@ -538,7 +538,7 @@ banlist_copy_entry_action (GSimpleAction *action, GVariant *parameter, gpointer 
 	{
 		str = g_strdup_printf (_("%s on %s by %s"), item->mask, item->date, item->from);
 		if (str && str[0] != 0)
-			gtkutil_copy_to_clipboard (view, NULL, str);
+			gtkutil_copy_to_clipboard (view, FALSE, str);
 		g_free (str);
 		g_object_unref (item);
 	}
@@ -903,8 +903,7 @@ banlist_crop (GtkWidget * wid, banlist_info *banl)
 	guint n_items;
 
 	sel_model = gtk_column_view_get_model (get_view (sess));
-	n_items = g_list_model_get_n_items (
-		gtk_selection_model_get_model (sel_model));
+	n_items = g_list_model_get_n_items (G_LIST_MODEL (sel_model));
 
 	/* Get current selection and create inverted selection */
 	current_selection = gtk_selection_model_get_selection (sel_model);
