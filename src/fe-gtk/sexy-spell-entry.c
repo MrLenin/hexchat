@@ -325,6 +325,11 @@ gtk_entry_find_position (GtkEntry *entry, gint x)
 	x = x - layout_x;
 
 	layout = gtk_entry_get_layout(entry);
+#if HC_GTK4
+	/* GTK4: gtk_entry_get_layout returns NULL - spell checking disabled */
+	if (layout == NULL)
+		return gtk_editable_get_position (GTK_EDITABLE (entry));
+#endif
 	text = pango_layout_get_text(layout);
 
 	/* Get cursor position using accessor function */

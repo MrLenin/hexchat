@@ -65,6 +65,11 @@
 
 static GSList *submenu_list;
 
+#if HC_GTK4
+/* Forward declaration for popover closed callback */
+static void menu_popover_closed_cb (GtkPopover *popover, gpointer user_data);
+#endif
+
 enum
 {
 	M_MENUITEM,
@@ -586,7 +591,11 @@ menu_nickinfo_cb (GtkWidget *menu, session *sess)
 static void
 copy_to_clipboard_cb (GtkWidget *item, char *url)
 {
+#if HC_GTK4
+	gtkutil_copy_to_clipboard (item, FALSE, url);
+#else
 	gtkutil_copy_to_clipboard (item, NULL, url);
+#endif
 }
 
 /* returns boolean: Some data is missing */
@@ -886,7 +895,7 @@ nick_action_devoice (GSimpleAction *action, GVariant *parameter, gpointer user_d
 }
 
 void
-menu_nickmenu (session *sess, GdkEventButton *event, char *nick, int num_sel)
+menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick, int num_sel)
 {
 	GtkWidget *xtext_widget;
 	GtkXText *xtext;
@@ -896,7 +905,7 @@ menu_nickmenu (session *sess, GdkEventButton *event, char *nick, int num_sel)
 	GSimpleActionGroup *action_group;
 	char buf[256];
 
-	(void)event;  /* NULL in GTK4 */
+	(void)parent; (void)x; (void)y;  /* Used for popover positioning */
 
 	if (!sess || !sess->gui || !sess->gui->xtext)
 		return;
@@ -1175,6 +1184,25 @@ middle_action_settings (GSimpleAction *action, GVariant *parameter, gpointer use
 		handle_command (middle_menu_sess, "SETTINGS", FALSE);
 }
 
+#if HC_GTK4
+void
+menu_middlemenu (session *sess, GtkWidget *parent, double x, double y)
+{
+	GtkWidget *xtext_widget;
+	GtkXText *xtext;
+	GMenu *gmenu;
+	GtkWidget *popover;
+	GSimpleActionGroup *action_group;
+
+	(void)parent; (void)x; (void)y;
+
+	if (!sess || !sess->gui || !sess->gui->xtext)
+		return;
+
+	xtext_widget = sess->gui->xtext;
+	xtext = GTK_XTEXT (xtext_widget);
+	middle_menu_sess = sess;
+#else
 void
 menu_middlemenu (session *sess, GdkEventButton *event)
 {
@@ -1184,7 +1212,7 @@ menu_middlemenu (session *sess, GdkEventButton *event)
 	GtkWidget *popover;
 	GSimpleActionGroup *action_group;
 
-	(void)event;  /* NULL in GTK4 */
+	(void)event;
 
 	if (!sess || !sess->gui || !sess->gui->xtext)
 		return;
@@ -1192,6 +1220,7 @@ menu_middlemenu (session *sess, GdkEventButton *event)
 	xtext_widget = sess->gui->xtext;
 	xtext = GTK_XTEXT (xtext_widget);
 	middle_menu_sess = sess;
+#endif
 
 	/* Create action group for this menu */
 	action_group = g_simple_action_group_new ();
@@ -1305,7 +1334,11 @@ url_action_copy (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
 	(void)action; (void)parameter;
 	if (str_copy)
+#if HC_GTK4
+		gtkutil_copy_to_clipboard (GTK_WIDGET (user_data), FALSE, str_copy);
+#else
 		gtkutil_copy_to_clipboard (GTK_WIDGET (user_data), NULL, str_copy);
+#endif
 }
 
 static void
@@ -1520,6 +1553,26 @@ chan_action_cycle (GSimpleAction *action, GVariant *parameter, gpointer user_dat
 	}
 }
 
+#if HC_GTK4
+void
+menu_chanmenu (session *sess, GtkWidget *parent, double x, double y, char *chan)
+{
+	GtkWidget *xtext_widget;
+	GtkXText *xtext;
+	GMenu *gmenu;
+	GtkWidget *popover;
+	GSimpleActionGroup *action_group;
+	int is_joined = FALSE;
+	session *chan_session;
+
+	(void)parent; (void)x; (void)y;
+
+	if (!sess || !sess->gui || !sess->gui->xtext)
+		return;
+
+	xtext_widget = sess->gui->xtext;
+	xtext = GTK_XTEXT (xtext_widget);
+#else
 void
 menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 {
@@ -1531,13 +1584,14 @@ menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 	int is_joined = FALSE;
 	session *chan_session;
 
-	(void)event;  /* NULL in GTK4 */
+	(void)event;
 
 	if (!sess || !sess->gui || !sess->gui->xtext)
 		return;
 
 	xtext_widget = sess->gui->xtext;
 	xtext = GTK_XTEXT (xtext_widget);
+#endif
 
 	chan_session = find_channel (sess->server, chan);
 	if (chan_session)
@@ -2286,7 +2340,18 @@ menu_about (GtkWidget *wid, gpointer sess)
 	gtk_about_dialog_set_license (dialog, license); /* gtk3 can use GTK_LICENSE_GPL_2_0 */
 	gtk_about_dialog_set_website (dialog, "http://hexchat.github.io");
 	gtk_about_dialog_set_website_label (dialog, "Website");
+#if HC_GTK4
+	{
+		GdkTexture *texture = hc_pixbuf_to_texture (pix_hexchat);
+		if (texture)
+		{
+			gtk_about_dialog_set_logo (dialog, GDK_PAINTABLE (texture));
+			g_object_unref (texture);
+		}
+	}
+#else
 	gtk_about_dialog_set_logo (dialog, pix_hexchat);
+#endif
 	gtk_about_dialog_set_copyright (dialog, "\302\251 1998-2010 Peter \305\275elezn\303\275\n\302\251 2009-2014 Berke Viktor");
 	gtk_about_dialog_set_comments (dialog, comment);
 
@@ -2592,6 +2657,8 @@ menu_toggle_cb (GtkCheckMenuItem *item, menu_entry *me)
 		handle_command (current_sess, me->ucmd, FALSE);
 }
 
+#if !HC_GTK4
+/* GTK3 only: These functions use GtkMenu which doesn't exist in GTK4 */
 static GtkWidget *
 menu_radio_item (char *label, GtkWidget *menu, void *callback, void *userdata,
 						int state, char *groupname)
@@ -2804,6 +2871,46 @@ menu_add_plugin_items (GtkWidget *menu, char *root, char *target)
 		list = list->next;
 	}
 }
+
+#else /* HC_GTK4 */
+
+/* GTK4 stubs for plugin menu functions - not yet implemented */
+char *
+fe_menu_add (menu_entry *me)
+{
+	(void)me;
+	return NULL;  /* TODO: Implement GTK4 dynamic menu system */
+}
+
+void
+fe_menu_del (menu_entry *me)
+{
+	(void)me;
+	/* TODO: Implement GTK4 dynamic menu system */
+}
+
+void
+fe_menu_update (menu_entry *me)
+{
+	(void)me;
+	/* TODO: Implement GTK4 dynamic menu system */
+}
+
+void
+menu_add_plugin_items (GtkWidget *menu, char *root, char *target)
+{
+	(void)menu; (void)root; (void)target;
+	/* TODO: Implement GTK4 dynamic menu system */
+}
+
+static void
+menu_add_plugin_mainmenu_items (GtkWidget *menu)
+{
+	(void)menu;
+	/* TODO: Implement GTK4 dynamic menu system */
+}
+
+#endif /* !HC_GTK4 */
 
 /* === END STUFF FOR /MENU === */
 

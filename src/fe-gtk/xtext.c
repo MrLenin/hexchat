@@ -56,8 +56,12 @@
 #include <windows.h>
 #include <io.h>
 #include <gdk/gdk.h>
-#include <gdk/gdkwin32.h>
+#if HC_GTK4
+#include <gdk/win32/gdkwin32.h>
 #else
+#include <gdk/gdkwin32.h>
+#endif
+#else /* !WIN32 */
 #include <unistd.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -148,6 +152,15 @@ static void gtk_xtext_search_textentry_fini (gpointer, gpointer);
 static void gtk_xtext_search_fini (xtext_buffer *);
 static gboolean gtk_xtext_search_init (xtext_buffer *buf, const gchar *text, gtk_xtext_search_flags flags, GError **perr);
 static char * gtk_xtext_get_word (GtkXText * xtext, int x, int y, textentry ** ret_ent, int *ret_off, int *ret_len, GSList **slp);
+
+#if HC_GTK4
+/* GTK4 event controller callbacks - forward declarations */
+static void gtk_xtext_button_press (GtkGestureClick *gesture, int n_press, double x, double y, gpointer user_data);
+static void gtk_xtext_button_release (GtkGestureClick *gesture, int n_press, double x, double y, gpointer user_data);
+static void gtk_xtext_motion_notify (GtkEventControllerMotion *controller, double event_x, double event_y, gpointer user_data);
+static void gtk_xtext_leave_notify (GtkEventControllerMotion *controller, gpointer user_data);
+static gboolean gtk_xtext_scroll (GtkEventControllerScroll *controller, double dx, double dy, gpointer user_data);
+#endif
 
 /* Cairo-based background drawing macro - uses the current cairo context stored in xtext */
 #define xtext_draw_bg(xt,x,y,w,h) do { \
@@ -675,6 +688,7 @@ gtk_xtext_dispose (GObject * object)
 	G_OBJECT_CLASS (parent_class)->dispose (object);
 }
 
+#if !HC_GTK4
 static void
 gtk_xtext_unrealize (GtkWidget * widget)
 {
@@ -686,7 +700,55 @@ gtk_xtext_unrealize (GtkWidget * widget)
 	if (GTK_WIDGET_CLASS (parent_class)->unrealize)
 		(* GTK_WIDGET_CLASS (parent_class)->unrealize) (widget);
 }
+#endif
 
+#if HC_GTK4
+/* GTK4: Widgets no longer have GdkWindows - use simpler initialization */
+static void
+gtk_xtext_realize (GtkWidget * widget)
+{
+	GtkXText *xtext;
+	GdkDisplay *display;
+
+	xtext = GTK_XTEXT (widget);
+
+	/* GTK4: Assume 32-bit depth (RGBA) */
+	xtext->depth = 32;
+
+	/* Initialize colors for separator/marker */
+	/* for the separator bar (light) */
+	xtext->light_color.red = 1.0;
+	xtext->light_color.green = 1.0;
+	xtext->light_color.blue = 1.0;
+	xtext->light_color.alpha = 1.0;
+
+	/* for the separator bar (dark) */
+	xtext->dark_color.red = 0x1111 / 65535.0f;
+	xtext->dark_color.green = 0x1111 / 65535.0f;
+	xtext->dark_color.blue = 0x1111 / 65535.0f;
+	xtext->dark_color.alpha = 1.0;
+
+	/* for the separator bar (thinline) */
+	xtext->thin_color.red = 0x8e38 / 65535.0f;
+	xtext->thin_color.green = 0x8e38 / 65535.0f;
+	xtext->thin_color.blue = 0x9f38 / 65535.0f;
+	xtext->thin_color.alpha = 1.0;
+
+	/* Set default foreground/background colors */
+	xtext_set_fg (xtext, XTEXT_FG);
+	xtext_set_bg (xtext, XTEXT_BG);
+
+	xtext->draw_buf = NULL;
+	xtext->ts_x = xtext->ts_y = 0;
+
+	/* GTK4: Use cursor names instead of GDK_HAND1 etc */
+	display = gtk_widget_get_display (widget);
+	xtext->hand_cursor = gdk_cursor_new_from_name ("pointer", NULL);
+	xtext->resize_cursor = gdk_cursor_new_from_name ("col-resize", NULL);
+
+	backend_init (xtext);
+}
+#else
 static void
 gtk_xtext_realize (GtkWidget * widget)
 {
@@ -753,6 +815,7 @@ gtk_xtext_realize (GtkWidget * widget)
 
 	backend_init (xtext);
 }
+#endif
 
 static void
 gtk_xtext_get_preferred_width (GtkWidget *widget, gint *minimum, gint *natural)
@@ -769,6 +832,34 @@ gtk_xtext_get_preferred_height (GtkWidget *widget, gint *minimum, gint *natural)
 	*natural = 90;
 }
 
+#if HC_GTK4
+/* GTK4: size_allocate has different signature - width, height, baseline */
+static void
+gtk_xtext_size_allocate (GtkWidget * widget, int width, int height, int baseline)
+{
+	GtkXText *xtext = GTK_XTEXT (widget);
+	int height_only = FALSE;
+
+	if (width == xtext->buffer->window_width)
+		height_only = TRUE;
+
+	xtext->buffer->window_width = width;
+	xtext->buffer->window_height = height;
+
+	dontscroll (xtext->buffer);	/* force scrolling off */
+	if (!height_only)
+		gtk_xtext_calc_lines (xtext->buffer, FALSE);
+	else
+	{
+		xtext->buffer->pagetop_ent = NULL;
+		gtk_xtext_adjustment_set (xtext->buffer, FALSE);
+	}
+	if (xtext->buffer->scrollbar_down)
+		gtk_adjustment_set_value (xtext->adj,
+			gtk_adjustment_get_upper (xtext->adj) -
+			gtk_adjustment_get_page_size (xtext->adj));
+}
+#else
 static void
 gtk_xtext_size_allocate (GtkWidget * widget, GtkAllocation * allocation)
 {
@@ -802,6 +893,7 @@ gtk_xtext_size_allocate (GtkWidget * widget, GtkAllocation * allocation)
 				gtk_adjustment_get_page_size (xtext->adj));
 	}
 }
+#endif
 
 static int
 gtk_xtext_selection_clear (xtext_buffer *buf)
@@ -969,10 +1061,20 @@ static void
 gtk_xtext_draw_sep (GtkXText * xtext, int y)
 {
 	int x, height;
+#if HC_GTK4
+	int alloc_height;
+#else
 	GtkAllocation alloc;
-	gboolean created_cr = FALSE;
 	GdkWindow *win;
+#endif
+	gboolean created_cr = FALSE;
 
+#if HC_GTK4
+	/* GTK4: We can only draw via the snapshot function - if no cr, just return */
+	if (xtext->cr == NULL)
+		return;
+	alloc_height = gtk_widget_get_height (GTK_WIDGET (xtext));
+#else
 	/* If we don't have a cairo context, create a temporary one */
 	if (xtext->cr == NULL)
 	{
@@ -984,11 +1086,16 @@ gtk_xtext_draw_sep (GtkXText * xtext, int y)
 	}
 
 	gtk_widget_get_allocation (GTK_WIDGET (xtext), &alloc);
+#endif
 
 	if (y == -1)
 	{
 		y = 0;
+#if HC_GTK4
+		height = alloc_height;
+#else
 		height = alloc.height;
+#endif
 	} else
 	{
 		height = xtext->fontsize;
@@ -1415,7 +1522,7 @@ lamejump:
 }
 
 static void
-gtk_xtext_selection_draw (GtkXText * xtext, GdkEventMotion * event, gboolean render)
+gtk_xtext_selection_draw (GtkXText * xtext, void * event, gboolean render)
 {
 	textentry *ent;
 	textentry *ent_end;
@@ -1637,7 +1744,7 @@ gtk_xtext_scrollup_timeout (GtkXText * xtext)
 }
 
 static void
-gtk_xtext_selection_update (GtkXText * xtext, GdkEventMotion * event, int p_y, gboolean render)
+gtk_xtext_selection_update (GtkXText * xtext, void * event, int p_y, gboolean render)
 {
 	int win_height;
 	int moved;
@@ -2155,7 +2262,7 @@ gtk_xtext_motion_notify (GtkWidget * widget, GdkEventMotion * event)
 #endif /* !HC_GTK4 - end of GTK3 motion_notify */
 
 static void
-gtk_xtext_set_clip_owner (GtkWidget * xtext, GdkEventButton * event)
+gtk_xtext_set_clip_owner (GtkWidget * xtext, void * event)
 {
 	char *str;
 	int len;
@@ -2179,10 +2286,13 @@ gtk_xtext_set_clip_owner (GtkWidget * xtext, GdkEventButton * event)
 			GdkClipboard *primary = gtk_widget_get_primary_clipboard (xtext);
 			gdk_clipboard_set_text (primary, str);
 #else
-			gtk_clipboard_set_text (gtk_widget_get_clipboard (xtext, GDK_SELECTION_CLIPBOARD), str, len);
+			{
+				GdkEventButton *btn_event = (GdkEventButton *) event;
+				gtk_clipboard_set_text (gtk_widget_get_clipboard (xtext, GDK_SELECTION_CLIPBOARD), str, len);
 
-			gtk_selection_owner_set (xtext, GDK_SELECTION_PRIMARY, event ? event->time : GDK_CURRENT_TIME);
-			gtk_selection_owner_set (xtext, GDK_SELECTION_SECONDARY, event ? event->time : GDK_CURRENT_TIME);
+				gtk_selection_owner_set (xtext, GDK_SELECTION_PRIMARY, btn_event ? btn_event->time : GDK_CURRENT_TIME);
+				gtk_selection_owner_set (xtext, GDK_SELECTION_SECONDARY, btn_event ? btn_event->time : GDK_CURRENT_TIME);
+			}
 #endif
 		}
 
@@ -2578,8 +2688,13 @@ gtk_xtext_button_press (GtkWidget * widget, GdkEventButton * event)
 
 /* another program has claimed the selection */
 
+#if !HC_GTK4
 static gboolean
 gtk_xtext_selection_kill (GtkXText *xtext, GdkEventSelection *event)
+#else
+static gboolean
+gtk_xtext_selection_kill (GtkXText *xtext, void *event)
+#endif
 {
 #ifndef WIN32
 	if (xtext->buffer->last_ent_start)
@@ -2706,6 +2821,7 @@ gtk_xtext_selection_get_text (GtkXText *xtext, int *len_ret)
 	return stripped;
 }
 
+#if !HC_GTK4
 /* another program is asking for our selection */
 
 static void
@@ -2756,6 +2872,7 @@ gtk_xtext_selection_get (GtkWidget * widget,
 
 	g_free (stripped);
 }
+#endif /* !HC_GTK4 */
 
 /*
  * Scroll event handler
@@ -2890,7 +3007,9 @@ gtk_xtext_class_init (GtkXTextClass * class)
 	gobject_class->dispose = gtk_xtext_dispose;
 
 	widget_class->realize = gtk_xtext_realize;
+#if !HC_GTK4
 	widget_class->unrealize = gtk_xtext_unrealize;
+#endif
 #if HC_GTK4
 	/* GTK4: Use measure vfunc instead of get_preferred_width/height */
 	/* GTK4: Event handling is done via controllers in init, not vfuncs */
@@ -4269,7 +4388,9 @@ gtk_xtext_render_ents (GtkXText * xtext, textentry * enta, textentry * entb)
 	int subline;
 	int drawing = FALSE;
 	gboolean created_cr = FALSE;
+#if !HC_GTK4
 	GdkWindow *win;
+#endif
 	int result;
 
 	if (xtext->buffer->indent < MARGIN)
@@ -4485,12 +4606,14 @@ gtk_xtext_render_page (GtkXText * xtext)
 	/* draw the separator line */
 	gtk_xtext_draw_sep (xtext, -1);
 
+#if !HC_GTK4
 	/* Clean up temporary cairo context if we created one */
 	if (created_cr)
 	{
 		cairo_destroy (xtext->cr);
 		xtext->cr = NULL;
 	}
+#endif
 }
 
 void

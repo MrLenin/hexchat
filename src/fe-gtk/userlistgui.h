@@ -20,10 +20,16 @@
 #ifndef HEXCHAT_USERLISTGUI_H
 #define HEXCHAT_USERLISTGUI_H
 
+#include "gtk-compat.h"
+
 void userlist_set_value (GtkWidget *treeview, gfloat val);
 gfloat userlist_get_value (GtkWidget *treeview);
 GtkWidget *userlist_create (GtkWidget *box);
+#if HC_GTK4
+GListStore *userlist_create_model (session *sess);
+#else
 GtkListStore *userlist_create_model (session *sess);
+#endif
 void userlist_show (session *sess);
 void userlist_select (session *sess, char *name);
 char **userlist_selection_list (GtkWidget *widget, int *num_ret);

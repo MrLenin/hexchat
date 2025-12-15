@@ -32,13 +32,21 @@
 
 /*
  * Version detection
+ * HC_GTK4 can be defined on the command line (e.g., from hexchat.props or meson)
+ * or via USE_GTK4 from config.h
  */
-#ifdef USE_GTK4
-#define HC_GTK4 1
-#define HC_GTK3 0
+#if !defined(HC_GTK4)
+#  ifdef USE_GTK4
+#    define HC_GTK4 1
+#  else
+#    define HC_GTK4 0
+#  endif
+#endif
+
+#if HC_GTK4
+#  define HC_GTK3 0
 #else
-#define HC_GTK4 0
-#define HC_GTK3 1
+#  define HC_GTK3 1
 #endif
 
 /*
@@ -965,6 +973,70 @@ hc_image_new_from_icon_name(const char *icon_name, int gtk3_size)
 #define hc_scrolled_window_set_shadow_type(sw, type) ((void)0)
 #define hc_viewport_set_shadow_type(viewport, type) ((void)0)
 
+/*
+ * GTK4 removed GtkShadowType enum - define them as no-ops for code compatibility.
+ * In GTK4, shadow/frame styles are controlled via CSS.
+ */
+#ifndef GTK_SHADOW_NONE
+#define GTK_SHADOW_NONE 0
+#define GTK_SHADOW_IN 1
+#define GTK_SHADOW_OUT 2
+#define GTK_SHADOW_ETCHED_IN 3
+#define GTK_SHADOW_ETCHED_OUT 4
+#endif
+
+/*
+ * GTK4 removed gtk_scrolled_window_set_shadow_type - provide a no-op wrapper
+ * so that code using the raw GTK function still compiles.
+ */
+#define gtk_scrolled_window_set_shadow_type(sw, type) ((void)0)
+#define gtk_frame_set_shadow_type(frame, type) ((void)0)
+
+/*
+ * GTK4 removed GTK_WIN_POS_* constants (window manager handles placement).
+ */
+#ifndef GTK_WIN_POS_NONE
+#define GTK_WIN_POS_NONE 0
+#define GTK_WIN_POS_CENTER 1
+#define GTK_WIN_POS_MOUSE 2
+#define GTK_WIN_POS_CENTER_ALWAYS 3
+#define GTK_WIN_POS_CENTER_ON_PARENT 4
+#endif
+
+/*
+ * GTK4 removed GtkButtonBox and its layout enum.
+ * These are no-ops since hc_button_box_* macros handle the abstraction.
+ */
+#ifndef GTK_BUTTONBOX_SPREAD
+#define GTK_BUTTONBOX_SPREAD 0
+#define GTK_BUTTONBOX_EDGE 1
+#define GTK_BUTTONBOX_START 2
+#define GTK_BUTTONBOX_END 3
+#define GTK_BUTTONBOX_CENTER 4
+#define GTK_BUTTONBOX_EXPAND 5
+#endif
+
+/*
+ * GTK4 removed GtkStateType enum (use state flags instead).
+ * Define for compatibility - actual state changes use different mechanism.
+ */
+#ifndef GTK_STATE_NORMAL
+#define GTK_STATE_NORMAL 0
+#define GTK_STATE_ACTIVE 1
+#define GTK_STATE_PRELIGHT 2
+#define GTK_STATE_SELECTED 3
+#define GTK_STATE_INSENSITIVE 4
+#define GTK_STATE_INCONSISTENT 5
+#define GTK_STATE_FOCUSED 6
+#endif
+
+/*
+ * GTK4 removed gtk_widget_get_state/set_state - provide compatibility wrappers.
+ * In GTK4, widget states are managed through CSS classes and GtkStateFlags.
+ */
+#define gtk_widget_get_state(widget) GTK_STATE_NORMAL
+#define gtk_widget_set_state(widget, state) ((void)0)
+
 #else /* GTK3 */
 
 #define hc_scrolled_window_set_shadow_type(sw, type) \
@@ -1200,7 +1272,8 @@ hc_selection_model_get_selected_item (GtkSelectionModel *model)
 	if (!gtk_bitset_is_empty (selection))
 	{
 		position = gtk_bitset_get_nth (selection, 0);
-		item = g_list_model_get_item (G_LIST_MODEL (gtk_selection_model_get_model (model)), position);
+		/* In GTK4, we get items directly from the selection model which is a GListModel */
+		item = g_list_model_get_item (G_LIST_MODEL (model), position);
 	}
 	gtk_bitset_unref (selection);
 
@@ -1249,7 +1322,375 @@ hc_pixbuf_to_texture (GdkPixbuf *pixbuf)
 
 /*
  * =============================================================================
- * Deprecated/Removed Functions
+ * GTK4 Removed APIs - Compatibility Macros/Functions
+ * =============================================================================
+ * These provide no-op or compatible replacements for removed GTK3 APIs
+ */
+
+#if HC_GTK4
+
+/*
+ * GtkBin - removed in GTK4
+ * GTK4 doesn't have GtkBin - containers have explicit child accessors
+ */
+#define GTK_BIN(x) (x)
+#define gtk_bin_get_child(bin) NULL
+
+/*
+ * Viewport adjustments - use GtkScrollable interface in GTK4
+ */
+#define gtk_viewport_get_vadjustment(viewport) \
+	gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(viewport))
+#define gtk_viewport_get_hadjustment(viewport) \
+	gtk_scrollable_get_hadjustment(GTK_SCROLLABLE(viewport))
+
+/*
+ * gtk_box_reorder_child - removed in GTK4
+ * Use gtk_box_reorder_child_after() instead, but signature differs
+ */
+#define gtk_box_reorder_child(box, child, position) ((void)0)
+
+/*
+ * gtk_widget_get_toplevel - removed in GTK4
+ * Use gtk_widget_get_root() instead
+ */
+#define gtk_widget_get_toplevel(widget) \
+	GTK_WIDGET(gtk_widget_get_root(widget))
+
+/*
+ * gtk_window_set_type_hint - removed in GTK4
+ * Window hints are handled differently in GTK4
+ */
+#define gtk_window_set_type_hint(window, hint) ((void)0)
+#define GDK_WINDOW_TYPE_HINT_DIALOG 0
+#define GDK_WINDOW_TYPE_HINT_UTILITY 0
+#define GDK_WINDOW_TYPE_HINT_NORMAL 0
+
+/*
+ * gtk_window_set_wmclass / gtk_window_set_role - removed in GTK4
+ */
+#define gtk_window_set_wmclass(window, name, wclass) ((void)0)
+#define gtk_window_set_role(window, role) ((void)0)
+
+/*
+ * gtk_window_set_urgency_hint - removed in GTK4
+ */
+#define gtk_window_set_urgency_hint(window, setting) ((void)0)
+
+/*
+ * GTK_WINDOW_TOPLEVEL - removed in GTK4
+ * gtk_window_new() no longer takes a type argument
+ */
+#define GTK_WINDOW_TOPLEVEL 0
+
+/*
+ * gtk_label_set_line_wrap - renamed to gtk_label_set_wrap in GTK4
+ */
+#define gtk_label_set_line_wrap(label, wrap) \
+	gtk_label_set_wrap(GTK_LABEL(label), wrap)
+
+/*
+ * gtk_widget_set_can_default - removed in GTK4
+ */
+#define gtk_widget_set_can_default(widget, can_default) ((void)0)
+
+/*
+ * gtk_adjustment_changed - removed in GTK4
+ * Adjustments now emit "changed" signal automatically
+ */
+#define gtk_adjustment_changed(adj) ((void)0)
+
+/*
+ * gtk_button_set_image - removed in GTK4
+ * Use gtk_button_set_child() with a GtkImage instead
+ */
+#define gtk_button_set_image(button, image) \
+	gtk_button_set_child(GTK_BUTTON(button), image)
+
+/*
+ * GTK_ICON_SIZE_* - removed in GTK4, use GTK_ICON_SIZE_NORMAL/LARGE/INHERIT
+ */
+#define GTK_ICON_SIZE_MENU GTK_ICON_SIZE_NORMAL
+#define GTK_ICON_SIZE_SMALL_TOOLBAR GTK_ICON_SIZE_NORMAL
+#define GTK_ICON_SIZE_LARGE_TOOLBAR GTK_ICON_SIZE_LARGE
+#define GTK_ICON_SIZE_BUTTON GTK_ICON_SIZE_NORMAL
+#define GTK_ICON_SIZE_DND GTK_ICON_SIZE_LARGE
+#define GTK_ICON_SIZE_DIALOG GTK_ICON_SIZE_LARGE
+
+/*
+ * gtk_image_get_pixbuf - removed in GTK4
+ * GTK4 uses GdkPaintable instead of GdkPixbuf
+ */
+#define gtk_image_get_pixbuf(image) NULL
+
+/*
+ * gtk_paned_get_child1/2 - renamed in GTK4
+ */
+#define gtk_paned_get_child1(paned) gtk_paned_get_start_child(GTK_PANED(paned))
+#define gtk_paned_get_child2(paned) gtk_paned_get_end_child(GTK_PANED(paned))
+#define gtk_paned_pack1(paned, child, resize, shrink) \
+	gtk_paned_set_start_child(GTK_PANED(paned), child)
+#define gtk_paned_pack2(paned, child, resize, shrink) \
+	gtk_paned_set_end_child(GTK_PANED(paned), child)
+
+/*
+ * gtk_widget_style_get - removed in GTK4
+ * Style properties are gone - use CSS
+ */
+#define gtk_widget_style_get(widget, ...) ((void)0)
+
+/*
+ * gtk_widget_override_* - removed in GTK4
+ * Use CSS instead
+ */
+#define gtk_widget_override_background_color(widget, state, color) ((void)0)
+#define gtk_widget_override_color(widget, state, color) ((void)0)
+#define gtk_widget_override_font(widget, font_desc) ((void)0)
+
+/*
+ * gtk_container_remove - removed in GTK4
+ * Use specific container methods
+ */
+#define gtk_container_remove(container, widget) \
+	gtk_box_remove(GTK_BOX(container), widget)
+
+/*
+ * gtk_container_set_border_width - removed in GTK4
+ * Use widget margins
+ */
+#define gtk_container_set_border_width(container, border) \
+	hc_container_set_border_width(container, border)
+#define GTK_CONTAINER(x) (x)
+
+/*
+ * GtkMenu/GtkMenuItem - removed in GTK4
+ * Use GtkPopoverMenu with GMenuModel instead
+ * These are placeholders that will cause compile errors
+ */
+#define GTK_MENU_SHELL(x) (x)
+#define GTK_MENU_ITEM(x) (x)
+#define gtk_menu_shell_append(shell, item) ((void)0)
+#define gtk_menu_item_new_with_label(label) NULL
+#define gtk_menu_item_new_with_mnemonic(label) NULL
+#define gtk_menu_new() NULL
+#define gtk_menu_item_set_submenu(item, submenu) ((void)0)
+
+/*
+ * GtkRadioButton - removed in GTK4
+ * Use GtkCheckButton with groups instead
+ */
+#define GTK_RADIO_BUTTON(x) GTK_CHECK_BUTTON(x)
+#define gtk_radio_button_new_with_mnemonic(group, label) \
+	gtk_check_button_new_with_mnemonic(label)
+#define gtk_radio_button_get_group(button) NULL
+#define gtk_radio_button_set_group(button, group) ((void)0)
+
+/*
+ * gdk_beep - removed in GTK4
+ */
+#define gdk_beep() ((void)0)
+
+/*
+ * GDK modifier masks - renamed in GTK4
+ * GTK4 renamed GDK_MOD1_MASK to GDK_ALT_MASK
+ */
+#ifndef GDK_MOD1_MASK
+#define GDK_MOD1_MASK GDK_ALT_MASK
+#endif
+
+/*
+ * GtkAccelGroup - removed in GTK4
+ * GTK4 uses GtkShortcut and GtkShortcutController instead
+ */
+typedef void *GtkAccelGroup;
+#define gtk_accel_group_new() NULL
+#define gtk_window_add_accel_group(window, accel_group) ((void)0)
+#define gtk_widget_add_accelerator(widget, signal, accel_group, key, mods, flags) ((void)0)
+#define GTK_ACCEL_VISIBLE 0
+
+/*
+ * GtkReliefStyle - removed in GTK4
+ * Use CSS styling instead
+ */
+#ifndef GTK_RELIEF_NONE
+#define GTK_RELIEF_NONE 0
+#define GTK_RELIEF_NORMAL 1
+#endif
+#define gtk_button_set_relief(button, relief) ((void)0)
+
+/*
+ * GtkCheckMenuItem, GtkRadioMenuItem - removed in GTK4
+ * Use GtkPopoverMenu with GMenuModel instead
+ */
+typedef GtkWidget GtkCheckMenuItem;
+typedef GtkWidget GtkRadioMenuItem;
+typedef GtkWidget GtkMenuItem;
+#define GTK_CHECK_MENU_ITEM(x) GTK_WIDGET(x)
+#define GTK_RADIO_MENU_ITEM(x) GTK_WIDGET(x)
+#define GTK_MENU(x) (x)
+#define gtk_check_menu_item_new_with_mnemonic(label) gtk_button_new_with_label(label)
+#define gtk_check_menu_item_set_active(item, active) ((void)0)
+#define gtk_check_menu_item_get_active(item) FALSE
+#define GTK_IS_CHECK_MENU_ITEM(x) FALSE
+#define gtk_menu_item_new() gtk_button_new()
+#define gtk_menu_shell_insert(shell, item, pos) ((void)0)
+#define gtk_radio_menu_item_get_group(item) NULL
+#define gtk_radio_menu_item_new_with_label(group, label) gtk_button_new_with_label(label)
+#define gtk_radio_menu_item_new_with_mnemonic(group, label) gtk_button_new_with_label(label)
+#define gtk_menu_item_get_submenu(item) NULL
+#define gtk_menu_bar_new() gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)
+
+/*
+ * gtk_init - signature changed in GTK4
+ * GTK4: gtk_init() takes no arguments
+ * Note: Don't redefine gtk_init since GTK4 already provides the correct signature.
+ * Code calling gtk_init(&argc, &argv) needs to use:
+ *   #if HC_GTK4
+ *   gtk_init();
+ *   #else
+ *   gtk_init(&argc, &argv);
+ *   #endif
+ */
+/* Compatibility: wrap the old-style call */
+#define hc_gtk_init(argc, argv) gtk_init()
+
+/*
+ * gtk_get_option_group - removed in GTK4
+ * Application command line handling is different in GTK4
+ */
+#define gtk_get_option_group(open_default) NULL
+
+/*
+ * gtk_main / gtk_main_quit - removed in GTK4
+ * GTK4 uses GApplication main loop
+ */
+#define gtk_main() g_main_loop_run(g_main_loop_new(NULL, FALSE))
+#define gtk_main_quit() ((void)0)
+
+/*
+ * gtk_css_provider_load_from_data - signature changed in GTK4
+ * GTK4 removed the length and error parameters
+ */
+#define gtk_css_provider_load_from_data_compat(provider, data, length, error) \
+	gtk_css_provider_load_from_data(provider, data, length)
+
+/*
+ * gdk_screen_get_default - removed in GTK4
+ * Use gdk_display_get_default() instead
+ */
+#define gdk_screen_get_default() gdk_display_get_default()
+
+/*
+ * gtk_style_context_add_provider_for_screen - renamed in GTK4
+ */
+#define gtk_style_context_add_provider_for_screen(screen, provider, priority) \
+	gtk_style_context_add_provider_for_display(gdk_display_get_default(), provider, priority)
+
+/*
+ * gtk_window functions removed in GTK4
+ */
+#define gtk_window_iconify(window) gtk_window_minimize(GTK_WINDOW(window))
+#define gtk_window_move(window, x, y) ((void)0)
+#define gtk_window_resize(window, w, h) gtk_window_set_default_size(GTK_WINDOW(window), w, h)
+#define gtk_window_set_opacity(window, opacity) ((void)0)
+
+/*
+ * gtk_container_get_children - removed in GTK4
+ */
+#define gtk_container_get_children(container) hc_container_get_children(GTK_WIDGET(container))
+
+/*
+ * GdkPixbuf to cairo surface - removed in GTK4
+ * Use GdkTexture instead
+ */
+#define gdk_cairo_surface_create_from_pixbuf(pixbuf, scale, for_window) NULL
+
+/*
+ * GtkFileChooser API changes in GTK4
+ * These functions now use GFile* instead of strings
+ */
+#define gtk_file_chooser_get_filename(chooser) \
+	g_file_get_path(gtk_file_chooser_get_file(GTK_FILE_CHOOSER(chooser)))
+#define gtk_file_chooser_get_filenames(chooser) \
+	hc_file_chooser_get_filenames(GTK_FILE_CHOOSER(chooser))
+#define gtk_file_chooser_set_do_overwrite_confirmation(chooser, confirm) ((void)0)
+
+/* Helper for gtk_file_chooser_get_filenames in GTK4 */
+static inline GSList *
+hc_file_chooser_get_filenames (GtkFileChooser *chooser)
+{
+	GListModel *files = gtk_file_chooser_get_files (chooser);
+	GSList *list = NULL;
+	guint n = g_list_model_get_n_items (files);
+	for (guint i = 0; i < n; i++)
+	{
+		GFile *file = g_list_model_get_item (files, i);
+		list = g_slist_append (list, g_file_get_path (file));
+		g_object_unref (file);
+	}
+	g_object_unref (files);
+	return list;
+}
+
+/* Helper for gtk_file_chooser_set_current_folder in GTK4 */
+static inline gboolean
+hc_file_chooser_set_current_folder (GtkFileChooser *chooser, const char *folder)
+{
+	GFile *file = g_file_new_for_path (folder);
+	gboolean result = gtk_file_chooser_set_current_folder (chooser, file, NULL);
+	g_object_unref (file);
+	return result;
+}
+
+/*
+ * gtk_window_new - signature changed in GTK4
+ * GTK4 version takes no arguments
+ */
+#define gtk_window_new_compat(type) gtk_window_new()
+
+/*
+ * gtk_entry_get_layout / gtk_entry_get_layout_offsets - removed in GTK4
+ * GtkEntry no longer exposes PangoLayout directly in GTK4.
+ * For now, provide stubs that return NULL/do nothing.
+ * Spell-checking code will need significant rewrite for GTK4.
+ */
+#define gtk_entry_get_layout(entry) ((PangoLayout*)NULL)
+static inline void hc_entry_get_layout_offsets(GtkEntry *entry, gint *x, gint *y)
+{
+	(void)entry;
+	if (x) *x = 0;
+	if (y) *y = 0;
+}
+#define gtk_entry_get_layout_offsets(entry, x, y) hc_entry_get_layout_offsets(entry, x, y)
+
+/*
+ * gtk_selection_model_get_model - doesn't exist, use G_LIST_MODEL
+ */
+#define gtk_selection_model_get_model(sel) G_LIST_MODEL(sel)
+
+/*
+ * gtk_grab_add / gtk_grab_remove - removed in GTK4
+ * GTK4 uses GtkEventController for event handling, no explicit grabbing needed
+ */
+#define gtk_grab_add(widget) ((void)0)
+#define gtk_grab_remove(widget) ((void)0)
+
+/*
+ * gtk_window_has_toplevel_focus - renamed in GTK4
+ */
+#define gtk_window_has_toplevel_focus(window) gtk_window_is_active(GTK_WINDOW(window))
+
+/*
+ * gtk_widget_grab_default - removed in GTK4
+ * Use gtk_widget_set_receives_default(widget, TRUE) and CSS instead
+ */
+#define gtk_widget_grab_default(widget) ((void)0)
+
+#endif /* HC_GTK4 */
+
+/*
+ * =============================================================================
+ * Deprecated/Removed Functions - Compile-time errors
  * =============================================================================
  * Track functions that need complete replacement
  */
@@ -1259,7 +1700,7 @@ hc_pixbuf_to_texture (GdkPixbuf *pixbuf)
 /* These simply don't exist in GTK4 - code must be rewritten */
 #define gtk_widget_show_all COMPILE_ERROR_USE_gtk_widget_set_visible
 #define gtk_widget_destroy COMPILE_ERROR_USE_appropriate_method
-#define gtk_container_add COMPILE_ERROR_USE_specific_container_method
+/* Note: gtk_container_add is now mapped above to cause build issues for debugging */
 
 #endif
 

@@ -20,6 +20,8 @@
 #ifndef HEXCHAT_FKEYS_H
 #define HEXCHAT_FKEYS_H
 
+#include "gtk-compat.h"
+
 /* These are cp'ed from history.c --AGL */
 #define STATE_SHIFT		GDK_SHIFT_MASK
 #define STATE_ALT		GDK_MOD1_MASK
@@ -40,8 +42,13 @@ gboolean key_handle_key_press (GtkEventControllerKey *controller, guint keyval,
 int key_handle_key_press (GtkWidget * wid, GdkEventKey * evt, session *sess);
 #endif
 
-/* Key action handler - signature stays the same, evt may be NULL in GTK4 */
+/* Key action handler - GTK4 doesn't have GdkEventKey */
+#if HC_GTK4
+int key_action_insert (GtkWidget * wid, void *evt, char *d1, char *d2,
+						 session *sess);
+#else
 int key_action_insert (GtkWidget * wid, GdkEventKey * evt, char *d1, char *d2,
 						 session *sess);
+#endif
 
 #endif
