@@ -31,6 +31,9 @@
 #include <glib/gi18n.h>
 #include <gtk/gtk.h>
 
+/* GTK3/GTK4 compatibility layer - must be included after gtk/gtk.h */
+#include "gtk-compat.h"
+
 #ifdef HAVE_GTK_MAC
 #include <gtkosxapplication.h>
 #endif
@@ -181,8 +184,9 @@ typedef struct session_gui
 extern cairo_surface_t *channelwin_pix;
 extern cairo_surface_t *dialogwin_pix;
 
-#define SPELL_ENTRY_GET_TEXT(e) ((char *)(gtk_entry_get_text (GTK_ENTRY(e))))
-#define SPELL_ENTRY_SET_TEXT(e,txt) gtk_entry_set_text(GTK_ENTRY(e),txt)
+/* Spell entry compatibility macros - use GTK3/GTK4 compatible versions */
+#define SPELL_ENTRY_GET_TEXT(e) ((char *)(hc_entry_get_text(e)))
+#define SPELL_ENTRY_SET_TEXT(e,txt) hc_entry_set_text(e,txt)
 #define SPELL_ENTRY_SET_EDITABLE(e,v) gtk_editable_set_editable(GTK_EDITABLE(e),v)
 #define SPELL_ENTRY_GET_POS(e) gtk_editable_get_position(GTK_EDITABLE(e))
 #define SPELL_ENTRY_SET_POS(e,p) gtk_editable_set_position(GTK_EDITABLE(e),p);

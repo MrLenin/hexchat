@@ -28,7 +28,13 @@ hexchat_gtk_sources = [
   'xtext.c'
 ]
 
-gtk_dep = dependency('gtk+-3.0', version: '>= 3.22.0')
+# Choose GTK version based on configuration option
+if get_option('gtk4')
+  gtk_dep = dependency('gtk4', version: '>= 4.6.0')
+else
+  gtk_dep = dependency('gtk+-3.0', version: '>= 3.22.0')
+endif
+
 hexchat_gtk_deps = [
   hexchat_common_dep,
   libgmodule_dep, # used by libsexy

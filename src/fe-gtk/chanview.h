@@ -39,6 +39,7 @@ void chanview_set_orientation (chanview *cv, gboolean vertical);
 
 int chan_get_tag (chan *ch);
 void *chan_get_userdata (chan *ch);
+GtkWidget *chan_get_impl_widget (chan *ch);
 void chan_focus (chan *ch);
 void chan_move (chan *ch, int delta);
 void chan_move_family (chan *ch, int delta);

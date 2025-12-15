@@ -245,6 +245,13 @@ struct _GtkXText
 	unsigned int separator:1;
 	unsigned int wordwrap:1;
 	unsigned int ignore_hidden:1;	/* rawlog uses this */
+
+	/* Last click info - used by GTK4 where event is not available in signal handlers */
+	guint last_click_button;		/* button that was clicked (1=left, 2=middle, 3=right) */
+	guint last_click_state;			/* modifier state (shift, ctrl, etc.) */
+	int last_click_n_press;			/* number of clicks (1=single, 2=double, 3=triple) */
+	int last_click_x;				/* click x position for GTK4 popover menus */
+	int last_click_y;				/* click y position for GTK4 popover menus */
 };
 
 struct _GtkXTextClass

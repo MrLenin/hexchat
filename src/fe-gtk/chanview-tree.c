@@ -53,6 +53,38 @@ cv_tree_sel_cb (GtkTreeSelection *sel, chanview *cv)
 	}
 }
 
+/*
+ * Tree view click handler (for context menus)
+ * GTK3: Uses GdkEventButton from button-press-event signal
+ * GTK4: Uses GtkGestureClick with different signature
+ */
+#if HC_GTK4
+static void
+cv_tree_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chanview *cv)
+{
+	chan *ch;
+	GtkTreePath *path;
+	GtkTreeIter iter;
+	guint button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+	GtkTreeView *tree = GTK_TREE_VIEW (widget);
+
+	/* Only handle right-click for context menu */
+	if (button != 3)
+		return;
+
+	if (gtk_tree_view_get_path_at_pos (tree, (int)x, (int)y, &path, 0, 0, 0))
+	{
+		if (gtk_tree_model_get_iter (GTK_TREE_MODEL (cv->store), &iter, path))
+		{
+			gtk_tree_model_get (GTK_TREE_MODEL (cv->store), &iter, COL_CHAN, &ch, -1);
+			/* TODO: Update chanview callback signature for GTK4 */
+			cv->cb_contextmenu (cv, ch, ch->tag, ch->userdata, NULL);
+		}
+		gtk_tree_path_free (path);
+	}
+}
+#else /* GTK3 */
 static gboolean
 cv_tree_click_cb (GtkTreeView *tree, GdkEventButton *event, chanview *cv)
 {
@@ -72,7 +104,30 @@ cv_tree_click_cb (GtkTreeView *tree, GdkEventButton *event, chanview *cv)
 	}
 	return ret;
 }
+#endif
 
+/*
+ * Scroll event handler for tree view
+ * GTK3: Uses GdkEventScroll from "scroll_event" signal
+ * GTK4: Uses GtkEventControllerScroll with different signature
+ */
+#if HC_GTK4
+static gboolean
+cv_tree_scroll_event_cb (GtkEventControllerScroll *controller, double dx, double dy, gpointer user_data)
+{
+	if (prefs.hex_gui_tab_scrollchans)
+	{
+		if (dy > 0)
+			mg_switch_page (1, 1);
+		else if (dy < 0)
+			mg_switch_page (1, -1);
+
+		return TRUE;
+	}
+
+	return FALSE;
+}
+#else /* GTK3 */
 static gboolean
 cv_tree_scroll_event_cb (GtkWidget *widget, GdkEventScroll *event, gpointer user_data)
 {
@@ -88,6 +143,7 @@ cv_tree_scroll_event_cb (GtkWidget *widget, GdkEventScroll *event, gpointer user
 
 	return FALSE;
 }
+#endif
 
 static void
 cv_tree_init (chanview *cv)
@@ -95,6 +151,7 @@ cv_tree_init (chanview *cv)
 	GtkWidget *view, *win;
 	GtkCellRenderer *renderer;
 	GtkTreeViewColumn *col;
+#if !HC_GTK4
 	int wid1, wid2;
 	static const GtkTargetEntry dnd_src_target[] =
 	{
@@ -104,15 +161,20 @@ cv_tree_init (chanview *cv)
 	{
 		{"HEXCHAT_USERLIST", GTK_TARGET_SAME_APP, 75 }
 	};
+#endif
 
-	win = gtk_scrolled_window_new (0, 0);
-	/*gtk_container_set_border_width (GTK_CONTAINER (win), 1);*/
+	win = hc_scrolled_window_new ();
+	/*hc_container_set_border_width (win, 1);*/
+#if !HC_GTK4
 	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (win),
 													 GTK_SHADOW_IN);
+#endif
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (win),
 											  GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-	gtk_container_add (GTK_CONTAINER (cv->box), win);
-	gtk_widget_show (win);
+	gtk_widget_set_hexpand (win, TRUE);
+	gtk_widget_set_vexpand (win, TRUE);
+	hc_box_pack_start (cv->box, win, TRUE, TRUE, 0);
+	hc_widget_show (win);
 
 	view = gtk_tree_view_new_with_model (GTK_TREE_MODEL (cv->store));
 	gtk_widget_set_name (view, "hexchat-tree");
@@ -125,16 +187,19 @@ cv_tree_init (chanview *cv)
 	{
 		gtk_tree_view_set_enable_tree_lines (GTK_TREE_VIEW (view), TRUE);
 	}
-	
+
+#if !HC_GTK4
 	/* Indented channels with no server looks silly, but we still want expanders */
+	/* GTK4: gtk_widget_style_get() is removed - need to use CSS properties */
 	if (!prefs.hex_gui_tab_server)
 	{
 		gtk_widget_style_get (view, "expander-size", &wid1, "horizontal-separator", &wid2, NULL);
 		gtk_tree_view_set_level_indentation (GTK_TREE_VIEW (view), -wid1 - wid2);
 	}
+#endif
 
 
-	gtk_container_add (GTK_CONTAINER (win), view);
+	hc_scrolled_window_set_child (win, view);
 	col = gtk_tree_view_column_new();
 
 	/* icon column */
@@ -159,10 +224,17 @@ cv_tree_init (chanview *cv)
 
 	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW (view))),
 							"changed", G_CALLBACK (cv_tree_sel_cb), cv);
+
+#if HC_GTK4
+	/* GTK4: Use event controllers instead of event signals */
+	hc_add_click_gesture (view, G_CALLBACK (cv_tree_click_cb), NULL, cv);
+	hc_add_scroll_controller (view, G_CALLBACK (cv_tree_scroll_event_cb), NULL);
+
+	/* GTK4: DND - drag source for layout swapping (drag chanview to reposition) */
+	mg_setup_chanview_drag_source (view);
+#else /* GTK3 */
 	g_signal_connect (G_OBJECT (view), "button-press-event",
 							G_CALLBACK (cv_tree_click_cb), cv);
-	g_signal_connect (G_OBJECT (view), "row-activated",
-							G_CALLBACK (cv_tree_activated_cb), NULL);
 	g_signal_connect (G_OBJECT (view), "scroll_event",
 							G_CALLBACK (cv_tree_scroll_event_cb), NULL);
 
@@ -178,10 +250,14 @@ cv_tree_init (chanview *cv)
 							G_CALLBACK (mg_drag_motion_cb), NULL);
 	g_signal_connect (G_OBJECT (view), "drag_end",
 							G_CALLBACK (mg_drag_end_cb), NULL);
+#endif
+
+	g_signal_connect (G_OBJECT (view), "row-activated",
+							G_CALLBACK (cv_tree_activated_cb), NULL);
 
 	((treeview *)cv)->tree = GTK_TREE_VIEW (view);
 	((treeview *)cv)->scrollw = win;
-	gtk_widget_show (view);
+	hc_widget_show (view);
 }
 
 static void
@@ -347,7 +423,7 @@ cv_tree_cleanup (chanview *cv)
 {
 	if (cv->box)
 		/* kill the scrolled window */
-		gtk_widget_destroy (((treeview *)cv)->scrollw);
+		hc_widget_destroy (((treeview *)cv)->scrollw);
 }
 
 static void

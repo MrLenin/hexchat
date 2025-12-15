@@ -83,7 +83,8 @@ static mode_info modes[MODE_CT] = {
 	}
 };
 
-/* model for the banlist tree */
+#if !HC_GTK4
+/* model for the banlist tree (GTK3 only) */
 enum
 {
 	TYPE_COLUMN,
@@ -92,6 +93,77 @@ enum
 	DATE_COLUMN,
 	N_COLUMNS
 };
+#endif
+
+#if HC_GTK4
+/*
+ * GTK4 Implementation using GListStore + GtkColumnView
+ */
+
+/* GObject to hold ban list row data */
+#define HC_TYPE_BAN_ITEM (hc_ban_item_get_type())
+G_DECLARE_FINAL_TYPE (HcBanItem, hc_ban_item, HC, BAN_ITEM, GObject)
+
+struct _HcBanItem {
+	GObject parent;
+	char *type;
+	char *mask;
+	char *from;
+	char *date;
+};
+
+G_DEFINE_TYPE (HcBanItem, hc_ban_item, G_TYPE_OBJECT)
+
+static void
+hc_ban_item_finalize (GObject *obj)
+{
+	HcBanItem *item = HC_BAN_ITEM (obj);
+	g_free (item->type);
+	g_free (item->mask);
+	g_free (item->from);
+	g_free (item->date);
+	G_OBJECT_CLASS (hc_ban_item_parent_class)->finalize (obj);
+}
+
+static void
+hc_ban_item_class_init (HcBanItemClass *klass)
+{
+	G_OBJECT_CLASS (klass)->finalize = hc_ban_item_finalize;
+}
+
+static void
+hc_ban_item_init (HcBanItem *item)
+{
+	item->type = NULL;
+	item->mask = NULL;
+	item->from = NULL;
+	item->date = NULL;
+}
+
+static HcBanItem *
+hc_ban_item_new (const char *type, const char *mask, const char *from, const char *date)
+{
+	HcBanItem *item = g_object_new (HC_TYPE_BAN_ITEM, NULL);
+	item->type = g_strdup (type ? type : "");
+	item->mask = g_strdup (mask ? mask : "");
+	item->from = g_strdup (from ? from : "");
+	item->date = g_strdup (date ? date : "");
+	return item;
+}
+
+static GtkColumnView *
+get_view (struct session *sess)
+{
+	return GTK_COLUMN_VIEW (sess->res->banlist->treeview);
+}
+
+static GListStore *
+get_store (struct session *sess)
+{
+	return G_LIST_STORE (g_object_get_data (G_OBJECT (sess->res->banlist->treeview), "store"));
+}
+
+#else /* GTK3 */
 
 static GtkTreeView *
 get_view (struct session *sess)
@@ -104,6 +176,8 @@ get_store (struct session *sess)
 {
 	return GTK_LIST_STORE (gtk_tree_view_get_model (get_view (sess)));
 }
+
+#endif /* HC_GTK4 */
 
 static void
 supports_bans (banlist_info *banl, int i)
@@ -204,8 +278,13 @@ fe_add_ban_list (struct session *sess, char *mask, char *who, char *when, int rp
 {
 	banlist_info *banl = sess->res->banlist;
 	int i;
+#if HC_GTK4
+	GListStore *store;
+	HcBanItem *item;
+#else
 	GtkListStore *store;
 	GtkTreeIter iter;
+#endif
 
 	if (!banl)
 		return FALSE;
@@ -221,10 +300,15 @@ fe_add_ban_list (struct session *sess, char *mask, char *who, char *when, int rp
 	if (banl->pending & 1<<i)
 	{
 		store = get_store (sess);
+#if HC_GTK4
+		item = hc_ban_item_new (_(modes[i].type), mask, who, when);
+		g_list_store_append (store, item);
+		g_object_unref (item);
+#else
 		gtk_list_store_append (store, &iter);
-
 		gtk_list_store_set (store, &iter, TYPE_COLUMN, _(modes[i].type), MASK_COLUMN, mask,
 						FROM_COLUMN, who, DATE_COLUMN, when, -1);
+#endif
 
 		banl->line_ct++;
 		return TRUE;
@@ -256,7 +340,7 @@ banlist_sensitize (banlist_info *banl)
 		/* Checkbox is not checkable.  Grey it and uncheck it. */
 		{
 			gtk_widget_set_sensitive (banl->checkboxes[i], FALSE);
-			gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (banl->checkboxes[i]), FALSE);
+			hc_check_button_set_active (banl->checkboxes[i], FALSE);
 		}
 		else
 		/* Checkbox is checkable.  Be sure it's sensitive. */
@@ -325,6 +409,42 @@ fe_ban_list_end (struct session *sess, int rplcode)
 	else return FALSE;
 }
 
+#if HC_GTK4
+/* GTK4: Action callbacks for copy menu - store context in user_data */
+typedef struct {
+	GtkWidget *view;
+	gboolean copy_mask_only;
+} BanlistCopyContext;
+
+static void
+banlist_copy_action_cb (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	BanlistCopyContext *ctx = user_data;
+	GtkSelectionModel *sel_model;
+	HcBanItem *item;
+	char *str;
+
+	sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (ctx->view));
+	item = hc_selection_model_get_selected_item (sel_model);
+	if (!item)
+	{
+		g_free (ctx);
+		return;
+	}
+
+	if (ctx->copy_mask_only)
+		str = g_strdup (item->mask);
+	else
+		str = g_strdup_printf (_("%s on %s by %s"), item->mask, item->date, item->from);
+
+	if (str && str[0] != 0)
+		gtkutil_copy_to_clipboard (ctx->view, NULL, str);
+
+	g_free (str);
+	g_object_unref (item);
+	g_free (ctx);
+}
+#else /* GTK3 */
 static void
 banlist_copyentry (GtkWidget *menuitem, GtkTreeView *view)
 {
@@ -339,7 +459,7 @@ banlist_copyentry (GtkWidget *menuitem, GtkTreeView *view)
 	memset (&mask, 0, sizeof (mask));
 	memset (&from, 0, sizeof (from));
 	memset (&date, 0, sizeof (date));
-	
+
 	/* get selection (which should have been set on click)
 	 * and temporarily switch to single mode to get selected iter */
 	sel = gtk_tree_view_get_selection (view);
@@ -359,7 +479,7 @@ banlist_copyentry (GtkWidget *menuitem, GtkTreeView *view)
 
 		if (str[0] != 0)
 			gtkutil_copy_to_clipboard (menuitem, NULL, str);
-			
+
 		g_value_unset (&mask);
 		g_value_unset (&from);
 		g_value_unset (&date);
@@ -367,7 +487,111 @@ banlist_copyentry (GtkWidget *menuitem, GtkTreeView *view)
 	}
 	gtk_tree_selection_set_mode (sel, GTK_SELECTION_MULTIPLE);
 }
+#endif /* HC_GTK4 */
 
+/*
+ * Right-click context menu handler for banlist
+ * GTK3: Uses GdkEventButton from "button-press-event" signal and gtk_menu_popup
+ * GTK4: Uses GtkGestureClick and GtkPopoverMenu
+ */
+#if HC_GTK4
+/* Popover closed callback to clean up action group */
+static void
+banlist_popover_closed_cb (GtkPopover *popover, gpointer user_data)
+{
+	GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (popover));
+	if (parent)
+		gtk_widget_insert_action_group (parent, "banlist", NULL);
+	gtk_widget_unparent (GTK_WIDGET (popover));
+}
+
+/* Action callback for copy-mask */
+static void
+banlist_copy_mask_action (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GtkWidget *view = GTK_WIDGET (user_data);
+	GtkSelectionModel *sel_model;
+	HcBanItem *item;
+
+	sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (view));
+	item = hc_selection_model_get_selected_item (sel_model);
+	if (item)
+	{
+		if (item->mask && item->mask[0] != 0)
+			gtkutil_copy_to_clipboard (view, NULL, item->mask);
+		g_object_unref (item);
+	}
+}
+
+/* Action callback for copy-entry */
+static void
+banlist_copy_entry_action (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GtkWidget *view = GTK_WIDGET (user_data);
+	GtkSelectionModel *sel_model;
+	HcBanItem *item;
+	char *str;
+
+	sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (view));
+	item = hc_selection_model_get_selected_item (sel_model);
+	if (item)
+	{
+		str = g_strdup_printf (_("%s on %s by %s"), item->mask, item->date, item->from);
+		if (str && str[0] != 0)
+			gtkutil_copy_to_clipboard (view, NULL, str);
+		g_free (str);
+		g_object_unref (item);
+	}
+}
+
+static void
+banlist_button_pressed (GtkGestureClick *gesture, int n_press, double x, double y, gpointer userdata)
+{
+	GtkWidget *wid = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+	GtkWidget *popover;
+	GMenu *gmenu;
+	GSimpleActionGroup *action_group;
+	GSimpleAction *action;
+	int button;
+
+	button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+
+	/* Check for right click */
+	if (button == 3)
+	{
+		/* Create action group for menu actions */
+		action_group = g_simple_action_group_new ();
+
+		action = g_simple_action_new ("copy-mask", NULL);
+		g_signal_connect (action, "activate", G_CALLBACK (banlist_copy_mask_action), wid);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+
+		action = g_simple_action_new ("copy-entry", NULL);
+		g_signal_connect (action, "activate", G_CALLBACK (banlist_copy_entry_action), wid);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+
+		gtk_widget_insert_action_group (wid, "banlist", G_ACTION_GROUP (action_group));
+		g_object_unref (action_group);
+
+		/* Create menu model */
+		gmenu = g_menu_new ();
+		g_menu_append (gmenu, _("Copy mask"), "banlist.copy-mask");
+		g_menu_append (gmenu, _("Copy entry"), "banlist.copy-entry");
+
+		popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+		gtk_widget_set_parent (popover, wid);
+		gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+			&(GdkRectangle){ (int)x, (int)y, 1, 1 });
+
+		g_signal_connect (popover, "closed", G_CALLBACK (banlist_popover_closed_cb), NULL);
+		gtk_popover_popup (GTK_POPOVER (popover));
+
+		g_object_unref (gmenu);
+	}
+}
+#else /* GTK3 */
 static gboolean
 banlist_button_pressed (GtkWidget *wid, GdkEventButton *event, gpointer userdata)
 {
@@ -383,7 +607,7 @@ banlist_button_pressed (GtkWidget *wid, GdkEventButton *event, gpointer userdata
 			/* Must set the row active for use in callback */
 			gtk_tree_view_set_cursor (GTK_TREE_VIEW(wid), path, NULL, FALSE);
 			gtk_tree_path_free (path);
-			
+
 			menu = gtk_menu_new ();
 			maskitem = gtk_menu_item_new_with_label (_("Copy mask"));
 			allitem = gtk_menu_item_new_with_label (_("Copy entry"));
@@ -392,17 +616,36 @@ banlist_button_pressed (GtkWidget *wid, GdkEventButton *event, gpointer userdata
 			gtk_menu_shell_append (GTK_MENU_SHELL(menu), maskitem);
 			gtk_menu_shell_append (GTK_MENU_SHELL(menu), allitem);
 			gtk_widget_show_all (menu);
-			
-			gtk_menu_popup (GTK_MENU(menu), NULL, NULL, NULL, NULL, 
+
+			gtk_menu_popup (GTK_MENU(menu), NULL, NULL, NULL, NULL,
 							event->button, gtk_get_current_event_time ());
 		}
-		
+
 		return TRUE;
 	}
-	
+
 	return FALSE;
 }
+#endif
 
+#if HC_GTK4
+static void
+banlist_select_changed (GtkSelectionModel *sel_model, guint position, guint n_items, gpointer userdata)
+{
+	banlist_info *banl = userdata;
+	GtkBitset *selection;
+
+	if (banl->line_ct == 0)
+		banl->select_ct = 0;
+	else
+	{
+		selection = gtk_selection_model_get_selection (sel_model);
+		banl->select_ct = gtk_bitset_get_size (selection);
+		gtk_bitset_unref (selection);
+	}
+	banlist_sensitize (banl);
+}
+#else /* GTK3 */
 static void
 banlist_select_changed (GtkWidget *item, banlist_info *banl)
 {
@@ -419,6 +662,7 @@ banlist_select_changed (GtkWidget *item, banlist_info *banl)
 	}
 	banlist_sensitize (banl);
 }
+#endif /* HC_GTK4 */
 
 /**
  *  * Performs the actual refresh operations.
@@ -429,19 +673,26 @@ banlist_do_refresh (banlist_info *banl)
 	session *sess = banl->sess;
 	char tbuf[256];
 	int i;
+#if HC_GTK4
+	GListStore *store;
+#else
+	GtkListStore *store;
+#endif
 
 	banlist_sensitize (banl);
 
 	if (sess->server->connected)
 	{
-		GtkListStore *store;
-
 		g_snprintf (tbuf, sizeof tbuf, "Ban List (%s, %s) - %s",
 						sess->channel, sess->server->servername, _(DISPLAY_NAME));
 		mg_set_title (banl->window, tbuf);
 
 		store = get_store (sess);
+#if HC_GTK4
+		g_list_store_remove_all (store);
+#else
 		gtk_list_store_clear (store);
+#endif
 		banl->line_ct = 0;
 		banl->pending = banl->checked;
 		if (banl->pending)
@@ -476,13 +727,54 @@ static int
 banlist_unban_inner (gpointer none, banlist_info *banl, int mode_num)
 {
 	session *sess = banl->sess;
+	char tbuf[2048];
+	char **masks;
+	int num_sel, i;
+#if HC_GTK4
+	GListStore *store;
+	GtkSelectionModel *sel_model;
+	GtkBitset *selection;
+	GtkBitsetIter biter;
+	guint pos;
+	guint n_items;
+	HcBanItem *item;
+
+	store = get_store (sess);
+	sel_model = gtk_column_view_get_model (get_view (sess));
+
+	n_items = g_list_model_get_n_items (G_LIST_MODEL (store));
+	if (n_items == 0)
+		return 0;
+
+	masks = g_new (char *, banl->line_ct);
+	num_sel = 0;
+
+	selection = gtk_selection_model_get_selection (sel_model);
+	if (gtk_bitset_iter_init_first (&biter, selection, &pos))
+	{
+		do
+		{
+			item = g_list_model_get_item (G_LIST_MODEL (store), pos);
+			if (item)
+			{
+				/* If it's the wrong type of mask, just continue */
+				if (strcmp (_(modes[mode_num].type), item->type) == 0)
+				{
+					/* Otherwise add it to our array of mask pointers */
+					masks[num_sel++] = g_strdup (item->mask);
+				}
+				g_object_unref (item);
+			}
+		}
+		while (gtk_bitset_iter_next (&biter, &pos));
+	}
+	gtk_bitset_unref (selection);
+
+#else /* GTK3 */
 	GtkTreeModel *model;
 	GtkTreeSelection *sel;
 	GtkTreeIter iter;
-	char tbuf[2048];
-	char **masks, *mask, *type;
-	int num_sel, i;
-
+	char *mask, *type;
 
 	/* grab the list of selected items */
 	model = GTK_TREE_MODEL (get_store (sess));
@@ -511,6 +803,7 @@ banlist_unban_inner (gpointer none, banlist_info *banl, int mode_num)
 		}
 	}
 	while (gtk_tree_model_iter_next (model, &iter));
+#endif /* HC_GTK4 */
 
 	/* and send to server */
 	if (num_sel)
@@ -546,14 +839,23 @@ static void
 banlist_clear_cb (GtkDialog *dialog, gint response, gpointer data)
 {
 	banlist_info *banl = data;
+#if HC_GTK4
+	GtkSelectionModel *sel_model;
+#else
 	GtkTreeSelection *sel;
+#endif
 
-	gtk_widget_destroy (GTK_WIDGET (dialog));
+	hc_window_destroy (GTK_WIDGET (dialog));
 
 	if (response == GTK_RESPONSE_OK)
 	{
+#if HC_GTK4
+		sel_model = gtk_column_view_get_model (get_view (banl->sess));
+		gtk_selection_model_select_all (sel_model);
+#else
 		sel = gtk_tree_view_get_selection (get_view (banl->sess));
 		gtk_tree_selection_select_all (sel);
+#endif
 		banlist_unban (NULL, banl);
 	}
 }
@@ -569,7 +871,7 @@ banlist_clear (GtkWidget * wid, banlist_info *banl)
 
 	g_signal_connect (G_OBJECT (dialog), "response",
 							G_CALLBACK (banlist_clear_cb), banl);
-	gtk_window_set_position (GTK_WINDOW (dialog), GTK_WIN_POS_MOUSE);
+	hc_window_set_position (dialog, GTK_WIN_POS_MOUSE);
 	gtk_widget_show (dialog);
 }
 
@@ -594,6 +896,40 @@ static void
 banlist_crop (GtkWidget * wid, banlist_info *banl)
 {
 	session *sess = banl->sess;
+#if HC_GTK4
+	GtkSelectionModel *sel_model;
+	GtkBitset *current_selection;
+	GtkBitset *inverted;
+	guint n_items;
+
+	sel_model = gtk_column_view_get_model (get_view (sess));
+	n_items = g_list_model_get_n_items (
+		gtk_selection_model_get_model (sel_model));
+
+	/* Get current selection and create inverted selection */
+	current_selection = gtk_selection_model_get_selection (sel_model);
+
+	if (gtk_bitset_get_size (current_selection) > 0)
+	{
+		/* Create a bitset with all items selected, then remove currently selected */
+		inverted = gtk_bitset_new_range (0, n_items);
+		gtk_bitset_subtract (inverted, current_selection);
+
+		/* Select the inverted set (everything that wasn't selected) */
+		gtk_selection_model_set_selection (sel_model, inverted,
+			gtk_bitset_new_range (0, n_items));
+
+		gtk_bitset_unref (inverted);
+		gtk_bitset_unref (current_selection);
+
+		banlist_unban (NULL, banl);
+	}
+	else
+	{
+		gtk_bitset_unref (current_selection);
+		fe_message (_("You must select some bans."), FE_MSG_ERROR);
+	}
+#else /* GTK3 */
 	GtkTreeSelection *select;
 	GSList *list = NULL, *node;
 	int num_sel;
@@ -619,6 +955,7 @@ banlist_crop (GtkWidget * wid, banlist_info *banl)
 		banlist_unban (NULL, banl);
 	} else
 		fe_message (_("You must select some bans."), FE_MSG_ERROR);
+#endif /* HC_GTK4 */
 }
 
 static void
@@ -637,7 +974,7 @@ banlist_toggle (GtkWidget *item, gpointer data)
 	if (bit)		/* Should be gassert() */
 	{
 		banl->checked &= ~bit;
-		banl->checked |= (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (item)))? bit: 0;
+		banl->checked |= (hc_check_button_get_active (item))? bit: 0;
 		banlist_do_refresh (banl);
 	}
 }
@@ -686,6 +1023,185 @@ banlist_strptime (char *ti, struct tm *tm)
 	tm->tm_mon = M;
 	tm->tm_year = y;
 }
+
+#if HC_GTK4
+/* GTK4 sorting comparison function for date column */
+static int
+banlist_date_sort_gtk4 (gconstpointer a, gconstpointer b, gpointer user_data)
+{
+	HcBanItem *item_a = (HcBanItem *)a;
+	HcBanItem *item_b = (HcBanItem *)b;
+	struct tm tm1, tm2;
+	time_t t1, t2;
+
+	banlist_strptime (item_a->date, &tm1);
+	banlist_strptime (item_b->date, &tm2);
+	t1 = mktime (&tm1);
+	t2 = mktime (&tm2);
+
+	if (t1 < t2) return 1;
+	if (t1 == t2) return 0;
+	return -1;
+}
+
+/* Generic string sort for other columns */
+static int
+banlist_string_sort (gconstpointer a, gconstpointer b, gpointer user_data)
+{
+	HcBanItem *item_a = (HcBanItem *)a;
+	HcBanItem *item_b = (HcBanItem *)b;
+	int col = GPOINTER_TO_INT (user_data);
+	const char *str_a = NULL, *str_b = NULL;
+
+	switch (col)
+	{
+		case 0: str_a = item_a->type; str_b = item_b->type; break;
+		case 1: str_a = item_a->mask; str_b = item_b->mask; break;
+		case 2: str_a = item_a->from; str_b = item_b->from; break;
+		default: return 0;
+	}
+
+	return g_strcmp0 (str_a, str_b);
+}
+
+/* Factory setup callback - creates label */
+static void
+banlist_setup_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_label_new (NULL);
+	gtk_label_set_xalign (GTK_LABEL (label), 0.5);
+	gtk_widget_set_hexpand (label, TRUE);
+	gtk_list_item_set_child (item, label);
+}
+
+/* Factory bind callbacks for each column */
+static void
+banlist_bind_type_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcBanItem *ban = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), ban->type ? ban->type : "");
+}
+
+static void
+banlist_bind_mask_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcBanItem *ban = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), ban->mask ? ban->mask : "");
+}
+
+static void
+banlist_bind_from_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcBanItem *ban = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), ban->from ? ban->from : "");
+}
+
+static void
+banlist_bind_date_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcBanItem *ban = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), ban->date ? ban->date : "");
+}
+
+static GtkWidget *
+banlist_columnview_new (GtkWidget *box, banlist_info *banl)
+{
+	GtkWidget *scroll;
+	GListStore *store;
+	GtkSortListModel *sort_model;
+	GtkWidget *view;
+	GtkColumnViewColumn *col;
+	GtkListItemFactory *factory;
+	GtkSorter *sorter;
+	GtkSelectionModel *sel_model;
+
+	scroll = hc_scrolled_window_new ();
+	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+
+	/* Create list store for ban items */
+	store = g_list_store_new (HC_TYPE_BAN_ITEM);
+	g_return_val_if_fail (store != NULL, NULL);
+
+	/* Wrap with sort model - initially sort by date */
+	sorter = GTK_SORTER (gtk_custom_sorter_new (banlist_date_sort_gtk4, NULL, NULL));
+	sort_model = gtk_sort_list_model_new (G_LIST_MODEL (store), sorter);
+
+	/* Create column view with multi-selection */
+	view = hc_column_view_new_simple (G_LIST_MODEL (sort_model), GTK_SELECTION_MULTIPLE);
+	gtk_column_view_set_show_column_separators (GTK_COLUMN_VIEW (view), TRUE);
+	gtk_column_view_set_show_row_separators (GTK_COLUMN_VIEW (view), TRUE);
+
+	/* Connect selection changed signal */
+	sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (view));
+	g_signal_connect (sel_model, "selection-changed",
+	                  G_CALLBACK (banlist_select_changed), banl);
+
+	/* Add Type column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (banlist_setup_cb), NULL);
+	g_signal_connect (factory, "bind", G_CALLBACK (banlist_bind_type_cb), NULL);
+	col = gtk_column_view_column_new (_("Type"), factory);
+	sorter = GTK_SORTER (gtk_custom_sorter_new (banlist_string_sort, GINT_TO_POINTER(0), NULL));
+	gtk_column_view_column_set_sorter (col, sorter);
+	g_object_unref (sorter);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Add Mask column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (banlist_setup_cb), NULL);
+	g_signal_connect (factory, "bind", G_CALLBACK (banlist_bind_mask_cb), NULL);
+	col = gtk_column_view_column_new (_("Mask"), factory);
+	sorter = GTK_SORTER (gtk_custom_sorter_new (banlist_string_sort, GINT_TO_POINTER(1), NULL));
+	gtk_column_view_column_set_sorter (col, sorter);
+	g_object_unref (sorter);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Add From column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (banlist_setup_cb), NULL);
+	g_signal_connect (factory, "bind", G_CALLBACK (banlist_bind_from_cb), NULL);
+	col = gtk_column_view_column_new (_("From"), factory);
+	sorter = GTK_SORTER (gtk_custom_sorter_new (banlist_string_sort, GINT_TO_POINTER(2), NULL));
+	gtk_column_view_column_set_sorter (col, sorter);
+	g_object_unref (sorter);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Add Date column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (banlist_setup_cb), NULL);
+	g_signal_connect (factory, "bind", G_CALLBACK (banlist_bind_date_cb), NULL);
+	col = gtk_column_view_column_new (_("Date"), factory);
+	sorter = GTK_SORTER (gtk_custom_sorter_new (banlist_date_sort_gtk4, NULL, NULL));
+	gtk_column_view_column_set_sorter (col, sorter);
+	g_object_unref (sorter);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Add right-click gesture for context menu */
+	hc_add_click_gesture (view, G_CALLBACK (banlist_button_pressed), NULL, NULL);
+
+	/* Store references */
+	g_object_set_data (G_OBJECT (view), "store", store);
+
+	hc_scrolled_window_set_child (scroll, view);
+	hc_box_pack_start (box, scroll, TRUE, TRUE, 0);
+
+	return view;
+}
+
+#else /* GTK3 */
 
 gint
 banlist_date_sort (GtkTreeModel *model, GtkTreeIter *a, GtkTreeIter *b, gpointer user_data)
@@ -759,6 +1275,7 @@ banlist_treeview_new (GtkWidget *box, banlist_info *banl)
 	gtk_widget_show (view);
 	return view;
 }
+#endif /* HC_GTK4 */
 
 static void
 banlist_closegui (GtkWidget *wid, banlist_info *banl)
@@ -812,32 +1329,40 @@ banlist_opengui (struct session *sess)
 					TRUE, banlist_closegui, banl, 700, 300, &vbox, sess->server);
 	gtkutil_destroy_on_esc (banl->window);
 
-	gtk_container_set_border_width (GTK_CONTAINER (banl->window), 3);
+#if !HC_GTK4
+	hc_container_set_border_width (banl->window, 3);
+#endif
 	gtk_box_set_spacing (GTK_BOX (vbox), 3);
 
 	/* create banlist view */
+#if HC_GTK4
+	banl->treeview = banlist_columnview_new (vbox, banl);
+#else
 	banl->treeview = banlist_treeview_new (vbox, banl);
+#endif
 
 	table = gtk_grid_new ();
 	gtk_grid_set_column_spacing (GTK_GRID (table), 16);
-	gtk_box_pack_start (GTK_BOX (vbox), table, 0, 0, 0);
+	hc_box_pack_start (vbox, table, FALSE, FALSE, 0);
 
 	for (i = 0; i < MODE_CT; i++)
 	{
 		if (!(banl->capable & 1<<i))
 			continue;
 		banl->checkboxes[i] = gtk_check_button_new_with_label (_(modes[i].name));
-		gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (banl->checkboxes[i]), (banl->checked & 1<<i? TRUE: FALSE));
+		hc_check_button_set_active (banl->checkboxes[i], (banl->checked & 1<<i? TRUE: FALSE));
 		g_signal_connect (G_OBJECT (banl->checkboxes[i]), "toggled",
 								G_CALLBACK (banlist_toggle), banl);
 		gtk_grid_attach (GTK_GRID (table), banl->checkboxes[i], i+1, 0, 1, 1);
 	}
 
-	bbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
-	gtk_button_box_set_layout (GTK_BUTTON_BOX (bbox), GTK_BUTTONBOX_SPREAD);
-	gtk_container_set_border_width (GTK_CONTAINER (bbox), 5);
-	gtk_box_pack_end (GTK_BOX (vbox), bbox, 0, 0, 0);
-	gtk_widget_show (bbox);
+	bbox = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
+	hc_button_box_set_layout (bbox, GTK_BUTTONBOX_SPREAD);
+#if !HC_GTK4
+	hc_container_set_border_width (bbox, 5);
+#endif
+	hc_box_pack_end (vbox, bbox, FALSE, FALSE, 0);
+	hc_widget_show (bbox);
 
 	banl->but_remove = gtkutil_button (bbox, "list-remove", 0, banlist_unban, banl,
 	                _("Remove"));
@@ -850,5 +1375,5 @@ banlist_opengui (struct session *sess)
 
 	banlist_do_refresh (banl);
 
-	gtk_widget_show_all (banl->window);
+	hc_widget_show_all (banl->window);
 }

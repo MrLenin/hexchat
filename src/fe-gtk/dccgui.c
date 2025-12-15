@@ -38,7 +38,8 @@
 #include "maingui.h"
 
 
-enum	/* DCC SEND/RECV */
+#if !HC_GTK4
+enum	/* DCC SEND/RECV (GTK3 only) */
 {
 	COL_TYPE,
 	COL_STATUS,
@@ -50,11 +51,11 @@ enum	/* DCC SEND/RECV */
 	COL_ETA,
 	COL_NICK,
 	COL_DCC, /* struct DCC * */
-	COL_COLOR,	/* GdkColor */
+	COL_COLOR,	/* GdkRGBA * - foreground color */
 	N_COLUMNS
 };
 
-enum	/* DCC CHAT */
+enum	/* DCC CHAT (GTK3 only) */
 {
 	CCOL_STATUS,
 	CCOL_NICK,
@@ -62,23 +63,217 @@ enum	/* DCC CHAT */
 	CCOL_SENT,
 	CCOL_START,
 	CCOL_DCC,	/* struct DCC * */
-	CCOL_COLOR,	/* GdkColor * */
+	CCOL_COLOR,	/* GdkRGBA * - foreground color */
 	CN_COLUMNS
 };
+#endif /* !HC_GTK4 */
+
+#if HC_GTK4
+/*
+ * GTK4 Implementation using GListStore + GtkColumnView
+ */
+
+/* GObject to hold DCC file transfer row data */
+#define HC_TYPE_DCC_FILE_ITEM (hc_dcc_file_item_get_type())
+G_DECLARE_FINAL_TYPE (HcDccFileItem, hc_dcc_file_item, HC, DCC_FILE_ITEM, GObject)
+
+struct _HcDccFileItem {
+	GObject parent;
+	gboolean is_upload; /* TRUE=upload, FALSE=download */
+	char *status;
+	char *file;
+	char *size;
+	char *pos;
+	char *perc;
+	char *speed;
+	char *eta;
+	char *nick;
+	struct DCC *dcc;
+	GdkRGBA *colour;
+};
+
+G_DEFINE_TYPE (HcDccFileItem, hc_dcc_file_item, G_TYPE_OBJECT)
+
+static void
+hc_dcc_file_item_finalize (GObject *obj)
+{
+	HcDccFileItem *item = HC_DCC_FILE_ITEM (obj);
+	g_free (item->status);
+	g_free (item->file);
+	g_free (item->size);
+	g_free (item->pos);
+	g_free (item->perc);
+	g_free (item->speed);
+	g_free (item->eta);
+	g_free (item->nick);
+	/* colour points to static colors[] array, don't free */
+	G_OBJECT_CLASS (hc_dcc_file_item_parent_class)->finalize (obj);
+}
+
+static void
+hc_dcc_file_item_class_init (HcDccFileItemClass *klass)
+{
+	G_OBJECT_CLASS (klass)->finalize = hc_dcc_file_item_finalize;
+}
+
+static void
+hc_dcc_file_item_init (HcDccFileItem *item)
+{
+	item->is_upload = FALSE;
+	item->status = NULL;
+	item->file = NULL;
+	item->size = NULL;
+	item->pos = NULL;
+	item->perc = NULL;
+	item->speed = NULL;
+	item->eta = NULL;
+	item->nick = NULL;
+	item->dcc = NULL;
+	item->colour = NULL;
+}
+
+static HcDccFileItem *
+hc_dcc_file_item_new (gboolean is_upload, const char *status, const char *file,
+                      const char *size, const char *pos, const char *perc,
+                      const char *speed, const char *eta, const char *nick,
+                      struct DCC *dcc, GdkRGBA *colour)
+{
+	HcDccFileItem *item = g_object_new (HC_TYPE_DCC_FILE_ITEM, NULL);
+	item->is_upload = is_upload;
+	item->status = g_strdup (status ? status : "");
+	item->file = g_strdup (file ? file : "");
+	item->size = g_strdup (size ? size : "");
+	item->pos = g_strdup (pos ? pos : "");
+	item->perc = g_strdup (perc ? perc : "");
+	item->speed = g_strdup (speed ? speed : "");
+	item->eta = g_strdup (eta ? eta : "");
+	item->nick = g_strdup (nick ? nick : "");
+	item->dcc = dcc;
+	item->colour = colour;
+	return item;
+}
+
+/* Update an existing file item */
+static void
+hc_dcc_file_item_update (HcDccFileItem *item, const char *status, const char *pos,
+                         const char *perc, const char *speed, const char *eta,
+                         GdkRGBA *colour)
+{
+	g_free (item->status);
+	g_free (item->pos);
+	g_free (item->perc);
+	g_free (item->speed);
+	g_free (item->eta);
+	item->status = g_strdup (status ? status : "");
+	item->pos = g_strdup (pos ? pos : "");
+	item->perc = g_strdup (perc ? perc : "");
+	item->speed = g_strdup (speed ? speed : "");
+	item->eta = g_strdup (eta ? eta : "");
+	item->colour = colour;
+}
+
+/* GObject to hold DCC chat row data */
+#define HC_TYPE_DCC_CHAT_ITEM (hc_dcc_chat_item_get_type())
+G_DECLARE_FINAL_TYPE (HcDccChatItem, hc_dcc_chat_item, HC, DCC_CHAT_ITEM, GObject)
+
+struct _HcDccChatItem {
+	GObject parent;
+	char *status;
+	char *nick;
+	char *recv;
+	char *sent;
+	char *start;
+	struct DCC *dcc;
+	GdkRGBA *colour;
+};
+
+G_DEFINE_TYPE (HcDccChatItem, hc_dcc_chat_item, G_TYPE_OBJECT)
+
+static void
+hc_dcc_chat_item_finalize (GObject *obj)
+{
+	HcDccChatItem *item = HC_DCC_CHAT_ITEM (obj);
+	g_free (item->status);
+	g_free (item->nick);
+	g_free (item->recv);
+	g_free (item->sent);
+	g_free (item->start);
+	/* colour points to static colors[] array, don't free */
+	G_OBJECT_CLASS (hc_dcc_chat_item_parent_class)->finalize (obj);
+}
+
+static void
+hc_dcc_chat_item_class_init (HcDccChatItemClass *klass)
+{
+	G_OBJECT_CLASS (klass)->finalize = hc_dcc_chat_item_finalize;
+}
+
+static void
+hc_dcc_chat_item_init (HcDccChatItem *item)
+{
+	item->status = NULL;
+	item->nick = NULL;
+	item->recv = NULL;
+	item->sent = NULL;
+	item->start = NULL;
+	item->dcc = NULL;
+	item->colour = NULL;
+}
+
+static HcDccChatItem *
+hc_dcc_chat_item_new (const char *status, const char *nick, const char *recv,
+                      const char *sent, const char *start, struct DCC *dcc,
+                      GdkRGBA *colour)
+{
+	HcDccChatItem *item = g_object_new (HC_TYPE_DCC_CHAT_ITEM, NULL);
+	item->status = g_strdup (status ? status : "");
+	item->nick = g_strdup (nick ? nick : "");
+	item->recv = g_strdup (recv ? recv : "");
+	item->sent = g_strdup (sent ? sent : "");
+	item->start = g_strdup (start ? start : "");
+	item->dcc = dcc;
+	item->colour = colour;
+	return item;
+}
+
+/* Update an existing chat item */
+static void
+hc_dcc_chat_item_update (HcDccChatItem *item, const char *status, const char *recv,
+                         const char *sent, GdkRGBA *colour)
+{
+	g_free (item->status);
+	g_free (item->recv);
+	g_free (item->sent);
+	item->status = g_strdup (status ? status : "");
+	item->recv = g_strdup (recv ? recv : "");
+	item->sent = g_strdup (sent ? sent : "");
+	item->colour = colour;
+}
+
+/* GTK4 stores and textures */
+static GListStore *dcc_file_store = NULL;
+static GListStore *dcc_chat_store = NULL;
+static GdkTexture *tex_up = NULL;
+static GdkTexture *tex_dn = NULL;
+#endif /* HC_GTK4 */
 
 struct dccwindow
 {
 	GtkWidget *window;
 
 	GtkWidget *list;
+#if HC_GTK4
+	GtkSelectionModel *sel_model;
+#else
 	GtkListStore *store;
 	GtkTreeSelection *sel;
+#endif
 
 	GtkWidget *abort_button;
 	GtkWidget *accept_button;
 	GtkWidget *resume_button;
 	GtkWidget *open_button;
-	GtkWidget *clear_button; /* clears aborted and completed requests */	
+	GtkWidget *clear_button; /* clears aborted and completed requests */
 
 	GtkWidget *file_label;
 	GtkWidget *address_label;
@@ -94,8 +289,10 @@ struct my_dcc_send
 
 static struct dccwindow dccfwin = {NULL, };	/* file */
 static struct dccwindow dcccwin = {NULL, };	/* chat */
-static GdkPixbuf *pix_up = NULL;	/* down arrow */
-static GdkPixbuf *pix_dn = NULL;	/* up arrow */
+#if !HC_GTK4
+static GdkPixbuf *pix_up = NULL;	/* up arrow */
+static GdkPixbuf *pix_dn = NULL;	/* down arrow */
+#endif
 static int win_width = 600;
 static int win_height = 256;
 static short view_mode;	/* 1=download 2=upload 3=both */
@@ -151,6 +348,44 @@ fe_dcc_send_filereq (struct session *sess, char *nick, int maxcps, int passive)
 	g_free (tbuf);
 }
 
+#if HC_GTK4
+static HcDccChatItem *
+dcc_prepare_chat_item (struct DCC *dcc)
+{
+	static char pos[16], size[16];
+	char datebuf[64];
+	char *date;
+	GdkRGBA *colour;
+
+	date = ctime (&dcc->starttime);
+	g_strlcpy (datebuf, date, sizeof (datebuf));
+	/* remove the \n */
+	if (datebuf[0] && datebuf[strlen(datebuf) - 1] == '\n')
+		datebuf[strlen(datebuf) - 1] = 0;
+
+	proper_unit (dcc->pos, pos, sizeof (pos));
+	proper_unit (dcc->size, size, sizeof (size));
+
+	colour = dccstat[dcc->dccstat].color == 1 ? NULL : colors + dccstat[dcc->dccstat].color;
+
+	return hc_dcc_chat_item_new (_(dccstat[dcc->dccstat].name),
+	                             dcc->nick, pos, size, datebuf, dcc, colour);
+}
+
+static void
+dcc_update_chat_item (HcDccChatItem *item, struct DCC *dcc)
+{
+	static char pos[16], size[16];
+	GdkRGBA *colour;
+
+	proper_unit (dcc->pos, pos, sizeof (pos));
+	proper_unit (dcc->size, size, sizeof (size));
+
+	colour = dccstat[dcc->dccstat].color == 1 ? NULL : colors + dccstat[dcc->dccstat].color;
+
+	hc_dcc_chat_item_update (item, _(dccstat[dcc->dccstat].name), pos, size, colour);
+}
+#else /* GTK3 */
 static void
 dcc_prepare_row_chat (struct DCC *dcc, GtkListStore *store, GtkTreeIter *iter,
 							 gboolean update_only)
@@ -177,7 +412,86 @@ dcc_prepare_row_chat (struct DCC *dcc, GtkListStore *store, GtkTreeIter *iter,
 								colors + dccstat[dcc->dccstat].color,
 							  -1);
 }
+#endif /* HC_GTK4 */
 
+#if HC_GTK4
+/* GTK4: Prepare file item data for send/recv */
+static void
+dcc_prepare_file_data (struct DCC *dcc, gboolean is_send, gboolean update_only,
+                       char *status, char *file, char *size, char *pos,
+                       char *perc, char *kbs, char *eta, GdkRGBA **colour)
+{
+	int to_go;
+	float per;
+
+	g_strlcpy (status, _(dccstat[dcc->dccstat].name), 64);
+	proper_unit (dcc->size, size, 16);
+
+	if (is_send)
+	{
+		/* percentage ack'ed */
+		per = (float) ((dcc->ack * 100.00) / dcc->size);
+		proper_unit (dcc->pos, pos, 16);
+		if (dcc->cps != 0)
+		{
+			to_go = (dcc->size - dcc->ack) / dcc->cps;
+			g_snprintf (eta, 16, "%.2d:%.2d:%.2d",
+			            to_go / 3600, (to_go / 60) % 60, to_go % 60);
+		}
+		else
+			strcpy (eta, "--:--:--");
+	}
+	else
+	{
+		/* receive */
+		if (dcc->dccstat == STAT_QUEUED)
+			proper_unit (dcc->resumable, pos, 16);
+		else
+			proper_unit (dcc->pos, pos, 16);
+		/* percentage recv'ed */
+		per = (float) ((dcc->pos * 100.00) / dcc->size);
+		if (dcc->cps != 0)
+		{
+			to_go = (dcc->size - dcc->pos) / dcc->cps;
+			g_snprintf (eta, 16, "%.2d:%.2d:%.2d",
+			            to_go / 3600, (to_go / 60) % 60, to_go % 60);
+		}
+		else
+			strcpy (eta, "--:--:--");
+	}
+
+	g_snprintf (kbs, 16, "%.1f", ((float)dcc->cps) / 1024);
+	g_snprintf (perc, 16, "%.0f%%", per);
+
+	if (!update_only)
+		g_strlcpy (file, file_part (dcc->file), 256);
+
+	*colour = dccstat[dcc->dccstat].color == 1 ? NULL : colors + dccstat[dcc->dccstat].color;
+}
+
+static HcDccFileItem *
+dcc_prepare_file_item (struct DCC *dcc, gboolean is_send)
+{
+	char status[64], file[256], size[16], pos[16], perc[16], kbs[16], eta[16];
+	GdkRGBA *colour;
+
+	dcc_prepare_file_data (dcc, is_send, FALSE, status, file, size, pos, perc, kbs, eta, &colour);
+
+	return hc_dcc_file_item_new (is_send, status, file, size, pos, perc, kbs, eta,
+	                             dcc->nick, dcc, colour);
+}
+
+static void
+dcc_update_file_item (HcDccFileItem *item, struct DCC *dcc, gboolean is_send)
+{
+	char status[64], file[256], size[16], pos[16], perc[16], kbs[16], eta[16];
+	GdkRGBA *colour;
+
+	dcc_prepare_file_data (dcc, is_send, TRUE, status, file, size, pos, perc, kbs, eta, &colour);
+
+	hc_dcc_file_item_update (item, status, pos, perc, kbs, eta, colour);
+}
+#else /* GTK3 */
 static void
 dcc_prepare_row_send (struct DCC *dcc, GtkListStore *store, GtkTreeIter *iter,
 							 gboolean update_only)
@@ -294,7 +608,59 @@ dcc_prepare_row_recv (struct DCC *dcc, GtkListStore *store, GtkTreeIter *iter,
 									colors + dccstat[dcc->dccstat].color,
 									-1);
 }
+#endif /* HC_GTK4 */
 
+#if HC_GTK4
+/* GTK4: Find a file item in the store by DCC pointer, return position or -1 */
+static int
+dcc_find_file_item (struct DCC *find_dcc)
+{
+	guint n, i;
+	HcDccFileItem *item;
+
+	if (!dcc_file_store)
+		return -1;
+
+	n = g_list_model_get_n_items (G_LIST_MODEL (dcc_file_store));
+	for (i = 0; i < n; i++)
+	{
+		item = g_list_model_get_item (G_LIST_MODEL (dcc_file_store), i);
+		if (item && item->dcc == find_dcc)
+		{
+			g_object_unref (item);
+			return (int)i;
+		}
+		if (item)
+			g_object_unref (item);
+	}
+	return -1;
+}
+
+/* GTK4: Find a chat item in the store by DCC pointer, return position or -1 */
+static int
+dcc_find_chat_item (struct DCC *find_dcc)
+{
+	guint n, i;
+	HcDccChatItem *item;
+
+	if (!dcc_chat_store)
+		return -1;
+
+	n = g_list_model_get_n_items (G_LIST_MODEL (dcc_chat_store));
+	for (i = 0; i < n; i++)
+	{
+		item = g_list_model_get_item (G_LIST_MODEL (dcc_chat_store), i);
+		if (item && item->dcc == find_dcc)
+		{
+			g_object_unref (item);
+			return (int)i;
+		}
+		if (item)
+			g_object_unref (item);
+	}
+	return -1;
+}
+#else /* GTK3 */
 static gboolean
 dcc_find_row (struct DCC *find_dcc, GtkTreeModel *model, GtkTreeIter *iter, int col)
 {
@@ -313,10 +679,31 @@ dcc_find_row (struct DCC *find_dcc, GtkTreeModel *model, GtkTreeIter *iter, int 
 
 	return FALSE;
 }
+#endif /* HC_GTK4 */
 
 static void
 dcc_update_recv (struct DCC *dcc)
 {
+#if HC_GTK4
+	int pos;
+	HcDccFileItem *item;
+
+	if (!dccfwin.window)
+		return;
+
+	pos = dcc_find_file_item (dcc);
+	if (pos < 0)
+		return;
+
+	item = g_list_model_get_item (G_LIST_MODEL (dcc_file_store), pos);
+	if (item)
+	{
+		dcc_update_file_item (item, dcc, FALSE);
+		g_object_unref (item);
+		/* Signal the model that item at pos changed */
+		g_list_model_items_changed (G_LIST_MODEL (dcc_file_store), pos, 1, 1);
+	}
+#else /* GTK3 */
 	GtkTreeIter iter;
 
 	if (!dccfwin.window)
@@ -326,11 +713,32 @@ dcc_update_recv (struct DCC *dcc)
 		return;
 
 	dcc_prepare_row_recv (dcc, dccfwin.store, &iter, TRUE);
+#endif
 }
 
 static void
 dcc_update_chat (struct DCC *dcc)
 {
+#if HC_GTK4
+	int pos;
+	HcDccChatItem *item;
+
+	if (!dcccwin.window)
+		return;
+
+	pos = dcc_find_chat_item (dcc);
+	if (pos < 0)
+		return;
+
+	item = g_list_model_get_item (G_LIST_MODEL (dcc_chat_store), pos);
+	if (item)
+	{
+		dcc_update_chat_item (item, dcc);
+		g_object_unref (item);
+		/* Signal the model that item at pos changed */
+		g_list_model_items_changed (G_LIST_MODEL (dcc_chat_store), pos, 1, 1);
+	}
+#else /* GTK3 */
 	GtkTreeIter iter;
 
 	if (!dcccwin.window)
@@ -340,11 +748,32 @@ dcc_update_chat (struct DCC *dcc)
 		return;
 
 	dcc_prepare_row_chat (dcc, dcccwin.store, &iter, TRUE);
+#endif
 }
 
 static void
 dcc_update_send (struct DCC *dcc)
 {
+#if HC_GTK4
+	int pos;
+	HcDccFileItem *item;
+
+	if (!dccfwin.window)
+		return;
+
+	pos = dcc_find_file_item (dcc);
+	if (pos < 0)
+		return;
+
+	item = g_list_model_get_item (G_LIST_MODEL (dcc_file_store), pos);
+	if (item)
+	{
+		dcc_update_file_item (item, dcc, TRUE);
+		g_object_unref (item);
+		/* Signal the model that item at pos changed */
+		g_list_model_items_changed (G_LIST_MODEL (dcc_file_store), pos, 1, 1);
+	}
+#else /* GTK3 */
 	GtkTreeIter iter;
 
 	if (!dccfwin.window)
@@ -354,6 +783,7 @@ dcc_update_send (struct DCC *dcc)
 		return;
 
 	dcc_prepare_row_send (dcc, dccfwin.store, &iter, TRUE);
+#endif
 }
 
 static void
@@ -362,6 +792,21 @@ close_dcc_file_window (GtkWindow *win, gpointer data)
 	dccfwin.window = NULL;
 }
 
+#if HC_GTK4
+static void
+dcc_append_file_gtk4 (struct DCC *dcc, gboolean prepend)
+{
+	HcDccFileItem *item;
+	gboolean is_send = (dcc->type == TYPE_SEND);
+
+	item = dcc_prepare_file_item (dcc, is_send);
+	if (prepend)
+		g_list_store_insert (dcc_file_store, 0, item);
+	else
+		g_list_store_append (dcc_file_store, item);
+	g_object_unref (item);
+}
+#else /* GTK3 */
 static void
 dcc_append (struct DCC *dcc, GtkListStore *store, gboolean prepend)
 {
@@ -377,15 +822,37 @@ dcc_append (struct DCC *dcc, GtkListStore *store, gboolean prepend)
 	else
 		dcc_prepare_row_send (dcc, store, &iter, FALSE);
 }
+#endif /* HC_GTK4 */
 
 /* Returns aborted and completed transfers. */
 static GSList *
 dcc_get_completed (void)
 {
 	struct DCC *dcc;
-	GtkTreeIter iter;
-	GtkTreeModel *model;	
 	GSList *completed = NULL;
+
+#if HC_GTK4
+	guint n, i;
+	HcDccFileItem *item;
+
+	if (!dcc_file_store)
+		return NULL;
+
+	n = g_list_model_get_n_items (G_LIST_MODEL (dcc_file_store));
+	for (i = 0; i < n; i++)
+	{
+		item = g_list_model_get_item (G_LIST_MODEL (dcc_file_store), i);
+		if (item)
+		{
+			dcc = item->dcc;
+			if (is_dcc_completed (dcc))
+				completed = g_slist_prepend (completed, dcc);
+			g_object_unref (item);
+		}
+	}
+#else /* GTK3 */
+	GtkTreeIter iter;
+	GtkTreeModel *model;
 
 	model = GTK_TREE_MODEL (dccfwin.store);
 	if (gtk_tree_model_get_iter_first (model, &iter))
@@ -395,9 +862,10 @@ dcc_get_completed (void)
 			gtk_tree_model_get (model, &iter, COL_DCC, &dcc, -1);
 			if (is_dcc_completed (dcc))
 				completed = g_slist_prepend (completed, dcc);
-				
+
 		} while (gtk_tree_model_iter_next (model, &iter));
 	}
+#endif
 
 	return completed;
 }
@@ -407,11 +875,11 @@ dcc_completed_transfer_exists (void)
 {
 	gboolean exist;
 	GSList *comp_list;
-	
-	comp_list = dcc_get_completed (); 
+
+	comp_list = dcc_get_completed ();
 	exist = comp_list != NULL;
-	
-	g_slist_free (comp_list);	
+
+	g_slist_free (comp_list);
 	return exist;
 }
 
@@ -427,8 +895,46 @@ dcc_fill_window (int flags)
 {
 	struct DCC *dcc;
 	GSList *list;
-	GtkTreeIter iter;
 	int i = 0;
+
+#if HC_GTK4
+	g_list_store_remove_all (dcc_file_store);
+
+	if (flags & VIEW_UPLOAD)
+	{
+		list = dcc_list;
+		while (list)
+		{
+			dcc = list->data;
+			if (dcc->type == TYPE_SEND)
+			{
+				dcc_append_file_gtk4 (dcc, FALSE);
+				i++;
+			}
+			list = list->next;
+		}
+	}
+
+	if (flags & VIEW_DOWNLOAD)
+	{
+		list = dcc_list;
+		while (list)
+		{
+			dcc = list->data;
+			if (dcc->type == TYPE_RECV)
+			{
+				dcc_append_file_gtk4 (dcc, FALSE);
+				i++;
+			}
+			list = list->next;
+		}
+	}
+
+	/* if only one entry, select it (so Accept button can work) */
+	if (i == 1)
+		gtk_selection_model_select_item (dccfwin.sel_model, 0, TRUE);
+#else /* GTK3 */
+	GtkTreeIter iter;
 
 	gtk_list_store_clear (GTK_LIST_STORE (dccfwin.store));
 
@@ -468,12 +974,47 @@ dcc_fill_window (int flags)
 		gtk_tree_model_get_iter_first (GTK_TREE_MODEL (dccfwin.store), &iter);
 		gtk_tree_selection_select_iter (dccfwin.sel, &iter);
 	}
-	
+#endif
+
 	update_clear_button_sensitivity ();
 }
 
 /* return list of selected DCCs */
 
+#if HC_GTK4
+static GSList *
+dcc_get_selected_gtk4 (GtkSelectionModel *sel_model, GListStore *store)
+{
+	GSList *list = NULL;
+	GtkBitset *selection;
+	GtkBitsetIter biter;
+	guint pos;
+
+	selection = gtk_selection_model_get_selection (sel_model);
+	if (gtk_bitset_iter_init_first (&biter, selection, &pos))
+	{
+		do
+		{
+			HcDccFileItem *item = g_list_model_get_item (G_LIST_MODEL (store), pos);
+			if (item)
+			{
+				list = g_slist_prepend (list, item->dcc);
+				g_object_unref (item);
+			}
+		}
+		while (gtk_bitset_iter_next (&biter, &pos));
+	}
+	gtk_bitset_unref (selection);
+
+	return g_slist_reverse (list);
+}
+
+static GSList *
+dcc_get_selected (void)
+{
+	return dcc_get_selected_gtk4 (dccfwin.sel_model, dcc_file_store);
+}
+#else /* GTK3 */
 static GSList *
 treeview_get_selected (GtkTreeModel *model, GtkTreeSelection *sel, int column)
 {
@@ -503,6 +1044,7 @@ dcc_get_selected (void)
 	return treeview_get_selected (GTK_TREE_MODEL (dccfwin.store),
 											dccfwin.sel, COL_DCC);
 }
+#endif /* HC_GTK4 */
 
 static void
 resume_clicked (GtkWidget * wid, gpointer none)
@@ -644,7 +1186,7 @@ dcc_details_populate (struct DCC *dcc)
 }
 
 static void
-dcc_row_cb (GtkTreeSelection *sel, gpointer user_data)
+dcc_row_cb_common (void)
 {
 	struct DCC *dcc;
 	GSList *list;
@@ -688,9 +1230,22 @@ dcc_row_cb (GtkTreeSelection *sel, gpointer user_data)
 	g_slist_free (list);
 }
 
+#if HC_GTK4
 static void
-dcc_dclick_cb (GtkTreeView *view, GtkTreePath *path,
-					GtkTreeViewColumn *column, gpointer data)
+dcc_row_cb (GtkSelectionModel *sel_model, guint position, guint n_items, gpointer user_data)
+{
+	dcc_row_cb_common ();
+}
+#else /* GTK3 */
+static void
+dcc_row_cb (GtkTreeSelection *sel, gpointer user_data)
+{
+	dcc_row_cb_common ();
+}
+#endif
+
+static void
+dcc_dclick_cb_common (void)
 {
 	struct DCC *dcc;
 	GSList *list;
@@ -721,6 +1276,22 @@ dcc_dclick_cb (GtkTreeView *view, GtkTreePath *path,
 	}
 }
 
+#if HC_GTK4
+static void
+dcc_dclick_cb (GtkColumnView *view, guint position, gpointer data)
+{
+	dcc_dclick_cb_common ();
+}
+#else /* GTK3 */
+static void
+dcc_dclick_cb (GtkTreeView *view, GtkTreePath *path,
+					GtkTreeViewColumn *column, gpointer data)
+{
+	dcc_dclick_cb_common ();
+}
+#endif
+
+#if !HC_GTK4
 static void
 dcc_add_column (GtkWidget *tree, int textcol, int colorcol, char *title, gboolean right_justified)
 {
@@ -730,10 +1301,11 @@ dcc_add_column (GtkWidget *tree, int textcol, int colorcol, char *title, gboolea
 	if (right_justified)
 		g_object_set (G_OBJECT (renderer), "xalign", (float) 1.0, NULL);
 	gtk_tree_view_insert_column_with_attributes (GTK_TREE_VIEW (tree), -1, title, renderer,
-																"text", textcol, "foreground-gdk", colorcol,
+																"text", textcol, "foreground-rgba", colorcol,
 																NULL);
 	gtk_cell_renderer_text_set_fixed_height_from_font (GTK_CELL_RENDERER_TEXT (renderer), 1);
 }
+#endif /* !HC_GTK4 */
 
 static GtkWidget *
 dcc_detail_label (char *text, GtkWidget *box, int num)
@@ -780,6 +1352,285 @@ dcc_toggle (GtkWidget *item, gpointer data)
 	}
 }
 
+/*
+ * Window resize handler to remember window size
+ * GTK3: Uses GdkEventConfigure from "configure-event" signal
+ * GTK4: Uses "notify::default-width" and "notify::default-height" signals, or we can
+ *       connect to "close-request" to save size when window closes
+ */
+#if HC_GTK4
+static void
+dcc_configure_cb (GtkWindow *win, GParamSpec *pspec, gpointer data)
+{
+	/* remember the window size - GTK4 uses properties */
+	gtk_window_get_default_size (win, &win_width, &win_height);
+}
+
+/*
+ * GTK4 Column View factory callbacks for file transfer list
+ */
+
+/* Helper to apply color to label via CSS */
+static void
+dcc_apply_colour (GtkWidget *label, GdkRGBA *colour)
+{
+	if (colour)
+	{
+		char css[128];
+		GtkCssProvider *provider;
+		g_snprintf (css, sizeof(css), "label { color: rgba(%d,%d,%d,%.2f); }",
+		            (int)(colour->red * 255), (int)(colour->green * 255),
+		            (int)(colour->blue * 255), colour->alpha);
+		provider = gtk_css_provider_new ();
+		gtk_css_provider_load_from_string (provider, css);
+		gtk_style_context_add_provider (gtk_widget_get_style_context (label),
+		                                GTK_STYLE_PROVIDER (provider),
+		                                GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+		g_object_unref (provider);
+	}
+}
+
+/* Icon column factory */
+static void
+dcc_file_setup_icon_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *picture = gtk_picture_new ();
+	gtk_widget_set_size_request (picture, 16, 16);
+	gtk_list_item_set_child (item, picture);
+}
+
+static void
+dcc_file_bind_icon_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *picture = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+
+	/* Load textures on first use */
+	if (!tex_up)
+	{
+		GtkIconTheme *theme = gtk_icon_theme_get_for_display (gdk_display_get_default ());
+		GtkIconPaintable *icon = gtk_icon_theme_lookup_icon (theme, "go-up", NULL, 16, 1, GTK_TEXT_DIR_NONE, 0);
+		if (icon)
+			tex_up = gdk_texture_new_from_file (g_file_new_for_path (gtk_icon_paintable_get_file (icon) ? g_file_get_path (gtk_icon_paintable_get_file (icon)) : ""), NULL);
+	}
+	if (!tex_dn)
+	{
+		GtkIconTheme *theme = gtk_icon_theme_get_for_display (gdk_display_get_default ());
+		GtkIconPaintable *icon = gtk_icon_theme_lookup_icon (theme, "go-down", NULL, 16, 1, GTK_TEXT_DIR_NONE, 0);
+		if (icon)
+			tex_dn = gdk_texture_new_from_file (g_file_new_for_path (gtk_icon_paintable_get_file (icon) ? g_file_get_path (gtk_icon_paintable_get_file (icon)) : ""), NULL);
+	}
+
+	/* Use GtkImage for icons instead - simpler */
+	gtk_picture_set_paintable (GTK_PICTURE (picture),
+	                           GDK_PAINTABLE (dcc_item->is_upload ? tex_up : tex_dn));
+}
+
+/* Generic text column setup */
+static void
+dcc_file_setup_text_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_label_new (NULL);
+	gboolean right_align = GPOINTER_TO_INT (user_data);
+	gtk_label_set_xalign (GTK_LABEL (label), right_align ? 1.0 : 0.0);
+	gtk_widget_set_hexpand (label, TRUE);
+	gtk_list_item_set_child (item, label);
+}
+
+/* Bind callbacks for each column */
+static void
+dcc_file_bind_status_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->status);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+static void
+dcc_file_bind_file_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->file);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+static void
+dcc_file_bind_size_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->size);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+static void
+dcc_file_bind_pos_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->pos);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+static void
+dcc_file_bind_perc_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->perc);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+static void
+dcc_file_bind_speed_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->speed);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+static void
+dcc_file_bind_eta_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->eta);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+static void
+dcc_file_bind_nick_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccFileItem *dcc_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), dcc_item->nick);
+	dcc_apply_colour (label, dcc_item->colour);
+}
+
+/* Create GTK4 column view for file transfers */
+static GtkWidget *
+dcc_file_columnview_new (GtkWidget *vbox)
+{
+	GtkWidget *scroll;
+	GtkWidget *view;
+	GtkColumnViewColumn *col;
+	GtkListItemFactory *factory;
+
+	scroll = hc_scrolled_window_new ();
+	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	gtk_widget_set_vexpand (scroll, TRUE);
+
+	/* Create list store */
+	dcc_file_store = g_list_store_new (HC_TYPE_DCC_FILE_ITEM);
+
+	/* Create column view with multi-selection */
+	view = hc_column_view_new_simple (G_LIST_MODEL (dcc_file_store), GTK_SELECTION_MULTIPLE);
+	gtk_column_view_set_show_column_separators (GTK_COLUMN_VIEW (view), TRUE);
+	gtk_column_view_set_show_row_separators (GTK_COLUMN_VIEW (view), TRUE);
+
+	/* Save selection model reference */
+	dccfwin.sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (view));
+
+	/* Icon column (upload/download arrow) */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_icon_cb), NULL);
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_icon_cb), NULL);
+	col = gtk_column_view_column_new (NULL, factory);
+	gtk_column_view_column_set_fixed_width (col, 24);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Status column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (FALSE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_status_cb), NULL);
+	col = gtk_column_view_column_new (_("Status"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* File column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (FALSE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_file_cb), NULL);
+	col = gtk_column_view_column_new (_("File"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Size column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (TRUE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_size_cb), NULL);
+	col = gtk_column_view_column_new (_("Size"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Position column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (TRUE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_pos_cb), NULL);
+	col = gtk_column_view_column_new (_("Position"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Percent column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (TRUE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_perc_cb), NULL);
+	col = gtk_column_view_column_new ("%", factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Speed column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (TRUE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_speed_cb), NULL);
+	col = gtk_column_view_column_new ("KB/s", factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* ETA column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (FALSE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_eta_cb), NULL);
+	col = gtk_column_view_column_new (_("ETA"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Nick column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_file_setup_text_cb), GINT_TO_POINTER (FALSE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_file_bind_nick_cb), NULL);
+	col = gtk_column_view_column_new (_("Nick"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	hc_scrolled_window_set_child (scroll, view);
+	hc_box_pack_start (vbox, scroll, TRUE, TRUE, 0);
+
+	/* Connect selection changed signal */
+	g_signal_connect (dccfwin.sel_model, "selection-changed",
+	                  G_CALLBACK (dcc_row_cb), NULL);
+
+	/* Double-click activation */
+	g_signal_connect (view, "activate",
+	                  G_CALLBACK (dcc_dclick_cb), NULL);
+
+	return view;
+}
+#else /* GTK3 */
 static gboolean
 dcc_configure_cb (GtkWindow *win, GdkEventConfigure *event, gpointer data)
 {
@@ -787,13 +1638,19 @@ dcc_configure_cb (GtkWindow *win, GdkEventConfigure *event, gpointer data)
 	gtk_window_get_size (win, &win_width, &win_height);
 	return FALSE;
 }
+#endif
 
 int
 fe_dcc_open_recv_win (int passive)
 {
-	GtkWidget *radio, *table, *vbox, *bbox, *view, *exp, *detailbox;
+	GtkWidget *table, *vbox, *bbox, *view, *exp, *detailbox;
+#if HC_GTK4
+	GtkWidget *check;
+#else
+	GtkWidget *radio;
 	GtkListStore *store;
 	GSList *group;
+#endif
 	char buf[128];
 
 	if (dccfwin.window)
@@ -806,13 +1663,29 @@ fe_dcc_open_recv_win (int passive)
 	dccfwin.window = mg_create_generic_tab ("Transfers", buf, FALSE, TRUE, close_dcc_file_window,
 														 NULL, win_width, win_height, &vbox, 0);
 	gtkutil_destroy_on_esc (dccfwin.window);
-	gtk_container_set_border_width (GTK_CONTAINER (dccfwin.window), 3);
+#if !HC_GTK4
+	hc_container_set_border_width (dccfwin.window, 3);
+#endif
 	gtk_box_set_spacing (GTK_BOX (vbox), 3);
 
+#if HC_GTK4
+	view = dcc_file_columnview_new (vbox);
+	dccfwin.list = view;
+	view_mode = VIEW_BOTH;
+
+	if (!prefs.hex_gui_tab_utils)
+	{
+		/* GTK4: Use notify signals for window size changes */
+		g_signal_connect (G_OBJECT (dccfwin.window), "notify::default-width",
+								G_CALLBACK (dcc_configure_cb), 0);
+		g_signal_connect (G_OBJECT (dccfwin.window), "notify::default-height",
+								G_CALLBACK (dcc_configure_cb), 0);
+	}
+#else /* GTK3 */
 	store = gtk_list_store_new (N_COLUMNS, GDK_TYPE_PIXBUF, G_TYPE_STRING,
 										 G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
 										 G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
-										 G_TYPE_STRING, G_TYPE_POINTER, GDK_TYPE_COLOR);
+										 G_TYPE_STRING, G_TYPE_POINTER, GDK_TYPE_RGBA);
 	view = gtkutil_treeview_new (vbox, GTK_TREE_MODEL (store), NULL, -1);
 	gtk_tree_view_set_rules_hint (GTK_TREE_VIEW (view), TRUE);
 	/* Up/Down Icon column */
@@ -838,18 +1711,43 @@ fe_dcc_open_recv_win (int passive)
 	gtk_tree_selection_set_mode (dccfwin.sel, GTK_SELECTION_MULTIPLE);
 
 	if (!prefs.hex_gui_tab_utils)
+	{
 		g_signal_connect (G_OBJECT (dccfwin.window), "configure_event",
 								G_CALLBACK (dcc_configure_cb), 0);
+	}
 	g_signal_connect (G_OBJECT (dccfwin.sel), "changed",
 							G_CALLBACK (dcc_row_cb), NULL);
 	/* double click */
 	g_signal_connect (G_OBJECT (view), "row-activated",
 							G_CALLBACK (dcc_dclick_cb), NULL);
+#endif /* HC_GTK4 */
 
 	table = gtk_grid_new ();
 	gtk_grid_set_column_spacing (GTK_GRID (table), 16);
-	gtk_box_pack_start (GTK_BOX (vbox), table, 0, 0, 0);
+	hc_box_pack_start (vbox, table, FALSE, FALSE, 0);
 
+#if HC_GTK4
+	/* GTK4: Use GtkCheckButton with groups */
+	check = gtk_check_button_new_with_mnemonic (_("Both"));
+	gtk_check_button_set_active (GTK_CHECK_BUTTON (check), TRUE);
+	g_signal_connect (G_OBJECT (check), "toggled",
+							G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_BOTH));
+	gtk_grid_attach (GTK_GRID (table), check, 3, 0, 1, 1);
+
+	{
+		GtkWidget *check2 = gtk_check_button_new_with_mnemonic (_("Uploads"));
+		gtk_check_button_set_group (GTK_CHECK_BUTTON (check2), GTK_CHECK_BUTTON (check));
+		g_signal_connect (G_OBJECT (check2), "toggled",
+								G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_UPLOAD));
+		gtk_grid_attach (GTK_GRID (table), check2, 1, 0, 1, 1);
+
+		GtkWidget *check3 = gtk_check_button_new_with_mnemonic (_("Downloads"));
+		gtk_check_button_set_group (GTK_CHECK_BUTTON (check3), GTK_CHECK_BUTTON (check));
+		g_signal_connect (G_OBJECT (check3), "toggled",
+								G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_DOWNLOAD));
+		gtk_grid_attach (GTK_GRID (table), check3, 2, 0, 1, 1);
+	}
+#else /* GTK3 */
 	radio = gtk_radio_button_new_with_mnemonic (NULL, _("Both"));
 	g_signal_connect (G_OBJECT (radio), "toggled",
 							G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_BOTH));
@@ -866,6 +1764,7 @@ fe_dcc_open_recv_win (int passive)
 	g_signal_connect (G_OBJECT (radio), "toggled",
 							G_CALLBACK (dcc_toggle), GINT_TO_POINTER (VIEW_DOWNLOAD));
 	gtk_grid_attach (GTK_GRID (table), radio, 2, 0, 1, 1);
+#endif /* HC_GTK4 */
 
 	exp = gtk_expander_new (_("Details"));
 	gtk_widget_set_hexpand (exp, TRUE);
@@ -874,7 +1773,9 @@ fe_dcc_open_recv_win (int passive)
 	detailbox = gtk_grid_new ();
 	gtk_grid_set_column_spacing (GTK_GRID (detailbox), 6);
 	gtk_grid_set_row_spacing (GTK_GRID (detailbox), 2);
-	gtk_container_set_border_width (GTK_CONTAINER (detailbox), 6);
+#if !HC_GTK4
+	hc_container_set_border_width (detailbox, 6);
+#endif
 	g_signal_connect (G_OBJECT (exp), "activate",
 							G_CALLBACK (dcc_exp_cb), detailbox);
 	gtk_widget_set_hexpand (detailbox, TRUE);
@@ -883,9 +1784,9 @@ fe_dcc_open_recv_win (int passive)
 	dccfwin.file_label = dcc_detail_label (_("File:"), detailbox, 0);
 	dccfwin.address_label = dcc_detail_label (_("Address:"), detailbox, 1);
 
-	bbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
-	gtk_button_box_set_layout (GTK_BUTTON_BOX (bbox), GTK_BUTTONBOX_SPREAD);
-	gtk_box_pack_end (GTK_BOX (vbox), bbox, FALSE, FALSE, 2);
+	bbox = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
+	hc_button_box_set_layout (bbox, GTK_BUTTONBOX_SPREAD);
+	hc_box_pack_end (vbox, bbox, FALSE, FALSE, 2);
 
 	dccfwin.abort_button = gtkutil_button (bbox, "process-stop", 0, abort_clicked, 0, _("Abort"));
 	dccfwin.accept_button = gtkutil_button (bbox, "emblem-default", 0, accept_clicked, 0, _("Accept"));
@@ -897,8 +1798,8 @@ fe_dcc_open_recv_win (int passive)
 	gtk_widget_set_sensitive (dccfwin.abort_button, FALSE);
 
 	dcc_fill_window (3);
-	gtk_widget_show_all (dccfwin.window);
-	gtk_widget_hide (detailbox);
+	hc_widget_show_all (dccfwin.window);
+	hc_widget_hide (detailbox);
 
 	return FALSE;
 }
@@ -913,12 +1814,50 @@ fe_dcc_open_send_win (int passive)
 
 /* DCC CHAT GUIs BELOW */
 
+#if HC_GTK4
+static GSList *
+dcc_chat_get_selected_gtk4 (void)
+{
+	GSList *list = NULL;
+	GtkBitset *selection;
+	GtkBitsetIter biter;
+	guint pos;
+
+	if (!dcccwin.sel_model || !dcc_chat_store)
+		return NULL;
+
+	selection = gtk_selection_model_get_selection (dcccwin.sel_model);
+	if (gtk_bitset_iter_init_first (&biter, selection, &pos))
+	{
+		do
+		{
+			HcDccChatItem *item = g_list_model_get_item (G_LIST_MODEL (dcc_chat_store), pos);
+			if (item)
+			{
+				list = g_slist_prepend (list, item->dcc);
+				g_object_unref (item);
+			}
+		}
+		while (gtk_bitset_iter_next (&biter, &pos));
+	}
+	gtk_bitset_unref (selection);
+
+	return g_slist_reverse (list);
+}
+
+static GSList *
+dcc_chat_get_selected (void)
+{
+	return dcc_chat_get_selected_gtk4 ();
+}
+#else /* GTK3 */
 static GSList *
 dcc_chat_get_selected (void)
 {
 	return treeview_get_selected (GTK_TREE_MODEL (dcccwin.store),
 											dcccwin.sel, CCOL_DCC);
 }
+#endif /* HC_GTK4 */
 
 static void
 accept_chat_clicked (GtkWidget * wid, gpointer none)
@@ -956,6 +1895,18 @@ dcc_chat_close_cb (void)
 	dcccwin.window = NULL;
 }
 
+#if HC_GTK4
+static void
+dcc_chat_append_gtk4 (struct DCC *dcc, gboolean prepend)
+{
+	HcDccChatItem *item = dcc_prepare_chat_item (dcc);
+	if (prepend)
+		g_list_store_insert (dcc_chat_store, 0, item);
+	else
+		g_list_store_append (dcc_chat_store, item);
+	g_object_unref (item);
+}
+#else /* GTK3 */
 static void
 dcc_chat_append (struct DCC *dcc, GtkListStore *store, gboolean prepend)
 {
@@ -968,14 +1919,38 @@ dcc_chat_append (struct DCC *dcc, GtkListStore *store, gboolean prepend)
 
 	dcc_prepare_row_chat (dcc, store, &iter, FALSE);
 }
+#endif /* HC_GTK4 */
 
 static void
 dcc_chat_fill_win (void)
 {
 	struct DCC *dcc;
 	GSList *list;
-	GtkTreeIter iter;
 	int i = 0;
+
+#if HC_GTK4
+	if (!dcc_chat_store)
+		return;
+
+	g_list_store_remove_all (dcc_chat_store);
+
+	list = dcc_list;
+	while (list)
+	{
+		dcc = list->data;
+		if (dcc->type == TYPE_CHATSEND || dcc->type == TYPE_CHATRECV)
+		{
+			dcc_chat_append_gtk4 (dcc, FALSE);
+			i++;
+		}
+		list = list->next;
+	}
+
+	/* if only one entry, select it (so Accept button can work) */
+	if (i == 1)
+		gtk_selection_model_select_item (dcccwin.sel_model, 0, TRUE);
+#else /* GTK3 */
+	GtkTreeIter iter;
 
 	gtk_list_store_clear (GTK_LIST_STORE (dcccwin.store));
 
@@ -997,10 +1972,11 @@ dcc_chat_fill_win (void)
 		gtk_tree_model_get_iter_first (GTK_TREE_MODEL (dcccwin.store), &iter);
 		gtk_tree_selection_select_iter (dcccwin.sel, &iter);
 	}
+#endif
 }
 
 static void
-dcc_chat_row_cb (GtkTreeSelection *sel, gpointer user_data)
+dcc_chat_row_cb_common (void)
 {
 	struct DCC *dcc;
 	GSList *list;
@@ -1030,18 +2006,185 @@ dcc_chat_row_cb (GtkTreeSelection *sel, gpointer user_data)
 	g_slist_free (list);
 }
 
+#if HC_GTK4
+static void
+dcc_chat_row_cb (GtkSelectionModel *sel_model, guint position, guint n_items, gpointer user_data)
+{
+	dcc_chat_row_cb_common ();
+}
+#else /* GTK3 */
+static void
+dcc_chat_row_cb (GtkTreeSelection *sel, gpointer user_data)
+{
+	dcc_chat_row_cb_common ();
+}
+#endif
+
+#if HC_GTK4
+static void
+dcc_chat_dclick_cb (GtkColumnView *view, guint position, gpointer data)
+{
+	accept_chat_clicked (0, 0);
+}
+#else /* GTK3 */
 static void
 dcc_chat_dclick_cb (GtkTreeView *view, GtkTreePath *path,
 						  GtkTreeViewColumn *column, gpointer data)
 {
 	accept_chat_clicked (0, 0);
 }
+#endif
+
+#if HC_GTK4
+/*
+ * GTK4 Column View factory callbacks for chat list
+ */
+static void
+dcc_chat_setup_text_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_label_new (NULL);
+	gboolean right_align = GPOINTER_TO_INT (user_data);
+	gtk_label_set_xalign (GTK_LABEL (label), right_align ? 1.0 : 0.0);
+	gtk_widget_set_hexpand (label, TRUE);
+	gtk_list_item_set_child (item, label);
+}
+
+static void
+dcc_chat_bind_status_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccChatItem *chat_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), chat_item->status);
+	dcc_apply_colour (label, chat_item->colour);
+}
+
+static void
+dcc_chat_bind_nick_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccChatItem *chat_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), chat_item->nick);
+	dcc_apply_colour (label, chat_item->colour);
+}
+
+static void
+dcc_chat_bind_recv_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccChatItem *chat_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), chat_item->recv);
+	dcc_apply_colour (label, chat_item->colour);
+}
+
+static void
+dcc_chat_bind_sent_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccChatItem *chat_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), chat_item->sent);
+	dcc_apply_colour (label, chat_item->colour);
+}
+
+static void
+dcc_chat_bind_start_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcDccChatItem *chat_item = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), chat_item->start);
+	dcc_apply_colour (label, chat_item->colour);
+}
+
+static GtkWidget *
+dcc_chat_columnview_new (GtkWidget *vbox)
+{
+	GtkWidget *scroll;
+	GtkWidget *view;
+	GtkColumnViewColumn *col;
+	GtkListItemFactory *factory;
+
+	scroll = hc_scrolled_window_new ();
+	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	gtk_widget_set_vexpand (scroll, TRUE);
+
+	/* Create list store */
+	dcc_chat_store = g_list_store_new (HC_TYPE_DCC_CHAT_ITEM);
+
+	/* Create column view with multi-selection */
+	view = hc_column_view_new_simple (G_LIST_MODEL (dcc_chat_store), GTK_SELECTION_MULTIPLE);
+	gtk_column_view_set_show_column_separators (GTK_COLUMN_VIEW (view), TRUE);
+	gtk_column_view_set_show_row_separators (GTK_COLUMN_VIEW (view), TRUE);
+
+	/* Save selection model reference */
+	dcccwin.sel_model = gtk_column_view_get_model (GTK_COLUMN_VIEW (view));
+
+	/* Status column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_chat_setup_text_cb), GINT_TO_POINTER (FALSE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_chat_bind_status_cb), NULL);
+	col = gtk_column_view_column_new (_("Status"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Nick column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_chat_setup_text_cb), GINT_TO_POINTER (FALSE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_chat_bind_nick_cb), NULL);
+	col = gtk_column_view_column_new (_("Nick"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Recv column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_chat_setup_text_cb), GINT_TO_POINTER (TRUE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_chat_bind_recv_cb), NULL);
+	col = gtk_column_view_column_new (_("Recv"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Sent column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_chat_setup_text_cb), GINT_TO_POINTER (TRUE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_chat_bind_sent_cb), NULL);
+	col = gtk_column_view_column_new (_("Sent"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	/* Start Time column */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (dcc_chat_setup_text_cb), GINT_TO_POINTER (FALSE));
+	g_signal_connect (factory, "bind", G_CALLBACK (dcc_chat_bind_start_cb), NULL);
+	col = gtk_column_view_column_new (_("Start Time"), factory);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
+	g_object_unref (col);
+
+	hc_scrolled_window_set_child (scroll, view);
+	hc_box_pack_start (vbox, scroll, TRUE, TRUE, 0);
+
+	/* Connect selection changed signal */
+	g_signal_connect (dcccwin.sel_model, "selection-changed",
+	                  G_CALLBACK (dcc_chat_row_cb), NULL);
+
+	/* Double-click activation */
+	g_signal_connect (view, "activate",
+	                  G_CALLBACK (dcc_chat_dclick_cb), NULL);
+
+	return view;
+}
+#endif /* HC_GTK4 */
 
 int
 fe_dcc_open_chat_win (int passive)
 {
 	GtkWidget *view, *vbox, *bbox;
+#if !HC_GTK4
 	GtkListStore *store;
+#endif
 	char buf[128];
 
 	if (dcccwin.window)
@@ -1056,12 +2199,18 @@ fe_dcc_open_chat_win (int passive)
 			  mg_create_generic_tab ("DCCChat", buf, FALSE, TRUE, dcc_chat_close_cb,
 						NULL, 550, 180, &vbox, 0);
 	gtkutil_destroy_on_esc (dcccwin.window);
-	gtk_container_set_border_width (GTK_CONTAINER (dcccwin.window), 3);
+#if !HC_GTK4
+	hc_container_set_border_width (dcccwin.window, 3);
+#endif
 	gtk_box_set_spacing (GTK_BOX (vbox), 3);
 
+#if HC_GTK4
+	view = dcc_chat_columnview_new (vbox);
+	dcccwin.list = view;
+#else /* GTK3 */
 	store = gtk_list_store_new (CN_COLUMNS, G_TYPE_STRING, G_TYPE_STRING,
 										 G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
-										 G_TYPE_POINTER, GDK_TYPE_COLOR);
+										 G_TYPE_POINTER, GDK_TYPE_RGBA);
 	view = gtkutil_treeview_new (vbox, GTK_TREE_MODEL (store), NULL, -1);
 
 	dcc_add_column (view, CCOL_STATUS, CCOL_COLOR, _("Status"), FALSE);
@@ -1083,10 +2232,11 @@ fe_dcc_open_chat_win (int passive)
 	/* double click */
 	g_signal_connect (G_OBJECT (view), "row-activated",
 							G_CALLBACK (dcc_chat_dclick_cb), NULL);
+#endif /* HC_GTK4 */
 
-	bbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
-	gtk_button_box_set_layout (GTK_BUTTON_BOX (bbox), GTK_BUTTONBOX_SPREAD);
-	gtk_box_pack_end (GTK_BOX (vbox), bbox, FALSE, FALSE, 2);
+	bbox = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
+	hc_button_box_set_layout (bbox, GTK_BUTTONBOX_SPREAD);
+	hc_box_pack_end (vbox, bbox, FALSE, FALSE, 2);
 
 	dcccwin.abort_button = gtkutil_button (bbox, "process-stop", 0, abort_chat_clicked, 0, _("Abort"));
 	dcccwin.accept_button = gtkutil_button (bbox, "emblem-default", 0, accept_chat_clicked, 0, _("Accept"));
@@ -1094,7 +2244,7 @@ fe_dcc_open_chat_win (int passive)
 	gtk_widget_set_sensitive (dcccwin.abort_button, FALSE);
 
 	dcc_chat_fill_win ();
-	gtk_widget_show_all (dcccwin.window);
+	hc_widget_show_all (dcccwin.window);
 
 	return FALSE;
 }
@@ -1106,17 +2256,29 @@ fe_dcc_add (struct DCC *dcc)
 	{
 	case TYPE_RECV:
 		if (dccfwin.window && (view_mode & VIEW_DOWNLOAD))
+#if HC_GTK4
+			dcc_append_file_gtk4 (dcc, TRUE);
+#else
 			dcc_append (dcc, dccfwin.store, TRUE);
+#endif
 		break;
 
 	case TYPE_SEND:
 		if (dccfwin.window && (view_mode & VIEW_UPLOAD))
+#if HC_GTK4
+			dcc_append_file_gtk4 (dcc, TRUE);
+#else
 			dcc_append (dcc, dccfwin.store, TRUE);
+#endif
 		break;
 
 	default: /* chat */
 		if (dcccwin.window)
+#if HC_GTK4
+			dcc_chat_append_gtk4 (dcc, TRUE);
+#else
 			dcc_chat_append (dcc, dcccwin.store, TRUE);
+#endif
 	}
 }
 
@@ -1144,6 +2306,31 @@ fe_dcc_update (struct DCC *dcc)
 void
 fe_dcc_remove (struct DCC *dcc)
 {
+#if HC_GTK4
+	int pos;
+
+	switch (dcc->type)
+	{
+	case TYPE_SEND:
+	case TYPE_RECV:
+		if (dccfwin.window && dcc_file_store)
+		{
+			pos = dcc_find_file_item (dcc);
+			if (pos >= 0)
+				g_list_store_remove (dcc_file_store, pos);
+		}
+		break;
+
+	default:	/* chat */
+		if (dcccwin.window && dcc_chat_store)
+		{
+			pos = dcc_find_chat_item (dcc);
+			if (pos >= 0)
+				g_list_store_remove (dcc_chat_store, pos);
+		}
+		break;
+	}
+#else /* GTK3 */
 	GtkTreeIter iter;
 
 	switch (dcc->type)
@@ -1165,4 +2352,5 @@ fe_dcc_remove (struct DCC *dcc)
 		}
 		break;
 	}
+#endif
 }

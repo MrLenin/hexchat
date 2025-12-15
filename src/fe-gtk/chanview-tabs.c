@@ -62,32 +62,46 @@ cv_tabs_sizerequest (GtkWidget *viewport, GtkRequisition *requisition, chanview 
 static void
 cv_tabs_sizealloc (GtkWidget *widget, GtkAllocation *allocation, chanview *cv)
 {
-	GdkWindow *parent_win;
 	GtkAdjustment *adj;
 	GtkWidget *inner;
+	GtkWidget *viewport;
 	gint viewport_size;
 
 	inner = ((tabview *)cv)->inner;
-	parent_win = gtk_widget_get_window (gtk_widget_get_parent (inner));
+	viewport = gtk_widget_get_parent (inner);
 
 	if (cv->vertical)
 	{
-		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (gtk_widget_get_parent (inner)));
-		gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
+		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
+#if HC_GTK4
+		viewport_size = gtk_widget_get_height (viewport);
+#else
+		{
+			GdkWindow *parent_win = gtk_widget_get_window (viewport);
+			gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
+		}
+#endif
 	} else
 	{
-		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (gtk_widget_get_parent (inner)));
-		gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
+		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
+#if HC_GTK4
+		viewport_size = gtk_widget_get_width (viewport);
+#else
+		{
+			GdkWindow *parent_win = gtk_widget_get_window (viewport);
+			gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
+		}
+#endif
 	}
 
 	if (gtk_adjustment_get_upper (adj) <= viewport_size)
 	{
-		gtk_widget_hide (((tabview *)cv)->b1);
-		gtk_widget_hide (((tabview *)cv)->b2);
+		hc_widget_hide (((tabview *)cv)->b1);
+		hc_widget_hide (((tabview *)cv)->b2);
 	} else
 	{
-		gtk_widget_show (((tabview *)cv)->b1);
-		gtk_widget_show (((tabview *)cv)->b2);
+		hc_widget_show (((tabview *)cv)->b1);
+		hc_widget_show (((tabview *)cv)->b2);
 	}
 }
 
@@ -102,7 +116,7 @@ tab_search_offset (GtkWidget *inner, gint start_offset,
 	GtkAllocation allocation;
 	gint found;
 
-	boxes = gtk_container_get_children (GTK_CONTAINER (inner));
+	boxes = hc_container_get_children (inner);
 	if (!forward && boxes)
 		boxes = g_list_last (boxes);
 
@@ -111,7 +125,7 @@ tab_search_offset (GtkWidget *inner, gint start_offset,
 		box = (GtkWidget *)boxes->data;
 		boxes = (forward ? boxes->next : boxes->prev);
 
-		tabs = gtk_container_get_children (GTK_CONTAINER (box));
+		tabs = hc_container_get_children (box);
 		if (!forward && tabs)
 			tabs = g_list_last (tabs);
 
@@ -141,20 +155,34 @@ tab_scroll_left_up_clicked (GtkWidget *widget, chanview *cv)
 	gint viewport_size;
 	gfloat new_value;
 	GtkWidget *inner;
-	GdkWindow *parent_win;
+	GtkWidget *viewport;
 	gdouble i;
 
 	inner = ((tabview *)cv)->inner;
-	parent_win = gtk_widget_get_window (gtk_widget_get_parent (inner));
+	viewport = gtk_widget_get_parent (inner);
 
 	if (cv->vertical)
 	{
-		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
+		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
+#if HC_GTK4
+		viewport_size = gtk_widget_get_height (viewport);
+#else
+		{
+			GdkWindow *parent_win = gtk_widget_get_window (viewport);
+			gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
+		}
+#endif
 	} else
 	{
-		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
+		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
+#if HC_GTK4
+		viewport_size = gtk_widget_get_width (viewport);
+#else
+		{
+			GdkWindow *parent_win = gtk_widget_get_window (viewport);
+			gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
+		}
+#endif
 	}
 
 	new_value = tab_search_offset (inner, gtk_adjustment_get_value (adj), 0, cv->vertical);
@@ -190,20 +218,34 @@ tab_scroll_right_down_clicked (GtkWidget *widget, chanview *cv)
 	gint viewport_size;
 	gfloat new_value;
 	GtkWidget *inner;
-	GdkWindow *parent_win;
+	GtkWidget *viewport;
 	gdouble i;
 
 	inner = ((tabview *)cv)->inner;
-	parent_win = gtk_widget_get_window (gtk_widget_get_parent (inner));
+	viewport = gtk_widget_get_parent (inner);
 
 	if (cv->vertical)
 	{
-		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
+		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
+#if HC_GTK4
+		viewport_size = gtk_widget_get_height (viewport);
+#else
+		{
+			GdkWindow *parent_win = gtk_widget_get_window (viewport);
+			gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
+		}
+#endif
 	} else
 	{
-		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (gtk_widget_get_parent(inner)));
-		gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
+		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
+#if HC_GTK4
+		viewport_size = gtk_widget_get_width (viewport);
+#else
+		{
+			GdkWindow *parent_win = gtk_widget_get_window (viewport);
+			gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
+		}
+#endif
 	}
 
 	new_value = tab_search_offset (inner, gtk_adjustment_get_value (adj), 1, cv->vertical);
@@ -232,6 +274,37 @@ tab_scroll_right_down_clicked (GtkWidget *widget, chanview *cv)
 	}
 }
 
+/*
+ * Scroll event handler for tabs
+ * GTK3: Uses GdkEventScroll from "scroll_event" signal
+ * GTK4: Uses GtkEventControllerScroll with different signature
+ */
+#if HC_GTK4
+static gboolean
+tab_scroll_cb (GtkEventControllerScroll *controller, double dx, double dy, gpointer cv_ptr)
+{
+	chanview *cv = (chanview *)cv_ptr;
+	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+
+	if (prefs.hex_gui_tab_scrollchans)
+	{
+		if (dy > 0)
+			mg_switch_page (1, 1);
+		else if (dy < 0)
+			mg_switch_page (1, -1);
+	}
+	else
+	{
+		/* mouse wheel scrolling */
+		if (dy < 0)
+			tab_scroll_left_up_clicked (widget, cv);
+		else if (dy > 0)
+			tab_scroll_right_down_clicked (widget, cv);
+	}
+
+	return FALSE;
+}
+#else /* GTK3 */
 static gboolean
 tab_scroll_cb (GtkWidget *widget, GdkEventScroll *event, gpointer cv)
 {
@@ -253,6 +326,7 @@ tab_scroll_cb (GtkWidget *widget, GdkEventScroll *event, gpointer cv)
 
 	return FALSE;
 }
+#endif
 
 static void
 cv_tabs_xclick_cb (GtkWidget *button, chanview *cv)
@@ -289,7 +363,15 @@ make_sbutton (GtkArrowType type, void *click_cb, void *userdata)
 	}
 
 	button = gtk_button_new ();
-	image = gtk_image_new_from_icon_name (icon_name, GTK_ICON_SIZE_MENU);
+#if HC_GTK4
+	image = gtk_image_new_from_icon_name (icon_name);
+	gtk_button_set_child (GTK_BUTTON (button), image);
+	gtk_button_set_has_frame (GTK_BUTTON (button), FALSE);
+	g_signal_connect (G_OBJECT (button), "clicked",
+							G_CALLBACK (click_cb), userdata);
+	hc_add_scroll_controller (button, G_CALLBACK (tab_scroll_cb), userdata);
+#else /* GTK3 */
+	image = hc_image_new_from_icon_name (icon_name, GTK_ICON_SIZE_MENU);
 	gtk_container_add (GTK_CONTAINER (button), image);
 	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
 	g_signal_connect (G_OBJECT (button), "clicked",
@@ -297,6 +379,7 @@ make_sbutton (GtkArrowType type, void *click_cb, void *userdata)
 	g_signal_connect (G_OBJECT (button), "scroll_event",
 							G_CALLBACK (tab_scroll_cb), userdata);
 	gtk_widget_show (image);
+#endif
 
 	return button;
 }
@@ -316,32 +399,43 @@ cv_tabs_init (chanview *cv)
 	((tabview *)cv)->outer = outer;
 	g_signal_connect (G_OBJECT (outer), "size_allocate",
 							G_CALLBACK (cv_tabs_sizealloc), cv);
-/*	gtk_container_set_border_width (GTK_CONTAINER (outer), 2);*/
-	gtk_widget_show (outer);
+/*	hc_container_set_border_width (outer, 2);*/
+	hc_widget_show (outer);
 
+#if HC_GTK4
+	viewport = gtk_viewport_new (NULL, NULL);
+	/* GTK4: No shadow_type for viewport, use CSS */
+	/* GTK4: size_request signal doesn't exist - handled differently */
+	hc_add_scroll_controller (viewport, G_CALLBACK (tab_scroll_cb), cv);
+#else /* GTK3 */
 	viewport = gtk_viewport_new (0, 0);
 	gtk_viewport_set_shadow_type (GTK_VIEWPORT (viewport), GTK_SHADOW_NONE);
 	g_signal_connect (G_OBJECT (viewport), "size_request",
 							G_CALLBACK (cv_tabs_sizerequest), cv);
 	g_signal_connect (G_OBJECT (viewport), "scroll_event",
 							G_CALLBACK (tab_scroll_cb), cv);
-	gtk_box_pack_start (GTK_BOX (outer), viewport, 1, 1, 0);
-	gtk_widget_show (viewport);
+#endif
+	hc_box_pack_start (outer, viewport, TRUE, TRUE, 0);
+	hc_widget_show (viewport);
 
 	if (cv->vertical)
 		box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 	else
 		box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	((tabview *)cv)->inner = box;
+#if HC_GTK4
+	gtk_viewport_set_child (GTK_VIEWPORT (viewport), box);
+#else
 	gtk_container_add (GTK_CONTAINER (viewport), box);
-	gtk_widget_show (box);
+#endif
+	hc_widget_show (box);
 
 	/* if vertical, the buttons can be side by side */
 	if (cv->vertical)
 	{
 		hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-		gtk_box_pack_start (GTK_BOX (outer), hbox, 0, 0, 0);
-		gtk_widget_show (hbox);
+		hc_box_pack_start (outer, hbox, FALSE, FALSE, 0);
+		hc_widget_show (hbox);
 	}
 
 	/* make the Scroll buttons */
@@ -357,20 +451,24 @@ cv_tabs_init (chanview *cv)
 
 	if (hbox)
 	{
-		gtk_container_add (GTK_CONTAINER (hbox), ((tabview *)cv)->b2);
-		gtk_container_add (GTK_CONTAINER (hbox), ((tabview *)cv)->b1);
+		hc_box_pack_start (hbox, ((tabview *)cv)->b2, FALSE, FALSE, 0);
+		hc_box_pack_start (hbox, ((tabview *)cv)->b1, FALSE, FALSE, 0);
 	} else
 	{
-		gtk_box_pack_start (GTK_BOX (outer), ((tabview *)cv)->b2, 0, 0, 0);
-		gtk_box_pack_start (GTK_BOX (outer), ((tabview *)cv)->b1, 0, 0, 0);
+		hc_box_pack_start (outer, ((tabview *)cv)->b2, FALSE, FALSE, 0);
+		hc_box_pack_start (outer, ((tabview *)cv)->b1, FALSE, FALSE, 0);
 	}
 
 	button = gtkutil_button (outer, "window-close", NULL, cv_tabs_xclick_cb,
 									 cv, 0);
+#if HC_GTK4
+	gtk_button_set_has_frame (GTK_BUTTON (button), FALSE);
+#else
 	gtk_button_set_relief (GTK_BUTTON (button), GTK_RELIEF_NONE);
+#endif
 	gtk_widget_set_can_focus (button, FALSE);
 
-	gtk_container_add (GTK_CONTAINER (cv->box), outer);
+	hc_box_pack_start (cv->box, outer, FALSE, FALSE, 0);
 }
 
 static void
@@ -388,7 +486,7 @@ tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 
 	if (!cv->sorted)
 	{
-		gtk_box_pack_start (GTK_BOX (box), tab, 0, 0, 0);
+		hc_box_pack_start (box, tab, 0, 0, 0);
 		gtk_widget_show (tab);
 		return;
 	}
@@ -399,7 +497,7 @@ tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 	/* userdata, passed to mg_tabs_compare() */
 	b = ch->userdata;
 
-	list = gtk_container_get_children (GTK_CONTAINER (box));
+	list = hc_container_get_children (box);
 	while (list)
 	{
 		child = list->data;
@@ -409,7 +507,7 @@ tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 
 			if (ch->tag == 0 && cv->cb_compare (a, b) > 0)
 			{
-				gtk_box_pack_start (GTK_BOX (box), tab, 0, 0, 0);
+				hc_box_pack_start (box, tab, 0, 0, 0);
 				gtk_box_reorder_child (GTK_BOX (box), tab, ++i);
 				gtk_widget_show (tab);
 				return;
@@ -420,7 +518,7 @@ tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 	}
 
 	/* append */
-	gtk_box_pack_start (GTK_BOX (box), tab, 0, 0, 0);
+	hc_box_pack_start (box, tab, 0, 0, 0);
 	gtk_box_reorder_child (GTK_BOX (box), tab, i);
 	gtk_widget_show (tab);
 }
@@ -436,7 +534,7 @@ cv_tabs_prune (chanview *cv)
 	int empty;
 
 	inner = ((tabview *)cv)->inner;
-	boxes = gtk_container_get_children (GTK_CONTAINER (inner));
+	boxes = hc_container_get_children (inner);
 	while (boxes)
 	{
 		child = boxes->data;
@@ -445,7 +543,7 @@ cv_tabs_prune (chanview *cv)
 
 		/* check if the box is empty (except a vseperator) */
 		empty = TRUE;
-		children = gtk_container_get_children (GTK_CONTAINER (box));
+		children = hc_container_get_children (box);
 		while (children)
 		{
 			if (!GTK_IS_SEPARATOR ((GtkWidget *)children->data))
@@ -457,7 +555,7 @@ cv_tabs_prune (chanview *cv)
 		}
 
 		if (empty)
-			gtk_widget_destroy (box);
+			hc_widget_destroy (box);
 	}
 }
 
@@ -471,7 +569,7 @@ tab_add_real (chanview *cv, GtkWidget *tab, chan *ch)
 
 	inner = ((tabview *)cv)->inner;
 	/* see if a family for this tab already exists */
-	boxes = gtk_container_get_children (GTK_CONTAINER (inner));
+	boxes = hc_container_get_children (inner);
 	while (boxes)
 	{
 		child = boxes->data;
@@ -488,7 +586,7 @@ tab_add_real (chanview *cv, GtkWidget *tab, chan *ch)
 
 		/* check if the box is empty (except a vseperator) */
 		empty = TRUE;
-		children = gtk_container_get_children (GTK_CONTAINER (box));
+		children = hc_container_get_children (box);
 		while (children)
 		{
 			if (!GTK_IS_SEPARATOR ((GtkWidget *)children->data))
@@ -500,7 +598,7 @@ tab_add_real (chanview *cv, GtkWidget *tab, chan *ch)
 		}
 
 		if (empty)
-			gtk_widget_destroy (box);
+			hc_widget_destroy (box);
 	}
 
 	/* create a new family box */
@@ -516,21 +614,30 @@ tab_add_real (chanview *cv, GtkWidget *tab, chan *ch)
 		sep = gtk_separator_new (GTK_ORIENTATION_VERTICAL);
 	}
 
-	gtk_box_pack_end (GTK_BOX (box), sep, 0, 0, 4);
+	hc_box_pack_end (box, sep, 0, 0, 4);
 	gtk_widget_show (sep);
-	gtk_box_pack_start (GTK_BOX (inner), box, 0, 0, 0);
+	hc_box_pack_start (inner, box, 0, 0, 0);
 	g_object_set_data (G_OBJECT (box), "f", ch->family);
-	gtk_box_pack_start (GTK_BOX (box), tab, 0, 0, 0);
+	hc_box_pack_start (box, tab, 0, 0, 0);
 	gtk_widget_show (tab);
 	gtk_widget_show (box);
 	gtk_widget_queue_resize (gtk_widget_get_parent(inner));
 }
 
+/*
+ * Ignore enter/leave events to avoid prelights on tabs
+ * GTK3: Uses GdkEventCrossing from enter/leave_notify_event signals
+ * GTK4: Uses GtkEventControllerMotion - but we can just not connect handlers
+ */
+#if HC_GTK4
+/* GTK4: Simply don't connect prelight signals - no callback needed */
+#else /* GTK3 */
 static gboolean
 tab_ignore_cb (GtkWidget *widget, GdkEventCrossing *event, gpointer user_data)
 {
 	return TRUE;
 }
+#endif
 
 /* called when a tab is clicked (button down) */
 
@@ -570,11 +677,38 @@ tab_toggled_cb (GtkToggleButton *tab, chan *ch)
 	tab_pressed_cb (tab, ch);
 }
 
+/*
+ * Tab click handler (for context menus and middle-click close)
+ * GTK3: Uses GdkEventButton from button_press_event signal
+ * GTK4: Uses GtkGestureClick with different signature
+ */
+#if HC_GTK4
+static void
+tab_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chan *ch)
+{
+	guint button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+	(void)n_press; (void)x; (void)y;
+
+	/* Middle-click to close tab */
+	if (button == 2 && prefs.hex_gui_tab_middleclose)
+	{
+		ch->cv->cb_xbutton (ch->cv, ch, ch->tag, ch->userdata);
+		return;
+	}
+
+	/* Right-click for context menu */
+	if (button == 3)
+	{
+		ch->cv->cb_contextmenu (ch->cv, ch, ch->tag, ch->userdata, NULL);
+	}
+}
+#else /* GTK3 */
 static gboolean
 tab_click_cb (GtkWidget *wid, GdkEventButton *event, chan *ch)
 {
 	return ch->cv->cb_contextmenu (ch->cv, ch, ch->tag, ch->userdata, event);
 }
+#endif
 
 static void *
 cv_tabs_add (chanview *cv, chan *ch, char *name, GtkTreeIter *parent)
@@ -584,6 +718,12 @@ cv_tabs_add (chanview *cv, chan *ch, char *name, GtkTreeIter *parent)
 	but = gtk_toggle_button_new_with_label (name);
 	gtk_widget_set_name (but, "hexchat-tab");
 	g_object_set_data (G_OBJECT (but), "c", ch);
+
+#if HC_GTK4
+	/* GTK4: Use gesture for right-click context menu */
+	hc_add_click_gesture (but, G_CALLBACK (tab_click_cb), NULL, ch);
+	/* GTK4: No need to connect enter/leave signals - prelights handled by CSS */
+#else /* GTK3 */
 	/* used to trap right-clicks */
 	g_signal_connect (G_OBJECT (but), "button_press_event",
 						 	G_CALLBACK (tab_click_cb), ch);
@@ -592,6 +732,8 @@ cv_tabs_add (chanview *cv, chan *ch, char *name, GtkTreeIter *parent)
 						 	G_CALLBACK (tab_ignore_cb), NULL);
 	g_signal_connect (G_OBJECT (but), "leave_notify_event",
 						 	G_CALLBACK (tab_ignore_cb), NULL);
+#endif
+
 	g_signal_connect (G_OBJECT (but), "pressed",
 							G_CALLBACK (tab_pressed_cb), ch);
 	/* for keyboard */
@@ -634,12 +776,12 @@ tab_group_for_each_tab (chanview *cv,
 	int i;
 
 	innerbox = (GtkBox *) ((tabview *)cv)->inner;
-	boxes = gtk_container_get_children (GTK_CONTAINER (innerbox));
+	boxes = hc_container_get_children (GTK_WIDGET (innerbox));
 	i = 0;
 	while (boxes)
 	{
 		child = boxes->data;
-		tabs = gtk_container_get_children (GTK_CONTAINER (child));
+		tabs = hc_container_get_children (child);
 
 		while (tabs)
 		{
@@ -735,7 +877,7 @@ cv_tabs_move_focus (chanview *cv, gboolean relative, int num)
 static void
 cv_tabs_remove (chan *ch)
 {
-	gtk_widget_destroy (ch->impl);
+	hc_widget_destroy (ch->impl);
 	ch->impl = NULL;
 
 	cv_tabs_prune (ch->cv);
@@ -749,7 +891,7 @@ cv_tabs_move (chan *ch, int delta)
 	GList *list;
 	GtkWidget *parent = gtk_widget_get_parent(GTK_WIDGET (ch->impl));
 
-	for (list = gtk_container_get_children (GTK_CONTAINER (parent)); list; list = list->next)
+	for (list = hc_container_get_children (parent); list; list = list->next)
 	{
 		GtkWidget *child_entry;
 
@@ -777,7 +919,7 @@ cv_tabs_move_family (chan *ch, int delta)
 
 	/* find position of tab's family */
 	i = 0;
-	for (list = gtk_container_get_children (GTK_CONTAINER (((tabview *)ch->cv)->inner)); list; list = list->next)
+	for (list = hc_container_get_children (((tabview *)ch->cv)->inner); list; list = list->next)
 	{
 		GtkWidget *child_entry;
 		void *fam;
@@ -800,7 +942,7 @@ static void
 cv_tabs_cleanup (chanview *cv)
 {
 	if (cv->box)
-		gtk_widget_destroy (((tabview *)cv)->outer);
+		hc_widget_destroy (((tabview *)cv)->outer);
 }
 
 static void

@@ -46,7 +46,7 @@ enum
 	COL_NICK=1,		/* char * */
 	COL_HOST=2,		/* char * */
 	COL_USER=3,		/* struct User * */
-	COL_GDKCOLOR=4	/* GdkColor * */
+	COL_GDKCOLOR=4	/* GdkRGBA * - foreground color */
 };
 
 
@@ -268,13 +268,13 @@ void
 userlist_set_value (GtkWidget *treeview, gfloat val)
 {
 	gtk_adjustment_set_value (
-			gtk_tree_view_get_vadjustment (GTK_TREE_VIEW (treeview)), val);
+			hc_tree_view_get_vadjustment (treeview), val);
 }
 
 gfloat
 userlist_get_value (GtkWidget *treeview)
 {
-	return gtk_adjustment_get_value (gtk_tree_view_get_vadjustment (GTK_TREE_VIEW (treeview)));
+	return gtk_adjustment_get_value (hc_tree_view_get_vadjustment (treeview));
 }
 
 int
@@ -393,6 +393,88 @@ fe_userlist_clear (session *sess)
 	gtk_list_store_clear (sess->res->user_model);
 }
 
+#if HC_GTK4
+/* GTK4: File drop handler for userlist - drops file on the user under cursor */
+static gboolean
+userlist_file_drop_cb (GtkDropTarget *target, const GValue *value,
+                       double x, double y, gpointer user_data)
+{
+	GtkWidget *treeview = user_data;
+	GFile *file;
+	char *uri;
+	struct User *user;
+	GtkTreePath *path;
+	GtkTreeModel *model;
+	GtkTreeIter iter;
+
+	(void)target;
+
+	if (!G_VALUE_HOLDS (value, G_TYPE_FILE))
+		return FALSE;
+
+	file = g_value_get_object (value);
+	if (!file)
+		return FALSE;
+
+	/* Find user under drop position */
+	if (!gtk_tree_view_get_path_at_pos (GTK_TREE_VIEW (treeview), (int)x, (int)y,
+	                                    &path, NULL, NULL, NULL))
+		return FALSE;
+
+	model = gtk_tree_view_get_model (GTK_TREE_VIEW (treeview));
+	if (!gtk_tree_model_get_iter (model, &iter, path))
+	{
+		gtk_tree_path_free (path);
+		return FALSE;
+	}
+	gtk_tree_path_free (path);
+
+	gtk_tree_model_get (model, &iter, COL_USER, &user, -1);
+
+	uri = g_file_get_uri (file);
+	if (uri && user)
+	{
+		mg_dnd_drop_file (current_sess, user->nick, uri);
+		g_free (uri);
+	}
+
+	return TRUE;
+}
+
+/* GTK4: Highlight user under cursor during drag */
+static GdkDragAction
+userlist_drop_motion_cb (GtkDropTarget *target, double x, double y, gpointer user_data)
+{
+	GtkWidget *treeview = user_data;
+	GtkTreePath *path;
+	GtkTreeSelection *sel;
+
+	(void)target;
+
+	if (gtk_tree_view_get_path_at_pos (GTK_TREE_VIEW (treeview), (int)x, (int)y,
+	                                   &path, NULL, NULL, NULL))
+	{
+		sel = gtk_tree_view_get_selection (GTK_TREE_VIEW (treeview));
+		gtk_tree_selection_unselect_all (sel);
+		gtk_tree_selection_select_path (sel, path);
+		gtk_tree_path_free (path);
+	}
+
+	return GDK_ACTION_COPY;
+}
+
+/* GTK4: Clear selection when drag leaves */
+static void
+userlist_drop_leave_cb (GtkDropTarget *target, gpointer user_data)
+{
+	GtkWidget *treeview = user_data;
+
+	(void)target;
+	gtk_tree_selection_unselect_all (gtk_tree_view_get_selection (GTK_TREE_VIEW (treeview)));
+}
+
+#else /* GTK3 */
+
 static void
 userlist_dnd_drop (GtkTreeView *widget, GdkDragContext *context,
 						 gint x, gint y, GtkSelectionData *selection_data,
@@ -445,6 +527,8 @@ userlist_dnd_leave (GtkTreeView *widget, GdkDragContext *context, guint ttime)
 	return TRUE;
 }
 
+#endif /* HC_GTK4 */
+
 static int
 userlist_alpha_cmp (GtkTreeModel *model, GtkTreeIter *iter_a, GtkTreeIter *iter_b, gpointer userdata)
 {
@@ -475,7 +559,7 @@ userlist_create_model (session *sess)
 	GtkSortType sort_type;
 
 	store = gtk_list_store_new (5, GDK_TYPE_PIXBUF, G_TYPE_STRING, G_TYPE_STRING,
-										G_TYPE_POINTER, GDK_TYPE_COLOR);
+										G_TYPE_POINTER, GDK_TYPE_RGBA);
 
 	switch (prefs.hex_gui_ulist_sort)
 	{
@@ -519,7 +603,7 @@ userlist_add_columns (GtkTreeView * treeview)
 		g_object_set (G_OBJECT (renderer), "ypad", 0, NULL);
 	gtk_tree_view_insert_column_with_attributes (GTK_TREE_VIEW (treeview),
 																-1, NULL, renderer,
-																"pixbuf", 0, NULL);
+																"pixbuf", COL_PIX, NULL);
 
 	/* nick column */
 	renderer = gtk_cell_renderer_text_new ();
@@ -528,7 +612,8 @@ userlist_add_columns (GtkTreeView * treeview)
 	gtk_cell_renderer_text_set_fixed_height_from_font (GTK_CELL_RENDERER_TEXT (renderer), 1);
 	gtk_tree_view_insert_column_with_attributes (GTK_TREE_VIEW (treeview),
 																-1, NULL, renderer,
-													"text", 1, "foreground-gdk", 4, NULL);
+																"text", COL_NICK,
+																"foreground-rgba", COL_GDKCOLOR, NULL);
 
 	if (prefs.hex_gui_ulist_show_hosts)
 	{
@@ -539,10 +624,91 @@ userlist_add_columns (GtkTreeView * treeview)
 		gtk_cell_renderer_text_set_fixed_height_from_font (GTK_CELL_RENDERER_TEXT (renderer), 1);
 		gtk_tree_view_insert_column_with_attributes (GTK_TREE_VIEW (treeview),
 																	-1, NULL, renderer,
-																	"text", 2, NULL);
+																	"text", COL_HOST, NULL);
 	}
 }
 
+/*
+ * Click handler for userlist
+ * GTK3: Uses GdkEventButton from "button_press_event" signal
+ * GTK4: Uses GtkGestureClick with different signature
+ */
+#if HC_GTK4
+static void
+userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gpointer userdata)
+{
+	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+	char **nicks;
+	int i;
+	GtkTreeSelection *sel;
+	GtkTreePath *path;
+	int button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+	GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
+
+	if (!(state & GDK_CONTROL_MASK) &&
+		n_press == 2 && prefs.hex_gui_ulist_doubleclick[0])
+	{
+		nicks = userlist_selection_list (widget, &i);
+		if (nicks)
+		{
+			nick_command_parse (current_sess, prefs.hex_gui_ulist_doubleclick, nicks[0],
+									  nicks[0]);
+			while (i)
+			{
+				i--;
+				g_free (nicks[i]);
+			}
+			g_free (nicks);
+		}
+		return;
+	}
+
+	if (button == 3)
+	{
+		/* do we have a multi-selection? */
+		nicks = userlist_selection_list (widget, &i);
+		if (nicks && i > 1)
+		{
+			menu_nickmenu (current_sess, NULL, nicks[0], i);
+			while (i)
+			{
+				i--;
+				g_free (nicks[i]);
+			}
+			g_free (nicks);
+			return;
+		}
+		if (nicks)
+		{
+			g_free (nicks[0]);
+			g_free (nicks);
+		}
+
+		sel = gtk_tree_view_get_selection (GTK_TREE_VIEW (widget));
+		if (gtk_tree_view_get_path_at_pos (GTK_TREE_VIEW (widget),
+			 (int)x, (int)y, &path, 0, 0, 0))
+		{
+			gtk_tree_selection_unselect_all (sel);
+			gtk_tree_selection_select_path (sel, path);
+			gtk_tree_path_free (path);
+			nicks = userlist_selection_list (widget, &i);
+			if (nicks)
+			{
+				menu_nickmenu (current_sess, NULL, nicks[0], i);
+				while (i)
+				{
+					i--;
+					g_free (nicks[i]);
+				}
+				g_free (nicks);
+			}
+		} else
+		{
+			gtk_tree_selection_unselect_all (sel);
+		}
+	}
+}
+#else /* GTK3 */
 static gint
 userlist_click_cb (GtkWidget *widget, GdkEventButton *event, gpointer userdata)
 {
@@ -621,7 +787,37 @@ userlist_click_cb (GtkWidget *widget, GdkEventButton *event, gpointer userdata)
 
 	return FALSE;
 }
+#endif
 
+/*
+ * Key handler for userlist - forwards printable keys to input box
+ * GTK3: Uses GdkEventKey from "key_press_event" signal
+ * GTK4: Uses GtkEventControllerKey with different signature
+ */
+#if HC_GTK4
+static gboolean
+userlist_key_cb (GtkEventControllerKey *controller, guint keyval,
+                 guint keycode, GdkModifierType state, gpointer userdata)
+{
+	if (keyval >= GDK_KEY_asterisk && keyval <= GDK_KEY_z)
+	{
+		/* dirty trick to avoid auto-selection */
+		SPELL_ENTRY_SET_EDITABLE (current_sess->gui->input_box, FALSE);
+		gtk_widget_grab_focus (current_sess->gui->input_box);
+		SPELL_ENTRY_SET_EDITABLE (current_sess->gui->input_box, TRUE);
+		/* GTK4: Cannot forward events directly, insert the character instead */
+		if (keyval >= GDK_KEY_space && keyval <= GDK_KEY_asciitilde)
+		{
+			char buf[2] = { (char)keyval, 0 };
+			int pos = -1;
+			gtk_editable_insert_text (GTK_EDITABLE (current_sess->gui->input_box), buf, 1, &pos);
+		}
+		return TRUE;
+	}
+
+	return FALSE;
+}
+#else /* GTK3 */
 static gboolean
 userlist_key_cb (GtkWidget *wid, GdkEventKey *evt, gpointer userdata)
 {
@@ -637,11 +833,13 @@ userlist_key_cb (GtkWidget *wid, GdkEventKey *evt, gpointer userdata)
 
 	return FALSE;
 }
+#endif
 
 GtkWidget *
 userlist_create (GtkWidget *box)
 {
 	GtkWidget *sw, *treeview;
+#if !HC_GTK4
 	static const GtkTargetEntry dnd_dest_targets[] =
 	{
 		{"text/uri-list", 0, 1},
@@ -651,26 +849,51 @@ userlist_create (GtkWidget *box)
 	{
 		{"HEXCHAT_USERLIST", GTK_TARGET_SAME_APP, 75 }
 	};
+#endif
 
-	sw = gtk_scrolled_window_new (NULL, NULL);
+	sw = hc_scrolled_window_new ();
+#if !HC_GTK4
 	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (sw),
 													 GTK_SHADOW_ETCHED_IN);
+#endif
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (sw),
 											  prefs.hex_gui_ulist_show_hosts ?
 												GTK_POLICY_AUTOMATIC :
 												GTK_POLICY_NEVER,
 											  GTK_POLICY_AUTOMATIC);
-	gtk_box_pack_start (GTK_BOX (box), sw, TRUE, TRUE, 0);
-	gtk_widget_show (sw);
+	gtk_widget_set_hexpand (sw, TRUE);
+	hc_box_pack_start (box, sw, TRUE, TRUE, 0);
+	hc_widget_show (sw);
 
 	treeview = gtk_tree_view_new ();
 	gtk_widget_set_name (treeview, "hexchat-userlist");
+	gtk_widget_set_can_focus (treeview, FALSE);
 	gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (treeview), FALSE);
 	gtk_tree_selection_set_mode (gtk_tree_view_get_selection
 										  (GTK_TREE_VIEW (treeview)),
 										  GTK_SELECTION_MULTIPLE);
 
-	/* set up drops */
+#if HC_GTK4
+	{
+		/* GTK4: DND using GtkDropTarget and GtkDragSource */
+		GtkDropTarget *drop_target;
+
+		/* File drops for DCC (drop file on user to send) */
+		drop_target = gtk_drop_target_new (G_TYPE_FILE, GDK_ACTION_COPY | GDK_ACTION_MOVE);
+		g_signal_connect (drop_target, "drop", G_CALLBACK (userlist_file_drop_cb), treeview);
+		g_signal_connect (drop_target, "motion", G_CALLBACK (userlist_drop_motion_cb), treeview);
+		g_signal_connect (drop_target, "leave", G_CALLBACK (userlist_drop_leave_cb), treeview);
+		gtk_widget_add_controller (treeview, GTK_EVENT_CONTROLLER (drop_target));
+
+		/* Layout swapping drag source (drag userlist to reposition) */
+		mg_setup_userlist_drag_source (treeview);
+	}
+
+	/* GTK4: Use event controllers for click and key events */
+	hc_add_click_gesture (treeview, G_CALLBACK (userlist_click_cb), NULL, NULL);
+	hc_add_key_controller (treeview, G_CALLBACK (userlist_key_cb), NULL, NULL);
+#else
+	/* GTK3: set up drops */
 	gtk_drag_dest_set (treeview, GTK_DEST_DEFAULT_ALL, dnd_dest_targets, 2,
 							 GDK_ACTION_MOVE | GDK_ACTION_COPY | GDK_ACTION_LINK);
 	gtk_drag_source_set (treeview, GDK_BUTTON1_MASK, dnd_src_target, 1, GDK_ACTION_MOVE);
@@ -697,11 +920,12 @@ userlist_create (GtkWidget *box)
 							G_CALLBACK (mg_drag_motion_cb), NULL);
 	g_signal_connect (G_OBJECT (treeview), "drag_end",
 							G_CALLBACK (mg_drag_end_cb), NULL);
+#endif
 
 	userlist_add_columns (GTK_TREE_VIEW (treeview));
 
-	gtk_container_add (GTK_CONTAINER (sw), treeview);
-	gtk_widget_show (treeview);
+	hc_scrolled_window_set_child (sw, treeview);
+	hc_widget_show (treeview);
 
 	return treeview;
 }

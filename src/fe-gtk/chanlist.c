@@ -75,14 +75,14 @@ chanlist_match (server *serv, const char *str)
 	switch (serv->gui->chanlist_search_type)
 	{
 	case 1:
-		return match (gtk_entry_get_text (GTK_ENTRY (serv->gui->chanlist_wild)), str);
+		return match (hc_entry_get_text (serv->gui->chanlist_wild), str);
 	case 2:
 		if (!serv->gui->have_regex)
 			return 0;
 
 		return g_regex_match (serv->gui->chanlist_match_regex, str, 0, NULL);
 	default:	/* case 0: */
-		return nocasestrstr (str, gtk_entry_get_text (GTK_ENTRY (serv->gui->chanlist_wild))) ? 1 : 0;
+		return nocasestrstr (str, hc_entry_get_text (serv->gui->chanlist_wild)) ? 1 : 0;
 	}
 }
 
@@ -225,7 +225,7 @@ chanlist_place_row_in_gui (server *serv, chanlistrow *next_row, gboolean force)
 		return;
 	}
 
-	if (gtk_entry_get_text (GTK_ENTRY (serv->gui->chanlist_wild))[0])
+	if (hc_entry_get_text (serv->gui->chanlist_wild)[0])
 	{
 		/* Check what the user wants to match. If both buttons or _neither_
 		 * button is checked, look for match in both by default. 
@@ -404,7 +404,7 @@ chanlist_search_pressed (GtkButton * button, server *serv)
 static void
 chanlist_find_cb (GtkWidget * wid, server *serv)
 {
-	const char *pattern = gtk_entry_get_text (GTK_ENTRY (wid));
+	const char *pattern = hc_entry_get_text (wid);
 
 	/* recompile the regular expression. */
 	if (serv->gui->have_regex)
@@ -423,13 +423,13 @@ chanlist_find_cb (GtkWidget * wid, server *serv)
 static void
 chanlist_match_channel_button_toggled (GtkWidget * wid, server *serv)
 {
-	serv->gui->chanlist_match_wants_channel = gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (wid));
+	serv->gui->chanlist_match_wants_channel = hc_check_button_get_active (wid);
 }
 
 static void
 chanlist_match_topic_button_toggled (GtkWidget * wid, server *serv)
 {
-	serv->gui->chanlist_match_wants_topic = gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (wid));
+	serv->gui->chanlist_match_wants_topic = hc_check_button_get_active (wid);
 }
 
 static char *
@@ -567,7 +567,7 @@ chanlist_dclick_cb (GtkTreeView *view, GtkTreePath *path,
 static void
 chanlist_menu_destroy (GtkWidget *menu, gpointer userdata)
 {
-	gtk_widget_destroy (menu);
+	hc_widget_destroy (menu);
 	g_object_unref (menu);
 }
 
@@ -593,6 +593,54 @@ chanlist_copytopic (GtkWidget *item, server *serv)
 	}
 }
 
+/*
+ * Right-click context menu handler for channel list
+ * GTK3: Uses GdkEventButton from "button-press-event" signal
+ * GTK4: Uses GtkGestureClick and GtkPopoverMenu
+ */
+#if HC_GTK4
+static void
+chanlist_button_cb (GtkGestureClick *gesture, int n_press, double x, double y, server *serv)
+{
+	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+	GtkTreeView *tree = GTK_TREE_VIEW (widget);
+	GtkTreeSelection *sel;
+	GtkTreePath *path;
+	GtkWidget *popover;
+	GMenu *gmenu;
+	GMenuItem *item;
+	int button;
+
+	button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+
+	if (button != 3)
+		return;
+
+	if (!gtk_tree_view_get_path_at_pos (tree, (int)x, (int)y, &path, 0, 0, 0))
+		return;
+
+	/* select what they right-clicked on */
+	sel = gtk_tree_view_get_selection (tree);
+	gtk_tree_selection_unselect_all (sel);
+	gtk_tree_selection_select_path (sel, path);
+	gtk_tree_path_free (path);
+
+	/* GTK4: Use GMenu and GtkPopoverMenu for context menus */
+	gmenu = g_menu_new ();
+	g_menu_append (gmenu, _("_Join Channel"), "chanlist.join");
+	g_menu_append (gmenu, _("_Copy Channel Name"), "chanlist.copy-channel");
+	g_menu_append (gmenu, _("Copy _Topic Text"), "chanlist.copy-topic");
+	/* TODO: menu_addfavoritemenu integration for GTK4 */
+
+	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+	gtk_widget_set_parent (popover, widget);
+	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+		&(GdkRectangle){ (int)x, (int)y, 1, 1 });
+	gtk_popover_popup (GTK_POPOVER (popover));
+
+	g_object_unref (gmenu);
+}
+#else /* GTK3 */
 static gboolean
 chanlist_button_cb (GtkTreeView *tree, GdkEventButton *event, server *serv)
 {
@@ -636,6 +684,7 @@ chanlist_button_cb (GtkTreeView *tree, GdkEventButton *event, server *serv)
 
 	return TRUE;
 }
+#endif
 
 static void
 chanlist_destroy_widget (GtkWidget *wid, server *serv)
@@ -752,32 +801,43 @@ chanlist_opengui (server *serv, int do_refresh)
 								serv, 640, 480, &vbox, serv);
 	gtkutil_destroy_on_esc (serv->gui->chanlist_window);
 
-	gtk_container_set_border_width (GTK_CONTAINER (vbox), 6);
+#if !HC_GTK4
+	hc_container_set_border_width (vbox, 6);
+#endif
 	gtk_box_set_spacing (GTK_BOX (vbox), 12);
 
 	/* make a label to store the user/channel info */
 	wid = gtk_label_new (NULL);
-	gtk_box_pack_start (GTK_BOX (vbox), wid, 0, 0, 0);
-	gtk_widget_show (wid);
+	hc_box_pack_start (vbox, wid, FALSE, FALSE, 0);
+	hc_widget_show (wid);
 	serv->gui->chanlist_label = wid;
 
 	/* ============================================================= */
 
 	store = (GtkListStore *) custom_list_new();
 	view = gtkutil_treeview_new (vbox, GTK_TREE_MODEL (store), NULL, -1);
+#if !HC_GTK4
 	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (gtk_widget_get_parent (view)),
 													 GTK_SHADOW_IN);
+#endif
 	serv->gui->chanlist_list = view;
 
 	g_signal_connect (G_OBJECT (view), "row_activated",
 							G_CALLBACK (chanlist_dclick_cb), serv);
+#if HC_GTK4
+	/* GTK4: Use gesture controller for button press */
+	hc_add_click_gesture (view, G_CALLBACK (chanlist_button_cb), NULL, serv);
+#else
 	g_signal_connect (G_OBJECT (view), "button-press-event",
 							G_CALLBACK (chanlist_button_cb), serv);
+#endif
 
 	chanlist_add_column (view, COL_CHANNEL, 96, _("Channel"), FALSE);
 	chanlist_add_column (view, COL_USERS,   50, _("Users"),   TRUE);
 	chanlist_add_column (view, COL_TOPIC,   50, _("Topic"),   FALSE);
+#if !HC_GTK4
 	gtk_tree_view_set_rules_hint (GTK_TREE_VIEW (view), TRUE);
+#endif
 	/* this is a speed up, but no horizontal scrollbar :( */
 	/*gtk_tree_view_set_fixed_height_mode (GTK_TREE_VIEW (view), TRUE);*/
 	gtk_widget_show (view);
@@ -787,7 +847,7 @@ chanlist_opengui (server *serv, int do_refresh)
 	table = gtk_grid_new ();
 	gtk_grid_set_column_spacing (GTK_GRID (table), 12);
 	gtk_grid_set_row_spacing (GTK_GRID (table), 3);
-	gtk_box_pack_start (GTK_BOX (vbox), table, 0, 1, 0);
+	hc_box_pack_start (vbox, table, FALSE, TRUE, 0);
 	gtk_widget_show (table);
 
 	wid = gtkutil_button (NULL, "edit-find", 0, chanlist_search_pressed, serv,
@@ -824,7 +884,7 @@ chanlist_opengui (server *serv, int do_refresh)
 	gtk_widget_show (hbox);
 
 	wid = gtk_label_new (_("channels with"));
-	gtk_box_pack_start (GTK_BOX (hbox), wid, 0, 0, 0);
+	hc_box_pack_start (hbox, wid, FALSE, FALSE, 0);
 	gtk_widget_show (wid);
 
 	wid = gtk_spin_button_new_with_range (1, 999999, 1);
@@ -832,12 +892,12 @@ chanlist_opengui (server *serv, int do_refresh)
 										serv->gui->chanlist_minusers);
 	g_signal_connect (G_OBJECT (wid), "value_changed",
 							G_CALLBACK (chanlist_minusers), serv);
-	gtk_box_pack_start (GTK_BOX (hbox), wid, 0, 0, 0);
+	hc_box_pack_start (hbox, wid, FALSE, FALSE, 0);
 	gtk_widget_show (wid);
 	serv->gui->chanlist_min_spin = wid;
 
 	wid = gtk_label_new (_("to"));
-	gtk_box_pack_start (GTK_BOX (hbox), wid, 0, 0, 0);
+	hc_box_pack_start (hbox, wid, FALSE, FALSE, 0);
 	gtk_widget_show (wid);
 
 	wid = gtk_spin_button_new_with_range (1, 999999, 1);
@@ -845,11 +905,11 @@ chanlist_opengui (server *serv, int do_refresh)
 										serv->gui->chanlist_maxusers);
 	g_signal_connect (G_OBJECT (wid), "value_changed",
 							G_CALLBACK (chanlist_maxusers), serv);
-	gtk_box_pack_start (GTK_BOX (hbox), wid, 0, 0, 0);
+	hc_box_pack_start (hbox, wid, FALSE, FALSE, 0);
 	gtk_widget_show (wid);
 
 	wid = gtk_label_new (_("users."));
-	gtk_box_pack_start (GTK_BOX (hbox), wid, 0, 0, 0);
+	hc_box_pack_start (hbox, wid, FALSE, FALSE, 0);
 	gtk_widget_show (wid);
 
 	/* ============================================================= */
@@ -866,18 +926,18 @@ chanlist_opengui (server *serv, int do_refresh)
 	gtk_widget_show (hbox);
 
 	wid = gtk_check_button_new_with_label (_("Channel name"));
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (wid), TRUE);
+	hc_check_button_set_active (wid, TRUE);
 	g_signal_connect (G_OBJECT (wid), "toggled",
 							  G_CALLBACK(chanlist_match_channel_button_toggled), serv);
-	gtk_box_pack_start (GTK_BOX (hbox), wid, 0, 0, 0);
+	hc_box_pack_start (hbox, wid, FALSE, FALSE, 0);
 	gtk_widget_show (wid);
 
 	wid = gtk_check_button_new_with_label (_("Topic"));
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (wid), TRUE);
+	hc_check_button_set_active (wid, TRUE);
 	g_signal_connect (G_OBJECT (wid), "toggled",
 							  G_CALLBACK (chanlist_match_topic_button_toggled),
 							  serv);
-	gtk_box_pack_start (GTK_BOX (hbox), wid, 0, 0, 0);
+	hc_box_pack_start (hbox, wid, FALSE, FALSE, 0);
 	gtk_widget_show (wid);
 
 	serv->gui->chanlist_match_wants_channel = 1;

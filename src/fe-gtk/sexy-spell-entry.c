@@ -49,6 +49,7 @@
 #include "../common/hexchatc.h"
 #include "palette.h"
 #include "xtext.h"
+#include "gtk-compat.h"
 
 /*
  * Bunch of poop to make enchant into a runtime dependency rather than a
@@ -99,14 +100,21 @@ static void sexy_spell_entry_editable_init (GtkEditableInterface *iface);
 static void sexy_spell_entry_init(SexySpellEntry *entry);
 static void sexy_spell_entry_finalize(GObject *obj);
 static void sexy_spell_entry_destroy(GObject *obj);
+#if HC_GTK4
+static void sexy_spell_entry_snapshot(GtkWidget *widget, GtkSnapshot *snapshot);
+static void sexy_spell_entry_button_press(GtkGestureClick *gesture, int n_press, double x, double y, SexySpellEntry *entry);
+#else
 static gboolean sexy_spell_entry_draw(GtkWidget *widget, cairo_t *cr);
 static gint sexy_spell_entry_button_press(GtkWidget *widget, GdkEventButton *event);
+#endif
 
 /* GtkEditable handlers */
 static void sexy_spell_entry_changed(GtkEditable *editable, gpointer data);
 
 /* Other handlers */
+#if !HC_GTK4
 static gboolean sexy_spell_entry_popup_menu(GtkWidget *widget, SexySpellEntry *entry);
+#endif
 
 /* Internal utility functions */
 static gint       gtk_entry_find_position                     (GtkEntry             *entry,
@@ -243,8 +251,13 @@ sexy_spell_entry_class_init(SexySpellEntryClass *klass)
 
 	object_class->dispose = sexy_spell_entry_destroy;
 
+#if HC_GTK4
+	widget_class->snapshot = sexy_spell_entry_snapshot;
+	/* button_press is handled via GtkGestureClick in sexy_spell_entry_init() */
+#else
 	widget_class->draw = sexy_spell_entry_draw;
 	widget_class->button_press_event = sexy_spell_entry_button_press;
+#endif
 
 	/**
 	 * SexySpellEntry::word-check:
@@ -283,7 +296,7 @@ sexy_spell_entry_editable_init (GtkEditableInterface *iface)
 static gint
 sexy_spell_entry_get_preedit_length (GtkEntry *entry)
 {
-	const gchar *text = gtk_entry_get_text (entry);
+	const gchar *text = hc_entry_get_text (GTK_WIDGET(entry));
 	PangoLayout *layout = gtk_entry_get_layout (entry);
 	const gchar *layout_text = pango_layout_get_text (layout);
 	gint text_len = strlen (text);
@@ -481,7 +494,7 @@ get_word_extents_from_position(SexySpellEntry *entry, gint *start, gint *end, gu
 	if (entry->priv->words == NULL)
 		return;
 
-	text = gtk_entry_get_text(GTK_ENTRY(entry));
+	text = hc_entry_get_text(GTK_WIDGET(entry));
 	bytes_pos = (gint) (g_utf8_offset_to_pointer(text, position) - text);
 
 	for (i = 0; entry->priv->words[i]; i++) {
@@ -493,6 +506,12 @@ get_word_extents_from_position(SexySpellEntry *entry, gint *start, gint *end, gu
 		}
 	}
 }
+
+/*
+ * GTK3 Menu-based spell checking context menu functions.
+ * TODO: GTK4 removes GtkMenu/GtkMenuItem - needs complete rewrite using GtkPopoverMenu
+ */
+#if !HC_GTK4
 
 static void
 add_to_dictionary(GtkWidget *menuitem, SexySpellEntry *entry)
@@ -569,7 +588,7 @@ replace_word(GtkWidget *menuitem, SexySpellEntry *entry)
 
 	cursor = gtk_editable_get_position(GTK_EDITABLE(entry));
 	/* is the cursor at the end? If so, restore it there */
-	if (g_utf8_strlen(gtk_entry_get_text(GTK_ENTRY(entry)), -1) == cursor)
+	if (g_utf8_strlen(hc_entry_get_text(GTK_WIDGET(entry)), -1) == cursor)
 		cursor = -1;
 	else if(cursor > start && cursor <= end)
 		cursor = start;
@@ -608,19 +627,26 @@ build_suggestion_menu(SexySpellEntry *entry, GtkWidget *menu, struct EnchantDict
 		gtk_label_set_markup(GTK_LABEL(label), _("<i>(no suggestions)</i>"));
 
 		mi = gtk_separator_menu_item_new();
+#if HC_GTK4
+		/* GTK4: GtkSeparatorMenuItem doesn't allow adding children, so we use
+		 * a regular menu item with a label instead */
+		mi = gtk_menu_item_new();
+		gtk_menu_item_set_child(GTK_MENU_ITEM(mi), label);
+#else
 		gtk_container_add(GTK_CONTAINER(mi), label);
-		gtk_widget_show_all(mi);
+#endif
+		hc_widget_show_all(mi);
 		gtk_menu_shell_prepend(GTK_MENU_SHELL(menu), mi);
 	} else {
 		/* build a set of menus with suggestions */
 		for (i = 0; i < n_suggestions; i++) {
 			if ((i != 0) && (i % 10 == 0)) {
 				mi = gtk_separator_menu_item_new();
-				gtk_widget_show(mi);
+				hc_widget_show(mi);
 				gtk_menu_shell_append(GTK_MENU_SHELL(menu), mi);
 
 				mi = gtk_menu_item_new_with_label(_("More..."));
-				gtk_widget_show(mi);
+				hc_widget_show(mi);
 				gtk_menu_shell_append(GTK_MENU_SHELL(menu), mi);
 
 				menu = gtk_menu_new();
@@ -630,7 +656,7 @@ build_suggestion_menu(SexySpellEntry *entry, GtkWidget *menu, struct EnchantDict
 			mi = gtk_menu_item_new_with_label(suggestions[i]);
 			g_object_set_data(G_OBJECT(mi), "enchant-dict", dict);
 			g_signal_connect(G_OBJECT(mi), "activate", G_CALLBACK(replace_word), entry);
-			gtk_widget_show(mi);
+			hc_widget_show(mi);
 			gtk_menu_shell_append(GTK_MENU_SHELL(menu), mi);
 		}
 	}
@@ -677,7 +703,7 @@ build_spelling_menu(SexySpellEntry *entry, const gchar *word)
 			}
 			g_free(lang);
 
-			gtk_widget_show(mi);
+			hc_widget_show(mi);
 			gtk_menu_shell_append(GTK_MENU_SHELL(topmenu), mi);
 			menu = gtk_menu_new();
 			gtk_menu_item_set_submenu(GTK_MENU_ITEM(mi), menu);
@@ -687,7 +713,7 @@ build_spelling_menu(SexySpellEntry *entry, const gchar *word)
 
 	/* Separator */
 	mi = gtk_separator_menu_item_new ();
-	gtk_widget_show(mi);
+	hc_widget_show(mi);
 	gtk_menu_shell_append(GTK_MENU_SHELL(topmenu), mi);
 
 	/* + Add to Dictionary */
@@ -725,18 +751,18 @@ build_spelling_menu(SexySpellEntry *entry, const gchar *word)
 
 			g_signal_connect(G_OBJECT(submi), "activate", G_CALLBACK(add_to_dictionary), entry);
 
-			gtk_widget_show(submi);
+			hc_widget_show(submi);
 			gtk_menu_shell_append(GTK_MENU_SHELL(menu), submi);
 		}
 	}
 
-	gtk_widget_show_all(mi);
+	hc_widget_show_all(mi);
 	gtk_menu_shell_append(GTK_MENU_SHELL(topmenu), mi);
 
 	/* - Ignore All */
 	mi = gtk_menu_item_new_with_label(_("Ignore All"));
 	g_signal_connect(G_OBJECT(mi), "activate", G_CALLBACK(ignore_all), entry);
-	gtk_widget_show_all(mi);
+	hc_widget_show_all(mi);
 	gtk_menu_shell_append(GTK_MENU_SHELL(topmenu), mi);
 
 	return topmenu;
@@ -763,7 +789,7 @@ sexy_spell_entry_populate_popup(SexySpellEntry *entry, GtkMenu *menu, gpointer d
 
 	/* separator */
 	mi = gtk_separator_menu_item_new();
-	gtk_widget_show(mi);
+	hc_widget_show(mi);
 	gtk_menu_shell_prepend(GTK_MENU_SHELL(menu), mi);
 
 	/* Above the separator, show the suggestions menu */
@@ -774,9 +800,11 @@ sexy_spell_entry_populate_popup(SexySpellEntry *entry, GtkMenu *menu, gpointer d
 	gtk_menu_item_set_submenu(GTK_MENU_ITEM(mi), build_spelling_menu(entry, word));
 	g_free(word);
 
-	gtk_widget_show_all(mi);
+	hc_widget_show_all(mi);
 	gtk_menu_shell_prepend(GTK_MENU_SHELL(menu), mi);
 }
+
+#endif /* !HC_GTK4 - end of GTK3 menu functions */
 
 static void
 sexy_spell_entry_init(SexySpellEntry *entry)
@@ -800,9 +828,18 @@ sexy_spell_entry_init(SexySpellEntry *entry)
 	entry->priv->checked = TRUE;
 	entry->priv->parseattr = TRUE;
 
+#if !HC_GTK4
+	/* GTK3: These signals use GtkMenu which is removed in GTK4 */
 	g_signal_connect(G_OBJECT(entry), "popup-menu", G_CALLBACK(sexy_spell_entry_popup_menu), entry);
 	g_signal_connect(G_OBJECT(entry), "populate-popup", G_CALLBACK(sexy_spell_entry_populate_popup), NULL);
+#endif
 	g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(sexy_spell_entry_changed), NULL);
+
+#if HC_GTK4
+	/* In GTK4, button_press_event is replaced by GtkGestureClick.
+	 * Right-click shows spell check context menu via sexy_spell_entry_show_popup() */
+	hc_add_click_gesture(GTK_WIDGET(entry), G_CALLBACK(sexy_spell_entry_button_press), NULL, entry);
+#endif
 }
 
 static void
@@ -908,7 +945,7 @@ word_misspelled(SexySpellEntry *entry, int start, int end)
 
 	if (start == end)
 		return FALSE;
-	text = gtk_entry_get_text(GTK_ENTRY(entry));
+	text = hc_entry_get_text(GTK_WIDGET(entry));
 	word = g_new0(gchar, end - start + 2);
 
 	g_strlcpy(word, text + start, end - start + 1);
@@ -1089,8 +1126,10 @@ check_color:
 static void
 sexy_spell_entry_recheck_all(SexySpellEntry *entry)
 {
+#if !HC_GTK4
 	GdkRectangle rect;
 	GtkAllocation allocation;
+#endif
 	GtkWidget *widget = GTK_WIDGET(entry);
 	PangoLayout *layout;
 	int length, i, text_len;
@@ -1103,7 +1142,7 @@ sexy_spell_entry_recheck_all(SexySpellEntry *entry)
 	if (entry->priv->parseattr)
 	{
 		/* Check for attributes */
-		text = gtk_entry_get_text (GTK_ENTRY (entry));
+		text = hc_entry_get_text (GTK_WIDGET (entry));
 		text_len = strlen (text);
 		check_attributes (entry, text, text_len);
 	}
@@ -1126,15 +1165,255 @@ sexy_spell_entry_recheck_all(SexySpellEntry *entry)
 
 	if (gtk_widget_get_realized (GTK_WIDGET(entry)))
 	{
+#if HC_GTK4
+		/* GTK4: Use gtk_widget_queue_draw instead of gdk_window_invalidate_rect */
+		gtk_widget_queue_draw (widget);
+#else
 		gtk_widget_get_allocation (GTK_WIDGET(entry), &allocation);
-		
+
 		rect.x = 0; rect.y = 0;
 		rect.width  = allocation.width;
 		rect.height = allocation.height;
 		gdk_window_invalidate_rect(gtk_widget_get_window (widget), &rect, TRUE);
+#endif
 	}
 }
 
+#if HC_GTK4
+static void
+sexy_spell_entry_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
+{
+	SexySpellEntry *entry = SEXY_SPELL_ENTRY(widget);
+	GtkEntry *gtk_entry = GTK_ENTRY(widget);
+	PangoLayout *layout;
+	gint preedit_length;
+
+	layout = gtk_entry_get_layout(gtk_entry);
+	preedit_length = sexy_spell_entry_get_preedit_length (gtk_entry);
+
+	if (preedit_length == 0)
+	{
+		pango_layout_set_attributes(layout, entry->priv->attr_list);
+	}
+	else
+	{
+		pango_layout_set_attributes(layout, empty_attrs_list);
+	}
+
+	GTK_WIDGET_CLASS(parent_class)->snapshot (widget, snapshot);
+}
+
+/* GTK4 spell check context menu support */
+static SexySpellEntry *spell_menu_entry = NULL;
+static gchar *spell_menu_word = NULL;
+static struct EnchantDict *spell_menu_dict = NULL;
+static gchar **spell_menu_suggestions = NULL;
+static size_t spell_menu_n_suggestions = 0;
+
+static void
+spell_action_add_to_dict (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (!have_enchant || !spell_menu_entry || !spell_menu_word || !spell_menu_dict)
+		return;
+
+	enchant_dict_add_to_personal(spell_menu_dict, spell_menu_word, -1);
+
+	if (spell_menu_entry->priv->words) {
+		g_strfreev(spell_menu_entry->priv->words);
+		g_free(spell_menu_entry->priv->word_starts);
+		g_free(spell_menu_entry->priv->word_ends);
+	}
+	entry_strsplit_utf8(GTK_ENTRY(spell_menu_entry), &spell_menu_entry->priv->words,
+						&spell_menu_entry->priv->word_starts, &spell_menu_entry->priv->word_ends);
+	sexy_spell_entry_recheck_all(spell_menu_entry);
+}
+
+static void
+spell_action_ignore_all (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GSList *li;
+	(void)action; (void)parameter; (void)user_data;
+	if (!have_enchant || !spell_menu_entry || !spell_menu_word)
+		return;
+
+	for (li = spell_menu_entry->priv->dict_list; li; li = g_slist_next(li)) {
+		struct EnchantDict *dict = (struct EnchantDict *)li->data;
+		enchant_dict_add_to_session(dict, spell_menu_word, -1);
+	}
+
+	if (spell_menu_entry->priv->words) {
+		g_strfreev(spell_menu_entry->priv->words);
+		g_free(spell_menu_entry->priv->word_starts);
+		g_free(spell_menu_entry->priv->word_ends);
+	}
+	entry_strsplit_utf8(GTK_ENTRY(spell_menu_entry), &spell_menu_entry->priv->words,
+						&spell_menu_entry->priv->word_starts, &spell_menu_entry->priv->word_ends);
+	sexy_spell_entry_recheck_all(spell_menu_entry);
+}
+
+static void
+spell_action_replace (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	const gchar *newword;
+	gint start, end, cursor;
+	gint idx;
+	(void)action; (void)user_data;
+
+	if (!have_enchant || !spell_menu_entry || !spell_menu_word)
+		return;
+
+	/* Get the suggestion index from the parameter */
+	idx = g_variant_get_int32(parameter);
+	if (idx < 0 || (size_t)idx >= spell_menu_n_suggestions || !spell_menu_suggestions)
+		return;
+
+	newword = spell_menu_suggestions[idx];
+
+	get_word_extents_from_position(spell_menu_entry, &start, &end, spell_menu_entry->priv->mark_character);
+
+	cursor = gtk_editable_get_position(GTK_EDITABLE(spell_menu_entry));
+	if (g_utf8_strlen(hc_entry_get_text(GTK_WIDGET(spell_menu_entry)), -1) == cursor)
+		cursor = -1;
+	else if (cursor > start && cursor <= end)
+		cursor = start;
+
+	gtk_editable_delete_text(GTK_EDITABLE(spell_menu_entry), start, end);
+	gtk_editable_set_position(GTK_EDITABLE(spell_menu_entry), start);
+	gtk_editable_insert_text(GTK_EDITABLE(spell_menu_entry), newword, strlen(newword), &start);
+	gtk_editable_set_position(GTK_EDITABLE(spell_menu_entry), cursor);
+
+	if (spell_menu_dict)
+		enchant_dict_store_replacement(spell_menu_dict, spell_menu_word, -1, newword, -1);
+}
+
+static void
+spell_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
+{
+	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
+	(void)popover;
+	if (action_group)
+		g_object_unref(action_group);
+
+	/* Clean up suggestion list */
+	if (spell_menu_suggestions && spell_menu_dict) {
+		enchant_dict_free_suggestions(spell_menu_dict, spell_menu_suggestions);
+		spell_menu_suggestions = NULL;
+	}
+	spell_menu_n_suggestions = 0;
+	g_free(spell_menu_word);
+	spell_menu_word = NULL;
+}
+
+static void
+sexy_spell_entry_show_popup (SexySpellEntry *entry, double x, double y)
+{
+	GMenu *gmenu;
+	GtkWidget *popover;
+	GSimpleActionGroup *action_group;
+	gint start, end;
+	size_t i;
+	gchar *label;
+
+	if (!have_enchant || !entry->priv->checked)
+		return;
+
+	if (g_slist_length(entry->priv->dict_list) == 0)
+		return;
+
+	get_word_extents_from_position(entry, &start, &end, entry->priv->mark_character);
+	if (start == end)
+		return;
+	if (!word_misspelled(entry, start, end))
+		return;
+
+	/* Store context for actions */
+	spell_menu_entry = entry;
+	g_free(spell_menu_word);
+	spell_menu_word = gtk_editable_get_chars(GTK_EDITABLE(entry), start, end);
+
+	/* Get first dictionary for suggestions (simplified - uses first dict only) */
+	spell_menu_dict = (struct EnchantDict *)entry->priv->dict_list->data;
+	spell_menu_suggestions = enchant_dict_suggest(spell_menu_dict, spell_menu_word, -1, &spell_menu_n_suggestions);
+
+	/* Create action group */
+	action_group = g_simple_action_group_new();
+
+	/* Add simple actions */
+	GSimpleAction *add_action = g_simple_action_new("add", NULL);
+	g_signal_connect(add_action, "activate", G_CALLBACK(spell_action_add_to_dict), NULL);
+	g_action_map_add_action(G_ACTION_MAP(action_group), G_ACTION(add_action));
+	g_object_unref(add_action);
+
+	GSimpleAction *ignore_action = g_simple_action_new("ignore", NULL);
+	g_signal_connect(ignore_action, "activate", G_CALLBACK(spell_action_ignore_all), NULL);
+	g_action_map_add_action(G_ACTION_MAP(action_group), G_ACTION(ignore_action));
+	g_object_unref(ignore_action);
+
+	/* Add replace action with parameter for suggestion index */
+	GSimpleAction *replace_action = g_simple_action_new("replace", G_VARIANT_TYPE_INT32);
+	g_signal_connect(replace_action, "activate", G_CALLBACK(spell_action_replace), NULL);
+	g_action_map_add_action(G_ACTION_MAP(action_group), G_ACTION(replace_action));
+	g_object_unref(replace_action);
+
+	/* Build menu */
+	gmenu = g_menu_new();
+
+	/* Suggestions */
+	if (spell_menu_suggestions && spell_menu_n_suggestions > 0) {
+		GMenu *suggestions_section = g_menu_new();
+		for (i = 0; i < spell_menu_n_suggestions && i < 10; i++) {
+			gchar *action_str = g_strdup_printf("spell.replace(%d)", (int)i);
+			g_menu_append(suggestions_section, spell_menu_suggestions[i], action_str);
+			g_free(action_str);
+		}
+		g_menu_append_section(gmenu, NULL, G_MENU_MODEL(suggestions_section));
+		g_object_unref(suggestions_section);
+	} else {
+		g_menu_append(gmenu, _("(no suggestions)"), NULL);
+	}
+
+	/* Actions section */
+	GMenu *actions_section = g_menu_new();
+	label = g_strdup_printf(_("Add \"%s\" to Dictionary"), spell_menu_word);
+	g_menu_append(actions_section, label, "spell.add");
+	g_free(label);
+	g_menu_append(actions_section, _("Ignore All"), "spell.ignore");
+	g_menu_append_section(gmenu, NULL, G_MENU_MODEL(actions_section));
+	g_object_unref(actions_section);
+
+	/* Create popover */
+	popover = gtk_popover_menu_new_from_model(G_MENU_MODEL(gmenu));
+	gtk_widget_insert_action_group(popover, "spell", G_ACTION_GROUP(action_group));
+	gtk_widget_set_parent(popover, GTK_WIDGET(entry));
+	gtk_popover_set_pointing_to(GTK_POPOVER(popover),
+								&(GdkRectangle){ (int)x, (int)y, 1, 1 });
+	gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+
+	g_signal_connect(popover, "closed", G_CALLBACK(spell_menu_popover_closed_cb), action_group);
+
+	gtk_popover_popup(GTK_POPOVER(popover));
+	g_object_unref(gmenu);
+}
+
+static void
+sexy_spell_entry_button_press(GtkGestureClick *gesture, int n_press, double x, double y, SexySpellEntry *entry)
+{
+	GtkEntry *gtk_entry = GTK_ENTRY(entry);
+	gint pos;
+	guint button;
+
+	pos = gtk_entry_find_position(gtk_entry, (gint)x);
+	entry->priv->mark_character = pos;
+
+	button = gtk_gesture_single_get_current_button(GTK_GESTURE_SINGLE(gesture));
+
+	/* Right-click shows spell check context menu */
+	if (button == 3) {
+		sexy_spell_entry_show_popup(entry, x, y);
+	}
+}
+#else /* GTK3 */
 static gboolean
 sexy_spell_entry_draw(GtkWidget *widget, cairo_t *cr)
 {
@@ -1170,7 +1449,9 @@ sexy_spell_entry_button_press(GtkWidget *widget, GdkEventButton *event)
 
 	return GTK_WIDGET_CLASS(parent_class)->button_press_event (widget, event);
 }
+#endif
 
+#if !HC_GTK4
 static gboolean
 sexy_spell_entry_popup_menu(GtkWidget *widget, SexySpellEntry *entry)
 {
@@ -1179,6 +1460,7 @@ sexy_spell_entry_popup_menu(GtkWidget *widget, SexySpellEntry *entry)
 	entry->priv->mark_character = gtk_editable_get_position (GTK_EDITABLE (entry));
 	return FALSE;
 }
+#endif /* !HC_GTK4 */
 
 static void
 entry_strsplit_utf8(GtkEntry *entry, gchar ***set, gint **starts, gint **ends)
@@ -1190,7 +1472,7 @@ entry_strsplit_utf8(GtkEntry *entry, gchar ***set, gint **starts, gint **ends)
 	PangoLogAttr a;
 
 	layout = gtk_entry_get_layout(GTK_ENTRY(entry));
-	text = gtk_entry_get_text(GTK_ENTRY(entry));
+	text = hc_entry_get_text(GTK_WIDGET(entry));
 	log_attrs = pango_layout_get_log_attrs_readonly (layout, &n_attrs);
 
 	/* Find how many words we have */

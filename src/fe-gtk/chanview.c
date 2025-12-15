@@ -246,7 +246,7 @@ chanview_destroy (chanview *cv)
 		cv->func_cleanup (cv);
 
 	if (cv->box)
-		gtk_widget_destroy (cv->box);
+		hc_widget_destroy (cv->box);
 
 	chanview_destroy_store (cv);
 	g_free (cv);
@@ -268,6 +268,8 @@ chanview_new (int type, int trunc_len, gboolean sort, gboolean use_icons)
 	cv->store = gtk_tree_store_new (4, G_TYPE_STRING, G_TYPE_POINTER,
 											  PANGO_TYPE_ATTR_LIST, GDK_TYPE_PIXBUF);
 	cv->box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_widget_set_hexpand (cv->box, TRUE);
+	gtk_widget_set_vexpand (cv->box, TRUE);
 	cv->trunc_len = trunc_len;
 	cv->sorted = sort;
 	cv->use_icons = use_icons;
@@ -446,6 +448,12 @@ void *
 chan_get_userdata (chan *ch)
 {
 	return ch->userdata;
+}
+
+GtkWidget *
+chan_get_impl_widget (chan *ch)
+{
+	return ch->impl;
 }
 
 void

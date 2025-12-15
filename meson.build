@@ -13,7 +13,7 @@ gnome = import('gnome')
 cc = meson.get_compiler('c')
 
 
-libgio_dep = dependency('gio-2.0', version: '>= 2.36.0')
+libgio_dep = dependency('gio-2.0', version: '>= 2.44.0')
 libgmodule_dep = dependency('gmodule-2.0')
 
 libcanberra_dep = dependency('libcanberra', version: '>= 0.22',
@@ -44,11 +44,23 @@ config_h.set('USE_DBUS', dbus_glib_dep.found())
 config_h.set('USE_PLUGIN', get_option('plugin'))
 
 config_h.set('G_DISABLE_SINGLE_INCLUDES', true)
-config_h.set('GTK_DISABLE_DEPRECATED', true)
+# GTK_DISABLE_DEPRECATED disabled during GTK migration - re-enable after migration complete
+# config_h.set('GTK_DISABLE_DEPRECATED', true)
 config_h.set('GTK_DISABLE_SINGLE_INCLUDES', true)
 config_h.set('GDK_PIXBUF_DISABLE_SINGLE_INCLUDES', true)
-config_h.set('GLIB_VERSION_MAX_ALLOWED', 'GLIB_VERSION_2_36')
-config_h.set('GLIB_VERSION_MIN_REQUIRED', 'GLIB_VERSION_2_36')
+
+# GTK4 migration support
+use_gtk4 = get_option('gtk4')
+config_h.set('USE_GTK4', use_gtk4)
+if use_gtk4
+  # GTK4 requires GLib 2.66+
+  config_h.set('GLIB_VERSION_MAX_ALLOWED', 'GLIB_VERSION_2_76')
+  config_h.set('GLIB_VERSION_MIN_REQUIRED', 'GLIB_VERSION_2_66')
+else
+  # GTK3 requires GLib 2.44+
+  config_h.set('GLIB_VERSION_MAX_ALLOWED', 'GLIB_VERSION_2_44')
+  config_h.set('GLIB_VERSION_MIN_REQUIRED', 'GLIB_VERSION_2_44')
+endif
 
 # Detected features
 config_h.set('HAVE_MEMRCHR', cc.has_function('memrchr'))
@@ -183,6 +195,7 @@ if meson.version().version_compare('>= 0.53.0')
     'Plugin Support': get_option('plugin'),
     'DBus Support': dbus_glib_dep.found(),
     'libcanberra': libcanberra_dep.found(),
+    'GTK Version': use_gtk4 ? 'GTK4 (experimental)' : 'GTK3',
   }, section: 'Features')
 
   summary({

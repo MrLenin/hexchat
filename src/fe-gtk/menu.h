@@ -20,8 +20,14 @@
 #ifndef HEXCHAT_MENU_H
 #define HEXCHAT_MENU_H
 
+#include "gtk-compat.h"
+
 GtkWidget *menu_create_main (void *accel_group, int bar, int away, int toplevel, GtkWidget **menu_widgets);
+#if HC_GTK4
+void menu_urlmenu (GtkWidget *parent, double x, double y, char *url);
+#else
 void menu_urlmenu (GdkEventButton * event, char *url);
+#endif
 void menu_chanmenu (session *sess, GdkEventButton * event, char *chan);
 void menu_addfavoritemenu (server *serv, GtkWidget *menu, char *channel, gboolean istree);
 void menu_addconnectmenu (server *serv, GtkWidget *menu);

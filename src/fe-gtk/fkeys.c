@@ -299,6 +299,80 @@ key_modifier_get_valid (GdkModifierType mod)
 	return ret;
 }
 
+/*
+ * Key press handler for input box
+ * GTK3: Uses GdkEventKey from "key-press-event" signal
+ * GTK4: Uses GtkEventControllerKey with different signature
+ */
+#if HC_GTK4
+gboolean
+key_handle_key_press (GtkEventControllerKey *controller, guint keyval,
+                      guint keycode, GdkModifierType state, session *sess)
+{
+	struct key_binding *kb;
+	int n;
+	GSList *list;
+	GtkWidget *wid = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (controller));
+
+	/* where did this event come from? */
+	list = sess_list;
+	while (list)
+	{
+		sess = list->data;
+		if (sess->gui->input_box == wid)
+		{
+			if (sess->gui->is_tab)
+				sess = current_tab;
+			break;
+		}
+		list = list->next;
+	}
+	if (!list)
+		return FALSE;
+	current_sess = sess;
+
+	if (plugin_emit_keypress (sess, state, keyval, gdk_keyval_to_unicode (keyval)))
+		return 1;
+
+	/* maybe the plugin closed this tab? */
+	if (!is_session (sess))
+		return 1;
+
+	list = keybind_list;
+	while (list)
+	{
+		kb = (struct key_binding*)list->data;
+
+		if (kb->keyval == keyval && kb->mod == key_modifier_get_valid (state))
+		{
+			if (kb->action < 0 || kb->action > KEY_MAX_ACTIONS)
+				return 0;
+
+			/* Run the function - pass NULL for evt in GTK4 since handlers don't use it */
+			n = key_actions[kb->action].handler (wid, NULL, kb->data1,
+															 kb->data2, sess);
+			switch (n)
+			{
+			case 0:
+				return 1;
+			case 2:
+				/* GTK4: Event propagation is handled by returning TRUE */
+				return 1;
+			}
+		}
+		list = g_slist_next (list);
+	}
+
+	switch (keyval)
+	{
+	case GDK_KEY_space:
+		key_action_tab_clean ();
+		break;
+	}
+
+	return 0;
+}
+#else /* GTK3 */
 gboolean
 key_handle_key_press (GtkWidget *wid, GdkEventKey *evt, session *sess)
 {
@@ -365,6 +439,7 @@ key_handle_key_press (GtkWidget *wid, GdkEventKey *evt, session *sess)
 
 	return 0;
 }
+#endif
 
 
 /* ***** GUI code here ******************* */
@@ -473,6 +548,55 @@ key_dialog_entry_edited (GtkCellRendererText *render, gchar *pathstr, gchar *new
 	gtk_tree_path_free (path);
 }
 
+/*
+ * Key press handler for key dialog (Shift+Up/Down to reorder)
+ * GTK3: Uses GdkEventKey from "key-press-event" signal
+ * GTK4: Uses GtkEventControllerKey with different signature
+ */
+#if HC_GTK4
+static gboolean
+key_dialog_keypress (GtkEventControllerKey *controller, guint keyval,
+                     guint keycode, GdkModifierType state, gpointer userdata)
+{
+	GtkTreeView *view = g_object_get_data (G_OBJECT (key_dialog), "view");
+	GtkTreeModel *store;
+	GtkTreeIter iter1, iter2;
+	GtkTreeSelection *sel;
+	GtkTreePath *path;
+	gboolean handled = FALSE;
+	int delta;
+
+	if (state & GDK_SHIFT_MASK)
+	{
+		if (keyval == GDK_KEY_Up)
+		{
+			handled = TRUE;
+			delta = -1;
+		}
+		else if (keyval == GDK_KEY_Down)
+		{
+			handled = TRUE;
+			delta = 1;
+		}
+	}
+
+	if (handled)
+	{
+		sel = gtk_tree_view_get_selection (view);
+		gtk_tree_selection_get_selected (sel, &store, &iter1);
+		path = gtk_tree_model_get_path (store, &iter1);
+		if (delta == 1)
+			gtk_tree_path_next (path);
+		else
+			gtk_tree_path_prev (path);
+		gtk_tree_model_get_iter (store, &iter2, path);
+		gtk_tree_path_free (path);
+		gtk_list_store_swap (GTK_LIST_STORE (store), &iter1, &iter2);
+	}
+
+	return handled;
+}
+#else /* GTK3 */
 static gboolean
 key_dialog_keypress (GtkWidget *wid, GdkEventKey *evt, gpointer userdata)
 {
@@ -514,6 +638,7 @@ key_dialog_keypress (GtkWidget *wid, GdkEventKey *evt, gpointer userdata)
 
 	return handled;
 }
+#endif
 
 static void
 key_dialog_selection_changed (GtkTreeSelection *sel, gpointer userdata)
@@ -543,7 +668,7 @@ key_dialog_selection_changed (GtkTreeSelection *sel, gpointer userdata)
 static void
 key_dialog_close (GtkWidget *wid, gpointer userdata)
 {
-	gtk_widget_destroy (key_dialog);
+	hc_window_destroy (key_dialog);
 	key_dialog = NULL;
 }
 
@@ -656,9 +781,11 @@ key_dialog_treeview_new (GtkWidget *box)
 	GtkCellRenderer *render;
 	int i;
 
-	scroll = gtk_scrolled_window_new (NULL, NULL);
+	scroll = hc_scrolled_window_new ();
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+#if !HC_GTK4
 	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scroll), GTK_SHADOW_IN);
+#endif
 
 	store = gtk_list_store_new (N_COLUMNS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
 								G_TYPE_STRING, G_TYPE_STRING);
@@ -669,12 +796,19 @@ key_dialog_treeview_new (GtkWidget *box)
 	gtk_tree_view_set_enable_search (GTK_TREE_VIEW (view), FALSE);
 	gtk_tree_view_set_reorderable (GTK_TREE_VIEW (view), TRUE);
 
+#if HC_GTK4
+	/* GTK4: Use event controller for key events */
+	hc_add_key_controller (view, G_CALLBACK (key_dialog_keypress), NULL, NULL);
+#else
 	g_signal_connect (G_OBJECT (view), "key-press-event",
 					G_CALLBACK (key_dialog_keypress), NULL);
+#endif
 	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW(view))),
 					"changed", G_CALLBACK (key_dialog_selection_changed), NULL);
 
+#if !HC_GTK4
 	gtk_tree_view_set_rules_hint (GTK_TREE_VIEW (view), TRUE);
+#endif
 
 	render = gtk_cell_renderer_accel_new ();
 	g_object_set (render, "editable", TRUE,
@@ -759,8 +893,8 @@ key_dialog_treeview_new (GtkWidget *box)
 	gtk_tree_view_column_set_min_width (col, 80);
 	gtk_tree_view_column_set_resizable (col, TRUE);
 
-	gtk_container_add (GTK_CONTAINER (scroll), view);
-	gtk_container_add (GTK_CONTAINER (box), scroll);
+	hc_scrolled_window_set_child (scroll, view);
+	hc_box_pack_start (box, scroll, TRUE, TRUE, 0);
 
 	return view;
 }
@@ -815,16 +949,18 @@ key_dialog_show ()
 
 	view = key_dialog_treeview_new (vbox);
 	xtext = gtk_xtext_new (colors, 0);
-	gtk_box_pack_start (GTK_BOX (vbox), xtext, FALSE, TRUE, 2);
+	hc_box_pack_start (vbox, xtext, FALSE, TRUE, 2);
 	gtk_xtext_set_font (GTK_XTEXT (xtext), prefs.hex_text_font);
 
 	g_object_set_data (G_OBJECT (key_dialog), "view", view);
 	g_object_set_data (G_OBJECT (key_dialog), "xtext", xtext);
 
-	box = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
-	gtk_button_box_set_layout (GTK_BUTTON_BOX (box), GTK_BUTTONBOX_SPREAD);
-	gtk_box_pack_start (GTK_BOX (vbox), box, FALSE, FALSE, 2);
-	gtk_container_set_border_width (GTK_CONTAINER (box), 5);
+	box = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
+	hc_button_box_set_layout (box, GTK_BUTTONBOX_SPREAD);
+	hc_box_pack_start (vbox, box, FALSE, FALSE, 2);
+#if !HC_GTK4
+	hc_container_set_border_width (box, 5);
+#endif
 
 	gtkutil_button (box, "document-new", NULL, key_dialog_add,
 					NULL, _("Add"));
@@ -838,7 +974,7 @@ key_dialog_show ()
 	store = GTK_LIST_STORE (gtk_tree_view_get_model (GTK_TREE_VIEW (view)));
 	key_dialog_load (store);
 
-	gtk_widget_show_all (key_dialog);
+	hc_widget_show_all (key_dialog);
 }
 
 static int

@@ -306,7 +306,7 @@ menu_quick_item (char *cmd, char *label, GtkWidget * menu, int flags,
 								G_CALLBACK (popup_menu_cb), cmd);
 	if (flags & XCMENU_SHADED)
 		gtk_widget_set_sensitive (GTK_WIDGET (item), FALSE);
-	gtk_widget_show_all (item);
+	hc_widget_show_all (item);
 
 	return item;
 }
@@ -485,7 +485,7 @@ menu_create (GtkWidget *menu, GSList *list, char *target, int check_path)
 		{
 			/* empty sub menu due to no programs in PATH? */
 			if (check_path && childcount < 1)
-				gtk_widget_destroy (subitem);
+				hc_widget_destroy (subitem);
 			subitem = NULL;
 
 			if (tempmenu != menu)
@@ -515,12 +515,12 @@ menu_create (GtkWidget *menu, GSList *list, char *target, int check_path)
 
 			if (!check_path || pop->cmd[0] != '!')
 			{
-				menu_quick_item (pop->cmd, label, tempmenu, 0, target, icon);
+				menu_quick_item (pop->cmd, label, tempmenu, XCMENU_MNEMONIC, target, icon);
 			/* check if the program is in path, if not, leave it out! */
 			} else if (is_in_path (pop->cmd))
 			{
 				childcount++;
-				menu_quick_item (pop->cmd, label, tempmenu, 0, target, icon);
+				menu_quick_item (pop->cmd, label, tempmenu, XCMENU_MNEMONIC, target, icon);
 			}
 
 			g_free (label);
@@ -538,10 +538,13 @@ menu_create (GtkWidget *menu, GSList *list, char *target, int check_path)
 static char *str_copy = NULL;		/* for all pop-up menus */
 static GtkWidget *nick_submenu = NULL;	/* user info submenu */
 
+/* GTK3-only: Menu popup infrastructure using GtkMenu */
+#if !HC_GTK4
+
 static void
 menu_destroy (GtkWidget *menu, gpointer objtounref)
 {
-	gtk_widget_destroy (menu);
+	hc_widget_destroy (menu);
 	g_object_unref (menu);
 	if (objtounref)
 		g_object_unref (G_OBJECT (objtounref));
@@ -562,6 +565,8 @@ menu_popup (GtkWidget *menu, GdkEventButton *event, gpointer objtounref)
 	gtk_menu_popup (GTK_MENU (menu), NULL, NULL, NULL, NULL,
 						 0, event ? event->time : 0);
 }
+
+#endif /* !HC_GTK4 */
 
 static void
 menu_nickinfo_cb (GtkWidget *menu, session *sess)
@@ -696,7 +701,7 @@ fe_userlist_update (session *sess, struct User *user)
 	items = gtk_container_get_children (GTK_CONTAINER (nick_submenu));
 	for (GList *l = items; l != NULL; l = l->next)
 	{
-		gtk_widget_destroy (GTK_WIDGET (l->data));
+		hc_widget_destroy (GTK_WIDGET (l->data));
 	}
 	g_list_free (items);
 
@@ -704,6 +709,8 @@ fe_userlist_update (session *sess, struct User *user)
 	menu_create_nickinfo_menu (user, nick_submenu);
 }
 
+/* GTK3-only: Nick context menu */
+#if !HC_GTK4
 void
 menu_nickmenu (session *sess, GdkEventButton *event, char *nick, int num_sel)
 {
@@ -754,6 +761,216 @@ menu_nickmenu (session *sess, GdkEventButton *event, char *nick, int num_sel)
 
 	menu_popup (menu, event, NULL);
 }
+#else
+/* GTK4: Action callbacks for nick menu */
+static session *nick_menu_sess = NULL;  /* session for nick menu actions */
+
+static void
+nick_action_query (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "QUERY %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_whois (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "WHOIS %s %s", str_copy, str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_notify (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "NOTIFY %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_ignore (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "IGNORE %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_kick (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "KICK %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_ban (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "BAN %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_op (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "OP %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_deop (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "DEOP %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_voice (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "VOICE %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+static void
+nick_action_devoice (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_menu_sess && str_copy)
+	{
+		g_snprintf (buf, sizeof buf, "DEVOICE %s", str_copy);
+		handle_command (nick_menu_sess, buf, FALSE);
+	}
+}
+
+void
+menu_nickmenu (session *sess, GdkEventButton *event, char *nick, int num_sel)
+{
+	GtkWidget *xtext_widget;
+	GtkXText *xtext;
+	GMenu *gmenu;
+	GMenu *ops_section;
+	GtkWidget *popover;
+	GSimpleActionGroup *action_group;
+	char buf[256];
+
+	(void)event;  /* NULL in GTK4 */
+
+	if (!sess || !sess->gui || !sess->gui->xtext)
+		return;
+
+	xtext_widget = sess->gui->xtext;
+	xtext = GTK_XTEXT (xtext_widget);
+
+	g_free (str_copy);
+	str_copy = g_strdup (nick);
+	nick_menu_sess = sess;
+
+	/* Create action group for this menu */
+	action_group = g_simple_action_group_new ();
+
+	static const GActionEntry nick_actions[] = {
+		{ "query", nick_action_query, NULL, NULL, NULL },
+		{ "whois", nick_action_whois, NULL, NULL, NULL },
+		{ "notify", nick_action_notify, NULL, NULL, NULL },
+		{ "ignore", nick_action_ignore, NULL, NULL, NULL },
+		{ "kick", nick_action_kick, NULL, NULL, NULL },
+		{ "ban", nick_action_ban, NULL, NULL, NULL },
+		{ "op", nick_action_op, NULL, NULL, NULL },
+		{ "deop", nick_action_deop, NULL, NULL, NULL },
+		{ "voice", nick_action_voice, NULL, NULL, NULL },
+		{ "devoice", nick_action_devoice, NULL, NULL, NULL },
+	};
+	g_action_map_add_action_entries (G_ACTION_MAP (action_group), nick_actions,
+									 G_N_ELEMENTS (nick_actions), NULL);
+
+	gmenu = g_menu_new ();
+
+	/* Nick name or selection count as header */
+	if (num_sel > 1)
+	{
+		g_snprintf (buf, sizeof buf, _("%d nicks selected."), num_sel);
+		g_menu_append (gmenu, buf, NULL);
+	}
+	else
+	{
+		g_menu_append (gmenu, nick, NULL);
+	}
+
+	/* Basic actions */
+	g_menu_append (gmenu, _("Open Dialog"), "nick.query");
+	g_menu_append (gmenu, _("WhoIs"), "nick.whois");
+	g_menu_append (gmenu, _("Add to Friends"), "nick.notify");
+	g_menu_append (gmenu, _("Ignore"), "nick.ignore");
+
+	/* Operator actions section */
+	ops_section = g_menu_new ();
+	g_menu_append (ops_section, _("Kick"), "nick.kick");
+	g_menu_append (ops_section, _("Ban"), "nick.ban");
+	g_menu_append (ops_section, _("Op"), "nick.op");
+	g_menu_append (ops_section, _("DeOp"), "nick.deop");
+	g_menu_append (ops_section, _("Voice"), "nick.voice");
+	g_menu_append (ops_section, _("DeVoice"), "nick.devoice");
+	g_menu_append_section (gmenu, _("Operator"), G_MENU_MODEL (ops_section));
+	g_object_unref (ops_section);
+
+	/* Create and configure the popover */
+	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+	gtk_widget_insert_action_group (popover, "nick", G_ACTION_GROUP (action_group));
+	gtk_widget_set_parent (popover, xtext_widget);
+	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+								 &(GdkRectangle){ xtext->last_click_x, xtext->last_click_y, 1, 1 });
+	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
+
+	/* Clean up action group when popover is closed */
+	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), action_group);
+
+	gtk_popover_popup (GTK_POPOVER (popover));
+	g_object_unref (gmenu);
+}
+#endif
 
 /* stuff for the View menu */
 
@@ -903,6 +1120,8 @@ menu_fullscreen_toggle (GtkWidget *wid, gpointer ud)
 	}
 }
 
+/* GTK3-only: Middle-click menu */
+#if !HC_GTK4
 void
 menu_middlemenu (session *sess, GdkEventButton *event)
 {
@@ -913,6 +1132,110 @@ menu_middlemenu (session *sess, GdkEventButton *event)
 	menu = menu_create_main (accel_group, FALSE, sess->server->is_away, !sess->gui->is_tab, NULL);
 	menu_popup (menu, event, accel_group);
 }
+#else
+/* GTK4: Action callbacks for middle-click menu */
+static session *middle_menu_sess = NULL;
+
+static void
+middle_action_clear_text (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		handle_command (middle_menu_sess, "CLEAR", FALSE);
+}
+
+static void
+middle_action_search (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		mg_search_toggle (middle_menu_sess);
+}
+
+static void
+middle_action_save_text (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		handle_command (middle_menu_sess, "TEXTDUMP", FALSE);
+}
+
+static void
+middle_action_menubar_toggle (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_bar_toggle ();
+}
+
+static void
+middle_action_settings (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		handle_command (middle_menu_sess, "SETTINGS", FALSE);
+}
+
+void
+menu_middlemenu (session *sess, GdkEventButton *event)
+{
+	GtkWidget *xtext_widget;
+	GtkXText *xtext;
+	GMenu *gmenu;
+	GtkWidget *popover;
+	GSimpleActionGroup *action_group;
+
+	(void)event;  /* NULL in GTK4 */
+
+	if (!sess || !sess->gui || !sess->gui->xtext)
+		return;
+
+	xtext_widget = sess->gui->xtext;
+	xtext = GTK_XTEXT (xtext_widget);
+	middle_menu_sess = sess;
+
+	/* Create action group for this menu */
+	action_group = g_simple_action_group_new ();
+
+	static const GActionEntry middle_actions[] = {
+		{ "clear-text", middle_action_clear_text, NULL, NULL, NULL },
+		{ "search", middle_action_search, NULL, NULL, NULL },
+		{ "save-text", middle_action_save_text, NULL, NULL, NULL },
+		{ "menubar-toggle", middle_action_menubar_toggle, NULL, NULL, NULL },
+		{ "settings", middle_action_settings, NULL, NULL, NULL },
+	};
+	g_action_map_add_action_entries (G_ACTION_MAP (action_group), middle_actions,
+									 G_N_ELEMENTS (middle_actions), NULL);
+
+	gmenu = g_menu_new ();
+
+	/* Window operations */
+	g_menu_append (gmenu, _("Clear Text"), "middle.clear-text");
+	g_menu_append (gmenu, _("Search Text..."), "middle.search");
+	g_menu_append (gmenu, _("Save Text..."), "middle.save-text");
+
+	/* View options */
+	if (prefs.hex_gui_hide_menu)
+		g_menu_append (gmenu, _("Show Menubar"), "middle.menubar-toggle");
+	else
+		g_menu_append (gmenu, _("Hide Menubar"), "middle.menubar-toggle");
+
+	g_menu_append (gmenu, _("Preferences"), "middle.settings");
+
+	/* Create and configure the popover */
+	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+	gtk_widget_insert_action_group (popover, "middle", G_ACTION_GROUP (action_group));
+	gtk_widget_set_parent (popover, xtext_widget);
+	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+								 &(GdkRectangle){ xtext->last_click_x, xtext->last_click_y, 1, 1 });
+	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
+
+	/* Clean up action group when popover is closed */
+	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), action_group);
+
+	gtk_popover_popup (GTK_POPOVER (popover));
+	g_object_unref (gmenu);
+}
+#endif
 
 static void
 open_url_cb (GtkWidget *item, char *url)
@@ -924,6 +1247,8 @@ open_url_cb (GtkWidget *item, char *url)
 	handle_command (current_sess, buf, FALSE);
 }
 
+/* GTK3-only: URL context menu */
+#if !HC_GTK4
 void
 menu_urlmenu (GdkEventButton *event, char *url)
 {
@@ -961,6 +1286,100 @@ menu_urlmenu (GdkEventButton *event, char *url)
 	menu_add_plugin_items (menu, "\x4$URL", str_copy);
 	menu_popup (menu, event, NULL);
 }
+#else
+/* GTK4: Action callbacks for URL menu */
+static void
+url_action_open (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char buf[512];
+	(void)action; (void)parameter; (void)user_data;
+	if (str_copy)
+	{
+		g_snprintf (buf, sizeof (buf), "URL %s", str_copy);
+		handle_command (current_sess, buf, FALSE);
+	}
+}
+
+static void
+url_action_copy (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter;
+	if (str_copy)
+		gtkutil_copy_to_clipboard (GTK_WIDGET (user_data), NULL, str_copy);
+}
+
+static void
+menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
+{
+	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
+	(void)popover;
+	if (action_group)
+		g_object_unref (action_group);
+}
+
+void
+menu_urlmenu (GtkWidget *parent, double x, double y, char *url)
+{
+	GMenu *gmenu;
+	GtkWidget *popover;
+	GSimpleActionGroup *action_group;
+	char *tmp, *chop;
+
+	g_free (str_copy);
+	str_copy = g_strdup (url);
+
+	/* Create action group for this menu */
+	action_group = g_simple_action_group_new ();
+
+	static const GActionEntry url_actions[] = {
+		{ "open", url_action_open, NULL, NULL, NULL },
+		{ "copy", url_action_copy, NULL, NULL, NULL },
+	};
+	g_action_map_add_action_entries (G_ACTION_MAP (action_group), url_actions,
+									 G_N_ELEMENTS (url_actions), parent);
+
+	gmenu = g_menu_new ();
+
+	/* Display URL (truncated if needed) - as a disabled label */
+	if (g_utf8_strlen (str_copy, -1) >= 52)
+	{
+		tmp = g_strdup (str_copy);
+		chop = g_utf8_offset_to_pointer (tmp, 48);
+		chop[0] = chop[1] = chop[2] = '.';
+		chop[3] = 0;
+		/* Add as section label */
+		g_menu_append (gmenu, tmp, NULL);
+		g_free (tmp);
+	}
+	else
+	{
+		g_menu_append (gmenu, str_copy, NULL);
+	}
+
+	/* Add action items */
+	if (strncmp (str_copy, "irc://", 6) == 0 ||
+		strncmp (str_copy, "ircs://", 7) == 0)
+		g_menu_append (gmenu, _("Connect"), "url.open");
+	else
+		g_menu_append (gmenu, _("Open Link in Browser"), "url.open");
+
+	g_menu_append (gmenu, _("Copy Selected Link"), "url.copy");
+
+	/* Create and configure the popover */
+	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+	gtk_widget_insert_action_group (popover, "url", G_ACTION_GROUP (action_group));
+	gtk_widget_set_parent (popover, parent);
+	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+								 &(GdkRectangle){ (int)x, (int)y, 1, 1 });
+	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
+
+	/* Clean up action group when popover is closed */
+	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), action_group);
+
+	gtk_popover_popup (GTK_POPOVER (popover));
+	g_object_unref (gmenu);
+}
+#endif
 
 static void
 menu_chan_cycle (GtkWidget * menu, char *chan)
@@ -1010,6 +1429,8 @@ menu_chan_join (GtkWidget * menu, char *chan)
 	}
 }
 
+/* GTK3-only: Channel context menu */
+#if !HC_GTK4
 void
 menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 {
@@ -1049,6 +1470,127 @@ menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 	menu_add_plugin_items (menu, "\x5$CHAN", str_copy);
 	menu_popup (menu, event, NULL);
 }
+#else
+/* GTK4: Action callbacks for channel menu */
+static void
+chan_action_join (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char tbuf[256];
+	(void)action; (void)parameter; (void)user_data;
+	if (current_sess && str_copy)
+	{
+		g_snprintf (tbuf, sizeof tbuf, "join %s", str_copy);
+		handle_command (current_sess, tbuf, FALSE);
+	}
+}
+
+static void
+chan_action_focus (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char tbuf[256];
+	(void)action; (void)parameter; (void)user_data;
+	if (current_sess && str_copy)
+	{
+		g_snprintf (tbuf, sizeof tbuf, "doat %s gui focus", str_copy);
+		handle_command (current_sess, tbuf, FALSE);
+	}
+}
+
+static void
+chan_action_part (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char tbuf[256];
+	(void)action; (void)parameter; (void)user_data;
+	if (current_sess && str_copy)
+	{
+		g_snprintf (tbuf, sizeof tbuf, "part %s", str_copy);
+		handle_command (current_sess, tbuf, FALSE);
+	}
+}
+
+static void
+chan_action_cycle (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	char tbuf[256];
+	(void)action; (void)parameter; (void)user_data;
+	if (current_sess && str_copy)
+	{
+		g_snprintf (tbuf, sizeof tbuf, "CYCLE %s", str_copy);
+		handle_command (current_sess, tbuf, FALSE);
+	}
+}
+
+void
+menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
+{
+	GtkWidget *xtext_widget;
+	GtkXText *xtext;
+	GMenu *gmenu;
+	GtkWidget *popover;
+	GSimpleActionGroup *action_group;
+	int is_joined = FALSE;
+	session *chan_session;
+
+	(void)event;  /* NULL in GTK4 */
+
+	if (!sess || !sess->gui || !sess->gui->xtext)
+		return;
+
+	xtext_widget = sess->gui->xtext;
+	xtext = GTK_XTEXT (xtext_widget);
+
+	chan_session = find_channel (sess->server, chan);
+	if (chan_session)
+		is_joined = TRUE;
+
+	g_free (str_copy);
+	str_copy = g_strdup (chan);
+
+	/* Create action group for this menu */
+	action_group = g_simple_action_group_new ();
+
+	static const GActionEntry chan_actions[] = {
+		{ "join", chan_action_join, NULL, NULL, NULL },
+		{ "focus", chan_action_focus, NULL, NULL, NULL },
+		{ "part", chan_action_part, NULL, NULL, NULL },
+		{ "cycle", chan_action_cycle, NULL, NULL, NULL },
+	};
+	g_action_map_add_action_entries (G_ACTION_MAP (action_group), chan_actions,
+									 G_N_ELEMENTS (chan_actions), NULL);
+
+	gmenu = g_menu_new ();
+
+	/* Channel name as label */
+	g_menu_append (gmenu, chan, NULL);
+
+	/* Add action items based on join state */
+	if (!is_joined)
+	{
+		g_menu_append (gmenu, _("Join Channel"), "chan.join");
+	}
+	else
+	{
+		if (chan_session != current_sess)
+			g_menu_append (gmenu, _("Focus Channel"), "chan.focus");
+		g_menu_append (gmenu, _("Part Channel"), "chan.part");
+		g_menu_append (gmenu, _("Cycle Channel"), "chan.cycle");
+	}
+
+	/* Create and configure the popover */
+	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+	gtk_widget_insert_action_group (popover, "chan", G_ACTION_GROUP (action_group));
+	gtk_widget_set_parent (popover, xtext_widget);
+	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+								 &(GdkRectangle){ xtext->last_click_x, xtext->last_click_y, 1, 1 });
+	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
+
+	/* Clean up action group when popover is closed */
+	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), action_group);
+
+	gtk_popover_popup (GTK_POPOVER (popover));
+	g_object_unref (gmenu);
+}
+#endif
 
 static void
 menu_delfav_cb (GtkWidget *item, server *serv)
@@ -1158,7 +1700,7 @@ usermenu_destroy (GtkWidget * menu)
 
 	for (l = items; l != NULL; l = l->next)
 	{
-		gtk_widget_destroy (GTK_WIDGET (l->data));
+		hc_widget_destroy (GTK_WIDGET (l->data));
 	}
 	g_list_free (items);
 }
@@ -1371,7 +1913,7 @@ menu_join_cb (GtkWidget *dialog, gint response, GtkEntry *entry)
 	switch (response)
 	{
 	case GTK_RESPONSE_ACCEPT:
-		menu_chan_join (NULL, (char *)gtk_entry_get_text (entry));
+		menu_chan_join (NULL, (char *)hc_entry_get_text (GTK_WIDGET(entry)));
 		break;
 
 	case GTK_RESPONSE_HELP:
@@ -1379,7 +1921,7 @@ menu_join_cb (GtkWidget *dialog, gint response, GtkEntry *entry)
 		break;
 	}
 
-	gtk_widget_destroy (dialog);
+	hc_window_destroy (dialog);
 }
 
 static void
@@ -1400,25 +1942,25 @@ menu_join (GtkWidget * wid, gpointer none)
 									_("_OK"), GTK_RESPONSE_ACCEPT,
 									NULL);
 	gtk_box_set_homogeneous (GTK_BOX (gtk_dialog_get_content_area (GTK_DIALOG (dialog))), TRUE);
-	gtk_window_set_position (GTK_WINDOW (dialog), GTK_WIN_POS_MOUSE);
+	hc_window_set_position (dialog, GTK_WIN_POS_MOUSE);
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 
 	entry = gtk_entry_new ();
 	gtk_editable_set_editable (GTK_EDITABLE (entry), FALSE);	/* avoid auto-selection */
-	gtk_entry_set_text (GTK_ENTRY (entry), "#");
+	hc_entry_set_text (entry, "#");
 	g_signal_connect (G_OBJECT (entry), "activate",
 						 	G_CALLBACK (menu_join_entry_cb), dialog);
-	gtk_box_pack_end (GTK_BOX (hbox), entry, 0, 0, 0);
+	hc_box_pack_end (hbox, entry, 0, 0, 0);
 
 	label = gtk_label_new (_("Enter Channel to Join:"));
-	gtk_box_pack_end (GTK_BOX (hbox), label, 0, 0, 0);
+	hc_box_pack_end (hbox, label, 0, 0, 0);
 
 	g_signal_connect (G_OBJECT (dialog), "response",
 						   G_CALLBACK (menu_join_cb), entry);
 
-	gtk_container_add (GTK_CONTAINER (gtk_dialog_get_content_area (GTK_DIALOG (dialog))), hbox);
+	hc_box_add (gtk_dialog_get_content_area (GTK_DIALOG (dialog)), hbox);
 
-	gtk_widget_show_all (dialog);
+	hc_widget_show_all (dialog);
 
 	gtk_editable_set_editable (GTK_EDITABLE (entry), TRUE);
 	gtk_editable_set_position (GTK_EDITABLE (entry), 1);
@@ -1702,7 +2244,7 @@ menu_metres_both (GtkWidget *item, gpointer none)
 static void
 about_dialog_close (GtkDialog *dialog, int response, gpointer data)
 {
-	gtk_widget_destroy (GTK_WIDGET(dialog));
+	hc_window_destroy (GTK_WIDGET(dialog));
 }
 
 static gboolean
@@ -1752,7 +2294,7 @@ menu_about (GtkWidget *wid, gpointer sess)
 	g_signal_connect (G_OBJECT(dialog), "response", G_CALLBACK(about_dialog_close), NULL);
 	g_signal_connect (G_OBJECT(dialog), "activate-link", G_CALLBACK(about_dialog_openurl), NULL);
 	
-	gtk_widget_show_all (GTK_WIDGET(dialog));
+	hc_widget_show_all (GTK_WIDGET(dialog));
 }
 
 static struct mymenu mymenu[] = {
@@ -2169,7 +2711,7 @@ menu_del_cb (GtkWidget *menu, menu_entry *me, char *target)
 {
 	GtkWidget *item = menu_find (menu, me->path + me->root_offset, me->label);
 	if (item)
-		gtk_widget_destroy (item);
+		hc_widget_destroy (item);
 }
 
 static void

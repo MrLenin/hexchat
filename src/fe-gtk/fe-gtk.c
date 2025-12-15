@@ -95,6 +95,37 @@ static const GOptionEntry gopt_entries[] =
 };
 
 #ifdef WIN32
+#if HC_GTK4
+/* GTK4: gtk_dialog_run() is removed, must use async response handling.
+ * For startup dialogs, we run a mini event loop to wait for the response. */
+static void
+create_msg_dialog_response_cb (GtkDialog *dialog, gint response_id, gpointer user_data)
+{
+	gboolean *done = (gboolean *)user_data;
+	*done = TRUE;
+}
+
+static void
+create_msg_dialog (gchar *title, gchar *message)
+{
+	GtkWidget *dialog;
+	gboolean done = FALSE;
+
+	dialog = gtk_message_dialog_new (NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE, "%s", message);
+	gtk_window_set_title (GTK_WINDOW (dialog), title);
+
+	g_signal_connect (G_OBJECT (dialog), "response",
+					  G_CALLBACK (create_msg_dialog_response_cb), &done);
+	g_signal_connect (G_OBJECT (dialog), "response",
+					  G_CALLBACK (gtk_window_destroy), NULL);
+
+	gtk_window_present (GTK_WINDOW (dialog));
+
+	/* Run a mini event loop until the dialog is closed */
+	while (!done)
+		g_main_context_iteration (NULL, TRUE);
+}
+#else /* GTK3 */
 static void
 create_msg_dialog (gchar *title, gchar *message)
 {
@@ -103,16 +134,11 @@ create_msg_dialog (gchar *title, gchar *message)
 	dialog = gtk_message_dialog_new (NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE, "%s", message);
 	gtk_window_set_title (GTK_WINDOW (dialog), title);
 
-/* On Win32 we automatically have the icon. If we try to load it explicitly, it will look ugly for some reason. */
-#ifndef WIN32
-	pixmaps_init ();
-	gtk_window_set_icon (GTK_WINDOW (dialog), pix_hexchat);
-#endif
-
 	gtk_dialog_run (GTK_DIALOG (dialog));
-	gtk_widget_destroy (dialog);
+	hc_window_destroy (dialog);
 }
-#endif
+#endif /* HC_GTK4 */
+#endif /* WIN32 */
 
 int
 fe_args (int argc, char *argv[])
@@ -249,6 +275,7 @@ fe_args (int argc, char *argv[])
 
 /* GTK3: Use CSS provider for input box styling instead of deprecated gtk_rc_parse_string */
 static GtkCssProvider *input_css_provider = NULL;
+static GtkCssProvider *tree_css_provider = NULL;
 
 InputStyle *
 create_input_style (InputStyle *style)
@@ -314,6 +341,72 @@ create_input_style (InputStyle *style)
 	return style;
 }
 
+static void
+apply_tree_css (void)
+{
+	char css_buf[2048];
+	const char *font_family;
+	int font_size;
+
+	if (!tree_css_provider)
+	{
+		tree_css_provider = gtk_css_provider_new ();
+		gtk_style_context_add_provider_for_screen (
+			gdk_screen_get_default (),
+			GTK_STYLE_PROVIDER (tree_css_provider),
+			GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+	}
+
+	/* Extract font family and size from the input style */
+	font_family = pango_font_description_get_family (input_style->font_desc);
+	font_size = pango_font_description_get_size (input_style->font_desc) / PANGO_SCALE;
+
+	/* Apply theme colors and font to chanview tree and userlist.
+	 * GTK3 tree views use treeview and row CSS nodes.
+	 * Chanview uses CSS for selection highlighting. */
+	g_snprintf (css_buf, sizeof (css_buf),
+		/* Chanview tree styling */
+		"#hexchat-tree { "
+		"  background-color: rgb(%d, %d, %d); "
+		"  color: rgb(%d, %d, %d); "
+		"  font-family: \"%s\"; "
+		"  font-size: %dpt; "
+		"} "
+		"#hexchat-tree:selected { "
+		"  background-color: rgb(%d, %d, %d); "
+		"  color: rgb(%d, %d, %d); "
+		"} "
+		/* Userlist styling - background color only, selection via model */
+		"#hexchat-userlist { "
+		"  background-color: rgb(%d, %d, %d); "
+		"}",
+		/* #hexchat-tree background */
+		(int)(colors[COL_BG].red * 255),
+		(int)(colors[COL_BG].green * 255),
+		(int)(colors[COL_BG].blue * 255),
+		/* #hexchat-tree color (foreground) */
+		(int)(colors[COL_FG].red * 255),
+		(int)(colors[COL_FG].green * 255),
+		(int)(colors[COL_FG].blue * 255),
+		/* #hexchat-tree font */
+		font_family ? font_family : "sans",
+		font_size > 0 ? font_size : 11,
+		/* #hexchat-tree:selected background (mark background) */
+		(int)(colors[COL_MARK_BG].red * 255),
+		(int)(colors[COL_MARK_BG].green * 255),
+		(int)(colors[COL_MARK_BG].blue * 255),
+		/* #hexchat-tree:selected color (mark foreground) */
+		(int)(colors[COL_MARK_FG].red * 255),
+		(int)(colors[COL_MARK_FG].green * 255),
+		(int)(colors[COL_MARK_FG].blue * 255),
+		/* #hexchat-userlist background */
+		(int)(colors[COL_BG].red * 255),
+		(int)(colors[COL_BG].green * 255),
+		(int)(colors[COL_BG].blue * 255));
+
+	gtk_css_provider_load_from_data (tree_css_provider, css_buf, -1, NULL);
+}
+
 void
 fe_init (void)
 {
@@ -326,6 +419,7 @@ fe_init (void)
 #endif
 	channelwin_pix = pixmap_load_from_file (prefs.hex_text_background);
 	input_style = create_input_style (NULL);
+	apply_tree_css ();
 }
 
 #ifdef HAVE_GTK_MAC
@@ -345,12 +439,17 @@ fe_main (void)
 					G_CALLBACK(gtkosx_application_terminate), NULL);
 #endif
 
+	GtkSettings* settings = gtk_settings_get_default();
+	g_object_set(settings, "gtk-theme-name", "Default", NULL);
+
 	gtk_main ();
 
 	/* sleep for 2 seconds so any QUIT messages are not lost. The  */
 	/* GUI is closed at this point, so the user doesn't even know! */
 	if (prefs.wait_on_exit)
 		sleep (2);
+
+	g_free(settings);
 }
 
 void
@@ -463,6 +562,54 @@ fe_new_server (struct server *serv)
 	serv->gui = g_new0 (struct server_gui, 1);
 }
 
+#if HC_GTK4
+/* GTK4: gtk_dialog_run() removed, gtk_window_set_position() removed */
+static void
+fe_message_response_cb (GtkDialog *dialog, gint response_id, gpointer user_data)
+{
+	gboolean *done = (gboolean *)user_data;
+	if (done)
+		*done = TRUE;
+}
+
+void
+fe_message (char *msg, int flags)
+{
+	GtkWidget *dialog;
+	int type = GTK_MESSAGE_WARNING;
+	gboolean done = FALSE;
+
+	if (flags & FE_MSG_ERROR)
+		type = GTK_MESSAGE_ERROR;
+	if (flags & FE_MSG_INFO)
+		type = GTK_MESSAGE_INFO;
+
+	dialog = gtk_message_dialog_new (GTK_WINDOW (parent_window), 0, type,
+												GTK_BUTTONS_OK, "%s", msg);
+	if (flags & FE_MSG_MARKUP)
+		gtk_message_dialog_set_markup (GTK_MESSAGE_DIALOG (dialog), msg);
+
+	g_signal_connect (G_OBJECT (dialog), "response",
+							G_CALLBACK (gtk_window_destroy), NULL);
+
+	gtk_window_set_resizable (GTK_WINDOW (dialog), FALSE);
+	/* GTK4: gtk_window_set_position removed - window manager handles placement */
+
+	if (flags & FE_MSG_WAIT)
+	{
+		/* For blocking dialogs, run a mini event loop */
+		g_signal_connect (G_OBJECT (dialog), "response",
+						  G_CALLBACK (fe_message_response_cb), &done);
+		gtk_window_present (GTK_WINDOW (dialog));
+		while (!done)
+			g_main_context_iteration (NULL, TRUE);
+	}
+	else
+	{
+		gtk_window_present (GTK_WINDOW (dialog));
+	}
+}
+#else /* GTK3 */
 void
 fe_message (char *msg, int flags)
 {
@@ -481,12 +628,13 @@ fe_message (char *msg, int flags)
 	g_signal_connect (G_OBJECT (dialog), "response",
 							G_CALLBACK (gtk_widget_destroy), 0);
 	gtk_window_set_resizable (GTK_WINDOW (dialog), FALSE);
-	gtk_window_set_position (GTK_WINDOW (dialog), GTK_WIN_POS_MOUSE);
+	hc_window_set_position (dialog, GTK_WIN_POS_MOUSE);
 	gtk_widget_show (dialog);
 
 	if (flags & FE_MSG_WAIT)
 		gtk_dialog_run (GTK_DIALOG (dialog));
 }
+#endif /* HC_GTK4 */
 
 void
 fe_idle_add (void *func, void *data)
@@ -535,11 +683,11 @@ fe_set_topic (session *sess, char *topic, char *stripped_topic)
 	{
 		if (prefs.hex_text_stripcolor_topic)
 		{
-			gtk_entry_set_text (GTK_ENTRY (sess->gui->topic_entry), stripped_topic);
+			hc_entry_set_text (sess->gui->topic_entry, stripped_topic);
 		}
 		else
 		{
-			gtk_entry_set_text (GTK_ENTRY (sess->gui->topic_entry), topic);
+			hc_entry_set_text (sess->gui->topic_entry, topic);
 		}
 		mg_set_topic_tip (sess);
 	}
@@ -564,7 +712,7 @@ fe_update_mode_entry (session *sess, GtkWidget *entry, char **text, char *new_te
 	if (!sess->gui->is_tab || sess == current_tab)
 	{
 		if (sess->gui->flag_wid[0])	/* channel mode buttons enabled? */
-			gtk_entry_set_text (GTK_ENTRY (entry), new_text);
+			hc_entry_set_text (entry, new_text);
 	} else
 	{
 		if (sess->gui->is_tab)
@@ -621,7 +769,7 @@ fe_close_window (struct session *sess)
 	if (sess->gui->is_tab)
 		mg_tab_close (sess);
 	else
-		gtk_widget_destroy (sess->gui->window);
+		hc_window_destroy (sess->gui->window);
 }
 
 void

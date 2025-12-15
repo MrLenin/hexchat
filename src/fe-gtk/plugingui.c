@@ -35,7 +35,8 @@ typedef struct session hexchat_context;
 #include "gtkutil.h"
 #include "maingui.h"
 
-/* model for the plugin treeview */
+#if !HC_GTK4
+/* model for the plugin treeview (GTK3 only) */
 enum
 {
 	NAME_COLUMN,
@@ -45,9 +46,188 @@ enum
 	FILEPATH_COLUMN,
 	N_COLUMNS
 };
+#endif
 
 static GtkWidget *plugin_window = NULL;
 
+#if HC_GTK4
+/*
+ * GTK4 Implementation using GListStore + GtkColumnView
+ */
+
+/* GObject to hold plugin row data */
+#define HC_TYPE_PLUGIN_ITEM (hc_plugin_item_get_type())
+G_DECLARE_FINAL_TYPE (HcPluginItem, hc_plugin_item, HC, PLUGIN_ITEM, GObject)
+
+struct _HcPluginItem {
+	GObject parent;
+	char *name;
+	char *version;
+	char *file;
+	char *desc;
+	char *filepath;
+};
+
+G_DEFINE_TYPE (HcPluginItem, hc_plugin_item, G_TYPE_OBJECT)
+
+static void
+hc_plugin_item_finalize (GObject *obj)
+{
+	HcPluginItem *item = HC_PLUGIN_ITEM (obj);
+	g_free (item->name);
+	g_free (item->version);
+	g_free (item->file);
+	g_free (item->desc);
+	g_free (item->filepath);
+	G_OBJECT_CLASS (hc_plugin_item_parent_class)->finalize (obj);
+}
+
+static void
+hc_plugin_item_class_init (HcPluginItemClass *klass)
+{
+	G_OBJECT_CLASS (klass)->finalize = hc_plugin_item_finalize;
+}
+
+static void
+hc_plugin_item_init (HcPluginItem *item)
+{
+	item->name = NULL;
+	item->version = NULL;
+	item->file = NULL;
+	item->desc = NULL;
+	item->filepath = NULL;
+}
+
+static HcPluginItem *
+hc_plugin_item_new (const char *name, const char *version,
+                    const char *file, const char *desc, const char *filepath)
+{
+	HcPluginItem *item = g_object_new (HC_TYPE_PLUGIN_ITEM, NULL);
+	item->name = g_strdup (name);
+	item->version = g_strdup (version);
+	item->file = g_strdup (file);
+	item->desc = g_strdup (desc);
+	item->filepath = g_strdup (filepath);
+	return item;
+}
+
+/* Factory setup - create a label */
+static void
+plugingui_setup_label_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_label_new (NULL);
+	gtk_label_set_xalign (GTK_LABEL (label), 0.5); /* center align like GTK3 */
+	gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+	gtk_widget_set_hexpand (label, TRUE);
+	gtk_list_item_set_child (item, label);
+}
+
+/* Factory bind callbacks for each column */
+static void
+plugingui_bind_name_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcPluginItem *plugin = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), plugin->name ? plugin->name : "");
+}
+
+static void
+plugingui_bind_version_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcPluginItem *plugin = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), plugin->version ? plugin->version : "");
+}
+
+static void
+plugingui_bind_file_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcPluginItem *plugin = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), plugin->file ? plugin->file : "");
+}
+
+static void
+plugingui_bind_desc_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+{
+	GtkWidget *label = gtk_list_item_get_child (item);
+	HcPluginItem *plugin = gtk_list_item_get_item (item);
+	gtk_label_set_text (GTK_LABEL (label), plugin->desc ? plugin->desc : "");
+}
+
+/* Get selected plugin item */
+static HcPluginItem *
+plugingui_get_selected_item (void)
+{
+	GtkColumnView *view;
+	GtkSelectionModel *sel_model;
+
+	if (!plugin_window)
+		return NULL;
+
+	view = g_object_get_data (G_OBJECT (plugin_window), "view");
+	sel_model = gtk_column_view_get_model (view);
+
+	return hc_selection_model_get_selected_item (sel_model);
+}
+
+static GtkWidget *
+plugingui_columnview_new (GtkWidget *box)
+{
+	GListStore *store;
+	GtkWidget *view;
+	GtkWidget *scrolled;
+	GtkColumnViewColumn *col;
+
+	/* Create list store for plugin items */
+	store = g_list_store_new (HC_TYPE_PLUGIN_ITEM);
+	g_return_val_if_fail (store != NULL, NULL);
+
+	/* Create column view with single selection */
+	view = hc_column_view_new_simple (G_LIST_MODEL (store), GTK_SELECTION_SINGLE);
+	gtk_column_view_set_show_column_separators (GTK_COLUMN_VIEW (view), TRUE);
+	gtk_column_view_set_show_row_separators (GTK_COLUMN_VIEW (view), TRUE);
+
+	/* Add columns */
+	col = hc_column_view_add_column (GTK_COLUMN_VIEW (view), _("Name"),
+	                                  G_CALLBACK (plugingui_setup_label_cb),
+	                                  G_CALLBACK (plugingui_bind_name_cb), NULL);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, FALSE);
+
+	col = hc_column_view_add_column (GTK_COLUMN_VIEW (view), _("Version"),
+	                                  G_CALLBACK (plugingui_setup_label_cb),
+	                                  G_CALLBACK (plugingui_bind_version_cb), NULL);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, FALSE);
+
+	col = hc_column_view_add_column (GTK_COLUMN_VIEW (view), _("File"),
+	                                  G_CALLBACK (plugingui_setup_label_cb),
+	                                  G_CALLBACK (plugingui_bind_file_cb), NULL);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, FALSE);
+
+	col = hc_column_view_add_column (GTK_COLUMN_VIEW (view), _("Description"),
+	                                  G_CALLBACK (plugingui_setup_label_cb),
+	                                  G_CALLBACK (plugingui_bind_desc_cb), NULL);
+	gtk_column_view_column_set_resizable (col, TRUE);
+	gtk_column_view_column_set_expand (col, TRUE);
+
+	/* Wrap in scrolled window */
+	scrolled = hc_scrolled_window_new ();
+	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled),
+	                                GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	hc_scrolled_window_set_child (scrolled, view);
+	hc_box_pack_start (box, scrolled, TRUE, TRUE, 0);
+
+	/* Store references */
+	g_object_set_data (G_OBJECT (scrolled), "column-view", view);
+	g_object_set_data (G_OBJECT (scrolled), "store", store);
+
+	return scrolled;
+}
+
+#else /* GTK3 */
 
 static GtkWidget *
 plugingui_treeview_new (GtkWidget *box)
@@ -66,7 +246,7 @@ plugingui_treeview_new (GtkWidget *box)
 	                             FILE_COLUMN, _("File"),
 	                             DESC_COLUMN, _("Description"),
 	                             FILEPATH_COLUMN, NULL, -1);
-	gtk_tree_view_set_rules_hint (GTK_TREE_VIEW (view), TRUE);
+	hc_tree_view_set_rules_hint (view, TRUE);
 	for (col_id=0; (col = gtk_tree_view_get_column (GTK_TREE_VIEW (view), col_id));
 	     col_id++)
 			gtk_tree_view_column_set_alignment (col, 0.5);
@@ -99,6 +279,8 @@ plugingui_getfilename (GtkTreeView *view)
 	return NULL;
 }
 
+#endif /* HC_GTK4 */
+
 static void
 plugingui_close (GtkWidget * wid, gpointer a)
 {
@@ -112,14 +294,40 @@ fe_pluginlist_update (void)
 {
 	hexchat_plugin *pl;
 	GSList *list;
+#if HC_GTK4
+	GtkColumnView *view;
+	GListStore *store;
+#else
 	GtkTreeView *view;
 	GtkListStore *store;
 	GtkTreeIter iter;
+#endif
 
 	if (!plugin_window)
 		return;
 
 	view = g_object_get_data (G_OBJECT (plugin_window), "view");
+
+#if HC_GTK4
+	store = g_object_get_data (G_OBJECT (plugin_window), "store");
+	/* Clear the store */
+	g_list_store_remove_all (store);
+
+	list = plugin_list;
+	while (list)
+	{
+		pl = list->data;
+		if (pl->version[0] != 0)
+		{
+			HcPluginItem *item = hc_plugin_item_new (pl->name, pl->version,
+			                                         file_part (pl->filename),
+			                                         pl->desc, pl->filename);
+			g_list_store_append (store, item);
+			g_object_unref (item);
+		}
+		list = list->next;
+	}
+#else /* GTK3 */
 	store = GTK_LIST_STORE (gtk_tree_view_get_model (view));
 	gtk_list_store_clear (store);
 
@@ -138,6 +346,7 @@ fe_pluginlist_update (void)
 		}
 		list = list->next;
 	}
+#endif
 }
 
 static void
@@ -176,10 +385,42 @@ plugingui_loadbutton_cb (GtkWidget * wid, gpointer unused)
 static void
 plugingui_unload (GtkWidget * wid, gpointer unused)
 {
+#if HC_GTK4
+	HcPluginItem *item;
+	char *modname, *file;
+
+	item = plugingui_get_selected_item ();
+	if (!item)
+		return;
+
+	modname = g_strdup (item->name);
+	file = g_strdup (item->filepath);
+	g_object_unref (item);
+
+	if (g_str_has_suffix (file, "."PLUGIN_SUFFIX))
+	{
+		if (plugin_kill (modname, FALSE) == 2)
+			fe_message (_("That plugin is refusing to unload.\n"), FE_MSG_ERROR);
+	}
+	else
+	{
+		char *buf;
+		/* let python.so or perl.so handle it */
+		if (strchr (file, ' '))
+			buf = g_strdup_printf ("UNLOAD \"%s\"", file);
+		else
+			buf = g_strdup_printf ("UNLOAD %s", file);
+		handle_command (current_sess, buf, FALSE);
+		g_free (buf);
+	}
+
+	g_free (modname);
+	g_free (file);
+#else /* GTK3 */
 	char *modname, *file;
 	GtkTreeView *view;
 	GtkTreeIter iter;
-	
+
 	view = g_object_get_data (G_OBJECT (plugin_window), "view");
 	if (!gtkutil_treeview_get_selected (view, &iter, NAME_COLUMN, &modname,
 	                                    FILEPATH_COLUMN, &file, -1))
@@ -204,12 +445,26 @@ plugingui_unload (GtkWidget * wid, gpointer unused)
 
 	g_free (modname);
 	g_free (file);
+#endif
 }
 
 static void
-plugingui_reloadbutton_cb (GtkWidget *wid, GtkTreeView *view)
+plugingui_reloadbutton_cb (GtkWidget *wid, gpointer user_data)
 {
-	char *file = plugingui_getfilename(view);
+#if HC_GTK4
+	HcPluginItem *item;
+	char *file;
+
+	item = plugingui_get_selected_item ();
+	if (!item)
+		return;
+
+	file = g_strdup (item->filepath);
+	g_object_unref (item);
+#else
+	GtkTreeView *view = GTK_TREE_VIEW (user_data);
+	char *file = plugingui_getfilename (view);
+#endif
 
 	if (file)
 	{
@@ -228,9 +483,15 @@ plugingui_reloadbutton_cb (GtkWidget *wid, GtkTreeView *view)
 void
 plugingui_open (void)
 {
-	GtkWidget *view;
 	GtkWidget *vbox, *hbox;
 	char buf[128];
+#if HC_GTK4
+	GtkWidget *scrolled;
+	GtkWidget *view;
+	GListStore *store;
+#else
+	GtkWidget *view;
+#endif
 
 	if (plugin_window)
 	{
@@ -243,14 +504,21 @@ plugingui_open (void)
 														 700, 300, &vbox, 0);
 	gtkutil_destroy_on_esc (plugin_window);
 
+#if HC_GTK4
+	scrolled = plugingui_columnview_new (vbox);
+	view = g_object_get_data (G_OBJECT (scrolled), "column-view");
+	store = g_object_get_data (G_OBJECT (scrolled), "store");
+	g_object_set_data (G_OBJECT (plugin_window), "view", view);
+	g_object_set_data (G_OBJECT (plugin_window), "store", store);
+#else
 	view = plugingui_treeview_new (vbox);
 	g_object_set_data (G_OBJECT (plugin_window), "view", view);
+#endif
 
-
-	hbox = gtk_button_box_new (GTK_ORIENTATION_HORIZONTAL);
-	gtk_button_box_set_layout (GTK_BUTTON_BOX (hbox), GTK_BUTTONBOX_SPREAD);
-	gtk_container_set_border_width (GTK_CONTAINER (hbox), 5);
-	gtk_box_pack_end (GTK_BOX (vbox), hbox, 0, 0, 0);
+	hbox = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
+	hc_button_box_set_layout (hbox, GTK_BUTTONBOX_SPREAD);
+	hc_container_set_border_width (hbox, 5);
+	hc_box_pack_end (vbox, hbox, 0, 0, 0);
 
 	gtkutil_button (hbox, "document-revert", NULL,
 	                plugingui_loadbutton_cb, NULL, _("_Load..."));
@@ -263,5 +531,5 @@ plugingui_open (void)
 
 	fe_pluginlist_update ();
 
-	gtk_widget_show_all (plugin_window);
+	hc_widget_show_all (plugin_window);
 }

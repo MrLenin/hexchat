@@ -1,3 +1,6 @@
+.claude/*
+.vscode/*
+src/htm/.vs/*
 /build
 builddir/
 doxygen*.tmp
@@ -8,6 +11,7 @@ tags
 plugins/wmpa/wmpa_h.h
 plugins/wmpa/wmpa_i.c
 src/htm/obj/*
+win32/.vs/*
 win32/ipch/*
 win32/ext/perl/perl-x86-cache
 win32/ext/perl/perl-x86-SetupFiles
@@ -27,3 +31,4 @@ osx/.HexChat.app
 *.dmg
 *.VC.db
 *.VC.opendb
+*.vcxproj.*
