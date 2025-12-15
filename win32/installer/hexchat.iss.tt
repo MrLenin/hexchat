@@ -143,6 +143,8 @@ Source: "epoxy-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 ; OpenSSL 3.x DLLs
 Source: "libcrypto-3-x64.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "libssl-3-x64.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
+; CA certificate bundle for SSL verification (optional - download from https://curl.se/ca/cacert.pem)
+Source: "cert.pem"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Components: libs
 ; Other libs
 Source: "ffi-8.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "intl.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs

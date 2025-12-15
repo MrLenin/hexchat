@@ -60,6 +60,8 @@
     <!-- OpenSSL from separate install -->
     <None Include="$(OpenSSLRoot)\bin\libcrypto-3-x64.dll" />
     <None Include="$(OpenSSLRoot)\bin\libssl-3-x64.dll" />
+    <!-- CA certificate bundle for SSL verification (optional - download from https://curl.se/ca/cacert.pem) -->
+    <CACert Include="$(YourCACertPath)" Condition="Exists('$(YourCACertPath)')" />
     <!-- WinSparkle -->
     <None Include="$(WinSparklePath)\WinSparkle.dll" />
     <!-- URL shortcuts -->
@@ -123,5 +125,7 @@
     <Copy SourceFiles="..\..\plugins\python\_hexchat.py" DestinationFolder="$(HexChatRel)\python" />
     <WriteLinesToFile File="$(HexChatRel)portable-mode" Lines="2" Overwrite="true" />
     <Copy SourceFiles="@(DepsRootDocs)" DestinationFiles="@(DepsRootDocs->'$(HexChatRel)\share\doc\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <!-- Copy CA certificate bundle as cert.pem (expected by ssl.c) -->
+    <Copy SourceFiles="@(CACert)" DestinationFiles="$(HexChatRel)\cert.pem" />
   </Target>
 </Project>

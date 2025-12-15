@@ -4,34 +4,47 @@
 
 		<!-- SPECIFY YOUR DEPENDENCY DIRECTORIES HERE -->
 
-		<YourDepsPath>c:\gtk-build\gtk</YourDepsPath>
+		<YourDepsPath>c:\gtk-build\gtk4</YourDepsPath>
 		<YourGendefPath>c:\gtk-build\gendef</YourGendefPath>
-		<YourPerlPath>c:\gtk-build\perl-5.20</YourPerlPath>
-		<YourPython3Path>c:\gtk-build\python-3.8</YourPython3Path>
+		<YourPerlPath>C:\Strawberry\perl</YourPerlPath>
+		<YourPython3Path>C:\Python313</YourPython3Path>
 		<YourWinSparklePath>c:\gtk-build\WinSparkle</YourWinSparklePath>
+		<!-- OpenSSL is not included in gvsbuild, install separately -->
+		<YourOpenSSLPath>C:\OpenSSL</YourOpenSSLPath>
+		<!-- CA certificate bundle (cert.pem) for SSL verification -->
+		<!-- Download from: https://curl.se/ca/cacert.pem -->
+		<YourCACertPath>C:\certs\cacert.pem</YourCACertPath>
 
 		<!-- YOU SHOULDN'T TOUCH ANYTHING BELOW -->
 
-		<!-- G_DISABLE_DEPRECATED is unfeasible due to g_completion_* -->
-		<!-- must be buildable with GSEAL_ENABLE in the future, xtext, setup, and chanview-tabs stand in the way -->
-		<OwnFlags>GTK_DISABLE_DEPRECATED;GDK_PIXBUF_DISABLE_DEPRECATED;G_DISABLE_SINGLE_INCLUDES;GDK_PIXBUF_DISABLE_SINGLE_INCLUDES;GTK_DISABLE_SINGLE_INCLUDES;HAVE_X509_GET_SIGNATURE_NID;HAVE_SSL_CTX_GET_SSL_METHOD;DEFAULT_CERT_FILE="cert.pem";HAVE_STRTOULL;strtoull=_strtoui64;strcasecmp=stricmp;strncasecmp=strnicmp;__inline__=__inline</OwnFlags>
+		<!-- GTK4 BUILD CONFIGURATION -->
+		<!-- HC_GTK4 enables GTK4 code paths in the HexChat source -->
+		<!-- Note: GTK_DISABLE_DEPRECATED removed as we need some deprecated APIs during transition -->
+		<OwnFlags>HC_GTK4=1;GDK_PIXBUF_DISABLE_DEPRECATED;G_DISABLE_SINGLE_INCLUDES;GDK_PIXBUF_DISABLE_SINGLE_INCLUDES;GTK_DISABLE_SINGLE_INCLUDES;HAVE_X509_GET_SIGNATURE_NID;HAVE_SSL_CTX_GET_SSL_METHOD;DEFAULT_CERT_FILE="cert.pem";HAVE_STRTOULL;strtoull=_strtoui64;strcasecmp=stricmp;strncasecmp=strnicmp;__inline__=__inline</OwnFlags>
 		<!-- FIXME: Add ability to use debug builds -->
 		<DepsRoot>$(YourDepsPath)\$(PlatformName)\release</DepsRoot>
 		<GendefPath>$(YourGendefPath)</GendefPath>
 		<WinSparklePath>$(YourWinSparklePath)\$(PlatformName)</WinSparklePath>
-		<PerlPath>$(YourPerlPath)\$(PlatformName)</PerlPath>
-		<PerlLib>perl520</PerlLib>
-		<Python3Path>$(YourPython3Path)\$(PlatformName)</Python3Path>
-		<Python3Lib>python38</Python3Lib>
+		<PerlPath>$(YourPerlPath)</PerlPath>
+		<PerlLib>perl542</PerlLib>
+		<Python3Path>$(YourPython3Path)</Python3Path>
+		<Python3Lib>python313</Python3Lib>
 		<Python3Output>hcpython3</Python3Output>
 		<LuaInclude>$(DepsRoot)\include\luajit-2.1</LuaInclude>
 		<LuaOutput>hclua</LuaOutput>
 		<LuaLib>lua51</LuaLib>
-		<Glib>$(DepsRoot)\include\glib-2.0;$(DepsRoot)\lib\glib-2.0\include;$(DepsRoot)\include\libxml2</Glib>
-		<Gtk>$(DepsRoot)\include\gtk-2.0;$(DepsRoot)\lib\gtk-2.0\include;$(DepsRoot)\include\atk-1.0;$(DepsRoot)\include\cairo;$(DepsRoot)\include\pango-1.0;$(DepsRoot)\include\gdk-pixbuf-2.0</Gtk>
-		<DepLibs>gtk-win32-2.0.lib;gdk-win32-2.0.lib;atk-1.0.lib;gio-2.0.lib;gdk_pixbuf-2.0.lib;pangowin32-1.0.lib;pangocairo-1.0.lib;pango-1.0.lib;cairo.lib;gobject-2.0.lib;gmodule-2.0.lib;glib-2.0.lib;intl.lib;libxml2.lib;libcrypto.lib;libssl.lib;ssleay32.lib;wininet.lib;winmm.lib;ws2_32.lib</DepLibs>
+		<!-- OpenSSL paths -->
+		<OpenSSLRoot>$(YourOpenSSLPath)</OpenSSLRoot>
+		<OpenSSLInclude>$(OpenSSLRoot)\include</OpenSSLInclude>
+		<OpenSSLLib>$(OpenSSLRoot)\lib</OpenSSLLib>
+		<Glib>$(DepsRoot)\include\graphene-1.0;$(DepsRoot)\lib\graphene-1.0\include;$(DepsRoot)\include\glib-2.0;$(DepsRoot)\lib\glib-2.0\include;$(DepsRoot)\include\libxml2</Glib>
+		<!-- GTK4 include paths - note gtk-4.0 instead of gtk-3.0 -->
+		<Gtk>$(DepsRoot)\include\gtk-4.0;$(DepsRoot)\lib\gtk-4.0\include;$(DepsRoot)\include\cairo;$(DepsRoot)\include\harfbuzz;$(DepsRoot)\include\pango-1.0;$(DepsRoot)\include\gdk-pixbuf-2.0;$(DepsRoot)\include\graphene-1.0;$(DepsRoot)\lib\graphene-1.0\include</Gtk>
+		<!-- GTK4 libraries - note gtk-4.lib instead of gtk-3.lib, no separate gdk lib, added graphene -->
+		<!-- ATK is no longer used in GTK4 (accessibility is built-in) -->
+		<DepLibs>gtk-4.lib;glib-2.0.lib;gio-2.0.lib;gdk_pixbuf-2.0.lib;pangowin32-1.0.lib;pangocairo-1.0.lib;pango-1.0.lib;cairo.lib;gobject-2.0.lib;gmodule-2.0.lib;glib-2.0.lib;intl.lib;xml2.lib;libcrypto.lib;libssl.lib;graphene-1.0.lib;wininet.lib;winmm.lib;ws2_32.lib</DepLibs>
 		<DataDir>$(SolutionDir)..\data\\</DataDir>
-		<HexChatBuild>$(SolutionDir)..\..\hexchat-build</HexChatBuild>
+		<HexChatBuild>$(SolutionDir)..\..\hexchat-build-gtk4</HexChatBuild>
 		<HexChatBin>$(HexChatBuild)\$(PlatformName)\bin\</HexChatBin>
 		<HexChatObj>$(HexChatBuild)\$(PlatformName)\obj\</HexChatObj>
 		<HexChatLib>$(HexChatBuild)\$(PlatformName)\lib\</HexChatLib>
@@ -64,6 +77,8 @@
 			<IntrinsicFunctions>true</IntrinsicFunctions>
 			<MultiProcessorCompilation>true</MultiProcessorCompilation>
 			<PreProcessorDefinitions>NTDDI_VERSION=NTDDI_WIN8;_WIN32_WINNT=_WIN32_WINNT_WIN8;%(PreProcessorDefinitions)</PreProcessorDefinitions>
+			<!-- OpenSSL include path for all projects -->
+			<AdditionalIncludeDirectories>$(OpenSSLInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 		</ClCompile>
 		<Lib>
 			<LinkTimeCodeGeneration>true</LinkTimeCodeGeneration>
@@ -76,6 +91,8 @@
 			<EnableCOMDATFolding>true</EnableCOMDATFolding>
 			<OptimizeReferences>true</OptimizeReferences>
 			<LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+			<!-- OpenSSL library path for all projects -->
+			<AdditionalLibraryDirectories>$(OpenSSLLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
 		</Link>
 	</ItemDefinitionGroup>
 
