@@ -3,6 +3,7 @@
 src/htm/.vs/*
 /build
 builddir/
+hexchat-build-gtk4/
 doxygen*.tmp
 html/
 *.patch
