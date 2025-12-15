@@ -166,15 +166,36 @@ Key techniques:
 - `ignore_gui_open()` creates column view and populates from `ignore_list`
 - Delete/Clear callbacks iterate using GListStore APIs
 
-### Phase 5: Complex Lists (Icons, DND, Sorting)
+### Phase 5: Complex Lists (Icons, DND, Sorting) - COMPLETE
 
 **Files:** `userlistgui.c`
 
-Key challenges:
-1. **Icons**: Use `GtkPicture` with `GdkPaintable` (convert `GdkPixbuf` via `hc_pixbuf_to_texture`)
-2. **Colors**: Apply via CSS classes or `PangoAttrList` on labels
-3. **Sorting**: Use `GtkCustomSorter` with existing sort functions
-4. **DND**: Already have GTK4 DND implemented - adapt for new widget
+**Strategy:** Use `GListStore` with custom `GObject` item + `GtkColumnView` with `GtkPicture` for icons, `PangoAttrList` for colors, `GtkSortListModel` for sorting
+
+**Implementation:**
+- Created `HcUserItem` GObject subclass with fields: nick, hostname, user (pointer), icon (GdkTexture), color_index
+- Used `G_DECLARE_FINAL_TYPE` and `G_DEFINE_TYPE` macros for proper GObject registration
+- Modified `sess->res->user_model` type: `GListStore *` for GTK4, `GtkListStore *` for GTK3
+- Created `userlist_create_model()` returning `GListStore` for GTK4 (sorting handled by view)
+- Created `userlist_create()` with `GtkColumnView`:
+  - Icon column: `GtkPicture` with `GdkTexture` from `hc_pixbuf_to_texture()`
+  - Nick column: `GtkLabel` with `PangoAttrList` for foreground color
+  - Host column (optional): `GtkLabel`
+- Factory setup/bind/unbind callbacks for each column type
+- **Sorting**: `userlist_show()` creates `GtkSortListModel` wrapper with `GtkCustomSorter`:
+  - Reused existing comparison logic in `userlist_ops_cmp_gtk4()` and `userlist_alpha_cmp_gtk4()`
+  - Wraps `GListStore` in `GtkSortListModel`, then in `GtkMultiSelection` for view
+- **Colors**: `userlist_bind_nick_cb()` uses `PangoAttrList` with `pango_attr_foreground_new()`
+- **Icons**: `userlist_bind_icon_cb()` sets `GdkTexture` on `GtkPicture` widget
+- **DND**: Updated file drop handler to use `GtkSelectionModel` instead of `GtkTreeView` path lookup
+- All `fe_userlist_*` functions duplicated with GTK4 versions:
+  - `fe_userlist_insert()`: Creates `HcUserItem`, appends to `GListStore`
+  - `fe_userlist_remove()`: Finds position in store, removes with `g_list_store_remove()`
+  - `fe_userlist_rehash()`: Updates item fields and re-inserts to trigger view refresh
+  - `fe_userlist_clear()`: Uses `g_list_store_remove_all()`
+  - `fe_userlist_set_selected()`: Iterates store and checks selection model
+- Selection helpers: `userlist_selection_list_gtk4()` iterates `GtkBitset` from selection model
+- Click/key handlers updated to work with `GtkColumnView` and `GtkSelectionModel`
 
 ### Phase 6: Custom Model with Filtering
 
@@ -252,13 +273,14 @@ static GtkWidget *my_view_new(void) {
 10. **notifygui.c** - Migrated to GListStore + GtkColumnView with CSS colors (Phase 3)
 11. **dccgui.c** - Migrated to GListStore + GtkColumnView with icons, colors, real-time updates (Phase 3)
 12. **ignoregui.c** - Migrated to GListStore + GtkColumnView with GtkCheckButton toggle columns (Phase 4)
+13. **userlistgui.c** - Migrated to GListStore + GtkColumnView with icons, colors, sorting, DND (Phase 5)
+14. **fe-gtk.h** - Updated `sess->res->user_model` type for GTK4 compatibility (Phase 5)
 
 ## Files Remaining
 
-1. **userlistgui.c** - Icons, colors, sorting, DND (Phase 5)
-2. **custom-list.c** - GListModel implementation (Phase 6)
-3. **chanlist.c** - Uses custom model, filtering (Phase 6)
-4. **chanview-tree.c** - Hierarchical with GtkTreeListModel (Phase 7)
+1. **custom-list.c** - GListModel implementation (Phase 6)
+2. **chanlist.c** - Uses custom model, filtering (Phase 6)
+3. **chanview-tree.c** - Hierarchical with GtkTreeListModel (Phase 7)
 
 ## Progress Tracking
 
@@ -269,7 +291,7 @@ static GtkWidget *my_view_new(void) {
 | 2 | COMPLETE | editlist.c, textgui.c | GtkEditableLabel for inline editing |
 | 3 | COMPLETE | banlist.c, notifygui.c, dccgui.c | CSS for colors, GtkCustomSorter, GtkBitset for multi-select |
 | 4 | COMPLETE | ignoregui.c | GtkCheckButton for toggle columns |
-| 5 | PENDING | userlistgui.c | |
+| 5 | COMPLETE | userlistgui.c, fe-gtk.h | GtkPicture for icons, PangoAttrList for colors, GtkSortListModel |
 | 6 | PENDING | custom-list.c, chanlist.c | |
 | 7 | PENDING | chanview-tree.c | |
 

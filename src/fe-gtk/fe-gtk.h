@@ -110,7 +110,11 @@ typedef struct restore_gui
 	void *tab;			/* (chan *) */
 
 	/* information stored when this tab isn't front-most */
+#if HC_GTK4
+	GListStore *user_model;		/* for filling the GtkColumnView */
+#else
 	GtkListStore *user_model;	/* for filling the GtkTreeView */
+#endif
 	void *buffer;		/* xtext_Buffer */
 	char *input_text;	/* input text buffer (while not-front tab) */
 	char *topic_text;	/* topic GtkEntry buffer */
