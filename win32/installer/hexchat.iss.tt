@@ -111,20 +111,19 @@ Source: "portable-mode"; DestDir: "{app}"; Tasks: portable
 
 Source: "changelog.url"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "readme.url"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
-Source: "cert.pem"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "share\xml\*"; DestDir: "{app}\share\xml"; Flags: ignoreversion createallsubdirs recursesubdirs; Components: libs
 Source: "share\doc\*"; DestDir: "{app}\share\doc"; Flags: ignoreversion createallsubdirs recursesubdirs; Components: libs
 Source: "share\themes\MS-Windows\*"; DestDir: "{app}\share\themes\MS-Windows"; Flags: ignoreversion createallsubdirs recursesubdirs; Components: libs
 Source: "share\locale\*"; DestDir: "{app}\share\locale"; Flags: ignoreversion createallsubdirs recursesubdirs; Components: translations
 Source: "etc\fonts\*"; DestDir: "{app}\etc\fonts"; Flags: ignoreversion createallsubdirs recursesubdirs; Components: libs
 
-; GTK4 and GLib DLLs
+; GTK4 and GLib DLLs (gvsbuild naming convention)
 Source: "gtk-4-1.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "graphene-1.0-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
-Source: "cairo.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
-Source: "freetype.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
+Source: "cairo-2.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
+Source: "freetype-6.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "fribidi-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
-Source: "fontconfig.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
+Source: "fontconfig-1.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "harfbuzz.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "gdk_pixbuf-2.0-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "gio-2.0-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
@@ -140,15 +139,15 @@ Source: "gspawn-win32-helper-console.exe"; DestDir: "{app}"; Flags: ignoreversio
 #endif
 Source: "gthread-2.0-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "iconv.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
+Source: "epoxy-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 ; OpenSSL 3.x DLLs
 Source: "libcrypto-3-x64.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "libssl-3-x64.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
-; Enchant and other libs
-Source: "libenchant-2.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
+; Other libs
 Source: "ffi-8.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "intl.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "libpng16.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
-Source: "libxml2.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
+Source: "xml2-16.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "pcre2-8-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "pango-1.0-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 Source: "pangocairo-1.0-0.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
@@ -158,7 +157,9 @@ Source: "zlib1.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: libs
 
 Source: "plugins\hcnotifications-winrt.dll"; DestDir: "{app}\plugins"; Flags: ignoreversion; Components: libs
 
-Source: "lib\enchant-2\*"; DestDir: "{app}\lib\enchant-2"; Flags: ignoreversion; Components: libs
+; Enchant spell checking (optional - may not be installed)
+Source: "libenchant-2.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist; Components: libs
+Source: "lib\enchant-2\*"; DestDir: "{app}\lib\enchant-2"; Flags: ignoreversion skipifsourcedoesntexist; Components: libs
 
 ; GTK4 uses CSS theming only - no theme engine DLLs needed
 
