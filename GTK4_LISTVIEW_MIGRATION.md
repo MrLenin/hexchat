@@ -227,15 +227,41 @@ Key techniques:
 - Right-click context menu via `GtkGestureClick` controller
 - Added `chanlist_store` field to server GUI struct for GTK4
 
-### Phase 7: Hierarchical Tree
+### Phase 7: Hierarchical Tree - COMPLETE
 
 **Files:** `chanview-tree.c`
 
-Strategy:
-- Use `GtkTreeListModel` (wraps a flat model and adds hierarchy)
-- Server rows return child model (channel list) via callback
-- Use `GtkTreeExpander` widget for expand/collapse UI
-- Bind expander to `GtkTreeListRow` for expand state
+**Strategy:** Use `GtkTreeListModel` with `GtkListView` for hierarchical display with `GtkTreeExpander` for expand/collapse UI
+
+**Implementation:**
+- Created `HcChanItem` GObject subclass with fields: ch (chan pointer), children (GListStore), is_server (boolean)
+- Used `G_DECLARE_FINAL_TYPE` and `G_DEFINE_TYPE` macros for proper GObject registration
+- Created `treeview` struct for GTK4 with fields: view (GtkListView), scrollw, tree_model (GtkTreeListModel), root_store (GListStore)
+- **GtkTreeListModel**: Created via `gtk_tree_list_model_new()` with `cv_tree_create_child_model` callback
+  - Wraps root `GListStore` containing server items
+  - Child callback returns server's children GListStore for hierarchical display
+  - Set `autoexpand=TRUE` for automatic expansion
+- **GtkTreeExpander**: Used in factory setup to provide expand/collapse UI
+  - Label placed inside expander, expander inside horizontal box
+  - Factory bind sets `gtk_tree_expander_set_list_row()` for each row
+  - Supports icons via `GtkPicture` when `cv->use_icons` is enabled
+- Factory callbacks (setup/bind/unbind) read from GtkTreeStore via chan->iter
+- Selection via `GtkSingleSelection` with "selection-changed" signal
+- Row activation via "activate" signal toggles expand state
+- Click handler for context menus uses `GtkGestureClick` controller
+- Scroll handler uses `GtkEventControllerScroll` for tab switching
+- DND for layout swapping via `mg_setup_chanview_drag_source()`
+- Helper functions:
+  - `cv_tree_rebuild_model()`: Rebuilds GListStore from GtkTreeStore
+  - `cv_tree_find_item()`: Finds HcChanItem by chan pointer
+  - `cv_tree_find_server_item()`: Finds server item by family pointer
+- Updated functions for GTK4:
+  - `cv_tree_init()`: Creates GtkListView with GtkTreeListModel
+  - `cv_tree_postinit()`: Calls rebuild_model instead of expand_all
+  - `cv_tree_add()`: Adds items to appropriate GListStore (root or children)
+  - `cv_tree_focus()`: Uses GtkSelectionModel and gtk_list_view_scroll_to()
+  - `cv_tree_is_collapsed()`: Checks GtkTreeListRow expansion state
+  - `cv_tree_cleanup()`: Clears GListStore objects
 
 ## Implementation Pattern (per file)
 
@@ -298,10 +324,11 @@ static GtkWidget *my_view_new(void) {
 15. **custom-list.c** - Added HcChannelItem GObject for GTK4, kept GTK3 GtkTreeModel implementation (Phase 6)
 16. **custom-list.h** - Added GTK4 type declarations (Phase 6)
 17. **chanlist.c** - Migrated to GListStore + GtkColumnView + GtkFilterListModel + GtkSortListModel (Phase 6)
+18. **chanview-tree.c** - Migrated to GListStore + GtkListView + GtkTreeListModel + GtkTreeExpander (Phase 7)
 
 ## Files Remaining
 
-1. **chanview-tree.c** - Hierarchical with GtkTreeListModel (Phase 7)
+All phases complete! The GTK4 ListView migration for HexChat is finished.
 
 ## Progress Tracking
 
@@ -314,7 +341,7 @@ static GtkWidget *my_view_new(void) {
 | 4 | COMPLETE | ignoregui.c | GtkCheckButton for toggle columns |
 | 5 | COMPLETE | userlistgui.c, fe-gtk.h | GtkPicture for icons, PangoAttrList for colors, GtkSortListModel |
 | 6 | COMPLETE | custom-list.c, custom-list.h, chanlist.c | HcChannelItem GObject, GtkFilterListModel, GtkCustomSorter |
-| 7 | PENDING | chanview-tree.c | |
+| 7 | COMPLETE | chanview-tree.c | HcChanItem GObject, GtkTreeListModel, GtkTreeExpander |
 
 ## Key GTK4 APIs Used
 
