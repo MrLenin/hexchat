@@ -990,11 +990,41 @@ chanlist_destroy_widget (GtkWidget *wid, server *serv)
 	}
 }
 
+#if HC_GTK4
+/* Idle callback to restore focus to parent window after dialog closes.
+ * This is scheduled from the destroy callback to ensure the window
+ * destruction is fully processed before we try to focus the parent. */
+static gboolean
+chanlist_restore_focus_cb (gpointer user_data)
+{
+	GtkWindow *parent = GTK_WINDOW (user_data);
+	if (GTK_IS_WINDOW (parent) && gtk_widget_get_visible (GTK_WIDGET (parent)))
+	{
+		gtk_window_present (parent);
+	}
+	return G_SOURCE_REMOVE;
+}
+#endif
+
 static void
 chanlist_closegui (GtkWidget *wid, server *serv)
 {
 	if (is_server (serv))
+	{
+#if HC_GTK4
+		/* GTK4: Schedule focus return to main window.
+		 * On Windows, transient window destruction doesn't always
+		 * properly return focus to the parent window.
+		 * Use idle callback to ensure destruction completes first. */
+		if (serv->front_session && serv->front_session->gui &&
+		    serv->front_session->gui->window)
+		{
+			g_idle_add (chanlist_restore_focus_cb,
+			            serv->front_session->gui->window);
+		}
+#endif
 		serv->gui->chanlist_window = NULL;
+	}
 }
 
 static void

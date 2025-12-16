@@ -1599,13 +1599,49 @@ hc_container_remove (GtkWidget *container, GtkWidget *widget)
 
 /*
  * GtkRadioButton - removed in GTK4
- * Use GtkCheckButton with groups instead
+ * Use GtkCheckButton with groups instead.
+ *
+ * In GTK3, radio buttons use GSList groups:
+ *   radio1 = gtk_radio_button_new_with_mnemonic(NULL, "Option 1");
+ *   group = gtk_radio_button_get_group(radio1);
+ *   radio2 = gtk_radio_button_new_with_mnemonic(group, "Option 2");
+ *   // OR: gtk_radio_button_set_group(radio2, group);
+ *
+ * In GTK4, check buttons link directly to each other:
+ *   check1 = gtk_check_button_new_with_mnemonic("Option 1");
+ *   check2 = gtk_check_button_new_with_mnemonic("Option 2");
+ *   gtk_check_button_set_group(check2, check1);
+ *
+ * The compatibility layer maps the GTK3 pattern to GTK4.
+ * gtk_radio_button_new_with_mnemonic() creates a check button and, if
+ * group is non-NULL, links it to that group.
+ * gtk_radio_button_get_group() returns the button itself as the "group".
+ * gtk_radio_button_set_group() links the button to the group.
  */
 #define GTK_RADIO_BUTTON(x) GTK_CHECK_BUTTON(x)
+
+/* Create a check button and optionally link it to a group.
+ * In GTK3, passing a non-NULL group automatically links the button.
+ * In GTK4, we create the button first then call set_group if needed. */
+static inline GtkWidget *
+hc_radio_button_new_with_mnemonic (void *group, const char *label)
+{
+	GtkWidget *button = gtk_check_button_new_with_mnemonic (label);
+	if (group != NULL)
+	{
+		gtk_check_button_set_group (GTK_CHECK_BUTTON (button),
+		                            GTK_CHECK_BUTTON (group));
+	}
+	return button;
+}
 #define gtk_radio_button_new_with_mnemonic(group, label) \
-	gtk_check_button_new_with_mnemonic(label)
-#define gtk_radio_button_get_group(button) NULL
-#define gtk_radio_button_set_group(button, group) ((void)0)
+	hc_radio_button_new_with_mnemonic((void *)(group), (label))
+
+/* Return the button itself as the "group" - it's the first button in the chain */
+#define gtk_radio_button_get_group(button) ((GSList *)(button))
+/* Set group by linking this button to the first button in the group */
+#define gtk_radio_button_set_group(button, group) \
+	gtk_check_button_set_group(GTK_CHECK_BUTTON(button), GTK_CHECK_BUTTON(group))
 
 /*
  * gdk_beep - removed in GTK4
