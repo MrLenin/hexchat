@@ -2467,6 +2467,7 @@ static struct mymenu mymenu[] = {
 	{0, 0, 0, M_END, 0, 0, 0},
 };
 
+#if !HC_GTK4
 void
 menu_set_away (session_gui *gui, int away)
 {
@@ -2486,6 +2487,7 @@ menu_set_fullscreen (session_gui *gui, int full)
 	gtk_check_menu_item_set_active (item, full);
 	g_signal_handlers_unblock_by_func (G_OBJECT (item), menu_fullscreen_toggle, NULL);
 }
+#endif /* !HC_GTK4 */
 
 GtkWidget *
 create_icon_menu (char *labeltext, void *icon_name, int is_icon_name)
@@ -2920,6 +2922,843 @@ menu_add_plugin_mainmenu_items (GtkWidget *menu)
 
 /* === END STUFF FOR /MENU === */
 
+#if HC_GTK4
+
+/*
+ * =============================================================================
+ * GTK4 Main Menu Implementation using GMenu and GtkPopoverMenuBar
+ * =============================================================================
+ */
+
+/* Store the action group globally so we can update toggle states */
+static GSimpleActionGroup *main_menu_action_group = NULL;
+
+/* Action callbacks - GSimpleAction signature */
+static void
+menu_action_server_list (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_open_server_list (NULL, NULL);
+}
+
+static void
+menu_action_new_server_tab (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_newserver_tab (NULL, NULL);
+}
+
+static void
+menu_action_new_channel_tab (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_newchannel_tab (NULL, NULL);
+}
+
+static void
+menu_action_new_server_window (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_newserver_window (NULL, NULL);
+}
+
+static void
+menu_action_new_channel_window (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_newchannel_window (NULL, NULL);
+}
+
+static void
+menu_action_load_plugin (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_loadplugin ();
+}
+
+static void
+menu_action_detach (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_detach (NULL, NULL);
+}
+
+static void
+menu_action_close (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_close (NULL, NULL);
+}
+
+static void
+menu_action_quit (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_quit (NULL, NULL);
+}
+
+/* View menu toggle actions */
+static void
+menu_action_toggle_menubar (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GVariant *state = g_action_get_state (G_ACTION (action));
+	gboolean active = !g_variant_get_boolean (state);
+	g_simple_action_set_state (action, g_variant_new_boolean (active));
+	g_variant_unref (state);
+
+	/* Update preference and apply to all sessions */
+	prefs.hex_gui_hide_menu = !active;
+	menu_setting_foreach (menu_showhide_cb, -1, 0);  /* -1 skips GTK3 widget state update */
+
+	if (prefs.hex_gui_hide_menu)
+		fe_message (_("The Menubar is now hidden. You can show it again"
+						  " by pressing Control+F9 or right-clicking in a blank part of"
+						  " the main text area."), FE_MSG_INFO);
+}
+
+static void
+menu_action_toggle_topicbar (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GVariant *state = g_action_get_state (G_ACTION (action));
+	gboolean active = !g_variant_get_boolean (state);
+	g_simple_action_set_state (action, g_variant_new_boolean (active));
+	g_variant_unref (state);
+
+	prefs.hex_gui_topicbar = active;
+	menu_setting_foreach (menu_topic_showhide_cb, MENU_ID_TOPICBAR, active);
+}
+
+static void
+menu_action_toggle_userlist (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GVariant *state = g_action_get_state (G_ACTION (action));
+	gboolean active = !g_variant_get_boolean (state);
+	g_simple_action_set_state (action, g_variant_new_boolean (active));
+	g_variant_unref (state);
+
+	prefs.hex_gui_ulist_hide = !active;
+	menu_setting_foreach (menu_userlist_showhide_cb, MENU_ID_USERLIST, active);
+}
+
+static void
+menu_action_toggle_ulbuttons (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GVariant *state = g_action_get_state (G_ACTION (action));
+	gboolean active = !g_variant_get_boolean (state);
+	g_simple_action_set_state (action, g_variant_new_boolean (active));
+	g_variant_unref (state);
+
+	prefs.hex_gui_ulist_buttons = active;
+	menu_setting_foreach (menu_ulbuttons_showhide_cb, MENU_ID_ULBUTTONS, active);
+}
+
+static void
+menu_action_toggle_modebuttons (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GVariant *state = g_action_get_state (G_ACTION (action));
+	gboolean active = !g_variant_get_boolean (state);
+	g_simple_action_set_state (action, g_variant_new_boolean (active));
+	g_variant_unref (state);
+
+	prefs.hex_gui_mode_buttons = active;
+	menu_setting_foreach (menu_cmbuttons_showhide_cb, MENU_ID_MODEBUTTONS, active);
+}
+
+static void
+menu_action_toggle_fullscreen (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GVariant *state = g_action_get_state (G_ACTION (action));
+	gboolean active = !g_variant_get_boolean (state);
+	g_simple_action_set_state (action, g_variant_new_boolean (active));
+	g_variant_unref (state);
+
+	if (active)
+		gtk_window_fullscreen (GTK_WINDOW (parent_window));
+	else
+		gtk_window_unfullscreen (GTK_WINDOW (parent_window));
+}
+
+/* Channel Switcher radio actions */
+static void
+menu_action_layout (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	const char *layout = g_variant_get_string (parameter, NULL);
+	g_simple_action_set_state (action, g_variant_ref (parameter));
+
+	if (g_strcmp0 (layout, "tabs") == 0)
+		prefs.hex_gui_tab_layout = 0;
+	else
+		prefs.hex_gui_tab_layout = 2;
+
+	menu_change_layout ();
+}
+
+/* Network Meters radio actions */
+static void
+menu_action_metres (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	const char *mode = g_variant_get_string (parameter, NULL);
+	g_simple_action_set_state (action, g_variant_ref (parameter));
+
+	if (g_strcmp0 (mode, "off") == 0)
+		prefs.hex_gui_lagometer = 0;
+	else if (g_strcmp0 (mode, "graph") == 0)
+		prefs.hex_gui_lagometer = 1;
+	else if (g_strcmp0 (mode, "text") == 0)
+		prefs.hex_gui_lagometer = 2;
+	else /* both */
+		prefs.hex_gui_lagometer = 3;
+
+	menu_setting_foreach (menu_apply_metres_cb, -1, 0);
+}
+
+/* Server menu actions */
+static void
+menu_action_disconnect (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_disconnect (NULL, NULL);
+}
+
+static void
+menu_action_reconnect (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_reconnect (NULL, NULL);
+}
+
+static void
+menu_action_join (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_join (NULL, NULL);
+}
+
+static void
+menu_action_chanlist (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_chanlist (NULL, NULL);
+}
+
+static void
+menu_action_toggle_away (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GVariant *state = g_action_get_state (G_ACTION (action));
+	gboolean active = !g_variant_get_boolean (state);
+	g_simple_action_set_state (action, g_variant_new_boolean (active));
+	g_variant_unref (state);
+
+	handle_command (current_sess, active ? "away" : "back", FALSE);
+}
+
+/* Settings menu actions */
+static void
+menu_action_preferences (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_settings (NULL, NULL);
+}
+
+static void
+menu_action_auto_replace (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_rpopup ();
+}
+
+static void
+menu_action_ctcp_replies (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_ctcpguiopen ();
+}
+
+static void
+menu_action_dialog_buttons (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_dlgbuttons ();
+}
+
+static void
+menu_action_keyboard_shortcuts (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_keypopup ();
+}
+
+static void
+menu_action_text_events (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_evtpopup ();
+}
+
+static void
+menu_action_url_handlers (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_urlhandlers ();
+}
+
+static void
+menu_action_user_commands (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_usercommands ();
+}
+
+static void
+menu_action_userlist_buttons (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_ulbuttons ();
+}
+
+static void
+menu_action_userlist_popup (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_ulpopup ();
+}
+
+/* Window menu actions */
+static void
+menu_action_banlist (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_banlist (NULL, NULL);
+}
+
+static void
+menu_action_ascii (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	ascii_open ();
+}
+
+static void
+menu_action_dcc_chat (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_dcc_chat_win (NULL, NULL);
+}
+
+static void
+menu_action_dcc_transfers (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_dcc_win (NULL, NULL);
+}
+
+static void
+menu_action_friends_list (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	notify_opengui ();
+}
+
+static void
+menu_action_ignore_list (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	ignore_gui_open ();
+}
+
+static void
+menu_action_plugins (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_pluginlist ();
+}
+
+static void
+menu_action_rawlog (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_rawlog (NULL, NULL);
+}
+
+static void
+menu_action_url_grabber (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	url_opengui ();
+}
+
+static void
+menu_action_reset_marker (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_resetmarker (NULL, NULL);
+}
+
+static void
+menu_action_move_to_marker (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_movetomarker (NULL, NULL);
+}
+
+static void
+menu_action_copy_selection (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_copy_selection (NULL, NULL);
+}
+
+static void
+menu_action_clear_text (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_flushbuffer (NULL, NULL);
+}
+
+static void
+menu_action_save_text (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_savebuffer (NULL, NULL);
+}
+
+static void
+menu_action_search (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_search ();
+}
+
+static void
+menu_action_search_next (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_search_next (NULL);
+}
+
+static void
+menu_action_search_prev (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_search_prev (NULL);
+}
+
+/* Help menu actions */
+static void
+menu_action_contents (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_docs (NULL, NULL);
+}
+
+static void
+menu_action_about (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	menu_about (NULL, NULL);
+}
+
+/* Build the GMenu model for the main menu bar */
+static GMenu *
+menu_build_gmenu (int away, int toplevel)
+{
+	GMenu *menubar;
+	GMenu *menu, *section, *submenu;
+
+	(void)away;  /* Initial state is set in actions, not menu model */
+
+	menubar = g_menu_new ();
+
+	/* === HexChat Menu === */
+	menu = g_menu_new ();
+	g_menu_append (menu, _("Network Li_st"), "menu.server-list");
+
+	section = g_menu_new ();
+	submenu = g_menu_new ();
+	g_menu_append (submenu, _("Server Tab"), "menu.new-server-tab");
+	g_menu_append (submenu, _("Channel Tab"), "menu.new-channel-tab");
+	g_menu_append (submenu, _("Server Window"), "menu.new-server-window");
+	g_menu_append (submenu, _("Channel Window"), "menu.new-channel-window");
+	g_menu_append_submenu (section, _("_New"), G_MENU_MODEL (submenu));
+	g_object_unref (submenu);
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	section = g_menu_new ();
+	g_menu_append (section, _("_Load Plugin or Script" ELLIPSIS), "menu.load-plugin");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	section = g_menu_new ();
+	g_menu_append (section, toplevel ? _("_Attach") : _("_Detach"), "menu.detach");
+	g_menu_append (section, _("_Close"), "menu.close");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	section = g_menu_new ();
+	g_menu_append (section, _("_Quit"), "menu.quit");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	g_menu_append_submenu (menubar, _("He_xChat"), G_MENU_MODEL (menu));
+	g_object_unref (menu);
+
+	/* === View Menu === */
+	menu = g_menu_new ();
+	section = g_menu_new ();
+	g_menu_append (section, _("_Menu Bar"), "menu.toggle-menubar");
+	g_menu_append (section, _("_Topic Bar"), "menu.toggle-topicbar");
+	g_menu_append (section, _("_User List"), "menu.toggle-userlist");
+	g_menu_append (section, _("U_ser List Buttons"), "menu.toggle-ulbuttons");
+	g_menu_append (section, _("M_ode Buttons"), "menu.toggle-modebuttons");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	section = g_menu_new ();
+	submenu = g_menu_new ();
+	{
+		GMenuItem *item;
+		item = g_menu_item_new (_("_Tabs"), NULL);
+		g_menu_item_set_action_and_target (item, "menu.layout", "s", "tabs");
+		g_menu_append_item (submenu, item);
+		g_object_unref (item);
+		item = g_menu_item_new (_("T_ree"), NULL);
+		g_menu_item_set_action_and_target (item, "menu.layout", "s", "tree");
+		g_menu_append_item (submenu, item);
+		g_object_unref (item);
+	}
+	g_menu_append_submenu (section, _("_Channel Switcher"), G_MENU_MODEL (submenu));
+	g_object_unref (submenu);
+
+	submenu = g_menu_new ();
+	{
+		GMenuItem *item;
+		item = g_menu_item_new (_("Off"), NULL);
+		g_menu_item_set_action_and_target (item, "menu.metres", "s", "off");
+		g_menu_append_item (submenu, item);
+		g_object_unref (item);
+		item = g_menu_item_new (_("Graph"), NULL);
+		g_menu_item_set_action_and_target (item, "menu.metres", "s", "graph");
+		g_menu_append_item (submenu, item);
+		g_object_unref (item);
+		item = g_menu_item_new (_("Text"), NULL);
+		g_menu_item_set_action_and_target (item, "menu.metres", "s", "text");
+		g_menu_append_item (submenu, item);
+		g_object_unref (item);
+		item = g_menu_item_new (_("Both"), NULL);
+		g_menu_item_set_action_and_target (item, "menu.metres", "s", "both");
+		g_menu_append_item (submenu, item);
+		g_object_unref (item);
+	}
+	g_menu_append_submenu (section, _("_Network Meters"), G_MENU_MODEL (submenu));
+	g_object_unref (submenu);
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	section = g_menu_new ();
+	g_menu_append (section, _("_Fullscreen"), "menu.toggle-fullscreen");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	g_menu_append_submenu (menubar, _("_View"), G_MENU_MODEL (menu));
+	g_object_unref (menu);
+
+	/* === Server Menu === */
+	menu = g_menu_new ();
+	g_menu_append (menu, _("_Disconnect"), "menu.disconnect");
+	g_menu_append (menu, _("_Reconnect"), "menu.reconnect");
+	g_menu_append (menu, _("_Join a Channel" ELLIPSIS), "menu.join");
+	g_menu_append (menu, _("Channel _List"), "menu.chanlist");
+
+	section = g_menu_new ();
+	g_menu_append (section, _("Marked _Away"), "menu.toggle-away");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	g_menu_append_submenu (menubar, _("_Server"), G_MENU_MODEL (menu));
+	g_object_unref (menu);
+
+	/* === Usermenu (only if enabled) === */
+	if (prefs.hex_gui_usermenu)
+	{
+		menu = g_menu_new ();
+		/* TODO: Populate user menu items */
+		g_menu_append_submenu (menubar, _("_Usermenu"), G_MENU_MODEL (menu));
+		g_object_unref (menu);
+	}
+
+	/* === Settings Menu === */
+	menu = g_menu_new ();
+	g_menu_append (menu, _("_Preferences"), "menu.preferences");
+
+	section = g_menu_new ();
+	g_menu_append (section, _("Auto Replace"), "menu.auto-replace");
+	g_menu_append (section, _("CTCP Replies"), "menu.ctcp-replies");
+	g_menu_append (section, _("Dialog Buttons"), "menu.dialog-buttons");
+	g_menu_append (section, _("Keyboard Shortcuts"), "menu.keyboard-shortcuts");
+	g_menu_append (section, _("Text Events"), "menu.text-events");
+	g_menu_append (section, _("URL Handlers"), "menu.url-handlers");
+	g_menu_append (section, _("User Commands"), "menu.user-commands");
+	g_menu_append (section, _("User List Buttons"), "menu.userlist-buttons");
+	g_menu_append (section, _("User List Popup"), "menu.userlist-popup");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	g_menu_append_submenu (menubar, _("S_ettings"), G_MENU_MODEL (menu));
+	g_object_unref (menu);
+
+	/* === Window Menu === */
+	menu = g_menu_new ();
+	g_menu_append (menu, _("_Ban List"), "menu.banlist");
+	g_menu_append (menu, _("Character Chart"), "menu.ascii");
+	g_menu_append (menu, _("Direct Chat"), "menu.dcc-chat");
+	g_menu_append (menu, _("File _Transfers"), "menu.dcc-transfers");
+	g_menu_append (menu, _("Friends List"), "menu.friends-list");
+	g_menu_append (menu, _("Ignore List"), "menu.ignore-list");
+	g_menu_append (menu, _("_Plugins and Scripts"), "menu.plugins");
+	g_menu_append (menu, _("_Raw Log"), "menu.rawlog");
+	g_menu_append (menu, _("_URL Grabber"), "menu.url-grabber");
+
+	section = g_menu_new ();
+	g_menu_append (section, _("Reset Marker Line"), "menu.reset-marker");
+	g_menu_append (section, _("Move to Marker Line"), "menu.move-to-marker");
+	g_menu_append (section, _("_Copy Selection"), "menu.copy-selection");
+	g_menu_append (section, _("C_lear Text"), "menu.clear-text");
+	g_menu_append (section, _("Save Text" ELLIPSIS), "menu.save-text");
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	section = g_menu_new ();
+	submenu = g_menu_new ();
+	g_menu_append (submenu, _("Search Text" ELLIPSIS), "menu.search");
+	g_menu_append (submenu, _("Search Next"), "menu.search-next");
+	g_menu_append (submenu, _("Search Previous"), "menu.search-prev");
+	g_menu_append_submenu (section, _("Search"), G_MENU_MODEL (submenu));
+	g_object_unref (submenu);
+	g_menu_append_section (menu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	g_menu_append_submenu (menubar, _("_Window"), G_MENU_MODEL (menu));
+	g_object_unref (menu);
+
+	/* === Help Menu === */
+	menu = g_menu_new ();
+	g_menu_append (menu, _("_Contents"), "menu.contents");
+	g_menu_append (menu, _("_About"), "menu.about");
+	g_menu_append_submenu (menubar, _("_Help"), G_MENU_MODEL (menu));
+	g_object_unref (menu);
+
+	return menubar;
+}
+
+/* Create the action group for the main menu */
+static GSimpleActionGroup *
+menu_create_action_group (int away, int toplevel)
+{
+	GSimpleActionGroup *group;
+	const char *layout_state;
+	const char *metres_state;
+
+	/* Action entries for simple (non-stateful) actions */
+	static const GActionEntry simple_actions[] = {
+		{ "server-list", menu_action_server_list, NULL, NULL, NULL },
+		{ "new-server-tab", menu_action_new_server_tab, NULL, NULL, NULL },
+		{ "new-channel-tab", menu_action_new_channel_tab, NULL, NULL, NULL },
+		{ "new-server-window", menu_action_new_server_window, NULL, NULL, NULL },
+		{ "new-channel-window", menu_action_new_channel_window, NULL, NULL, NULL },
+		{ "load-plugin", menu_action_load_plugin, NULL, NULL, NULL },
+		{ "detach", menu_action_detach, NULL, NULL, NULL },
+		{ "close", menu_action_close, NULL, NULL, NULL },
+		{ "quit", menu_action_quit, NULL, NULL, NULL },
+		{ "disconnect", menu_action_disconnect, NULL, NULL, NULL },
+		{ "reconnect", menu_action_reconnect, NULL, NULL, NULL },
+		{ "join", menu_action_join, NULL, NULL, NULL },
+		{ "chanlist", menu_action_chanlist, NULL, NULL, NULL },
+		{ "preferences", menu_action_preferences, NULL, NULL, NULL },
+		{ "auto-replace", menu_action_auto_replace, NULL, NULL, NULL },
+		{ "ctcp-replies", menu_action_ctcp_replies, NULL, NULL, NULL },
+		{ "dialog-buttons", menu_action_dialog_buttons, NULL, NULL, NULL },
+		{ "keyboard-shortcuts", menu_action_keyboard_shortcuts, NULL, NULL, NULL },
+		{ "text-events", menu_action_text_events, NULL, NULL, NULL },
+		{ "url-handlers", menu_action_url_handlers, NULL, NULL, NULL },
+		{ "user-commands", menu_action_user_commands, NULL, NULL, NULL },
+		{ "userlist-buttons", menu_action_userlist_buttons, NULL, NULL, NULL },
+		{ "userlist-popup", menu_action_userlist_popup, NULL, NULL, NULL },
+		{ "banlist", menu_action_banlist, NULL, NULL, NULL },
+		{ "ascii", menu_action_ascii, NULL, NULL, NULL },
+		{ "dcc-chat", menu_action_dcc_chat, NULL, NULL, NULL },
+		{ "dcc-transfers", menu_action_dcc_transfers, NULL, NULL, NULL },
+		{ "friends-list", menu_action_friends_list, NULL, NULL, NULL },
+		{ "ignore-list", menu_action_ignore_list, NULL, NULL, NULL },
+		{ "plugins", menu_action_plugins, NULL, NULL, NULL },
+		{ "rawlog", menu_action_rawlog, NULL, NULL, NULL },
+		{ "url-grabber", menu_action_url_grabber, NULL, NULL, NULL },
+		{ "reset-marker", menu_action_reset_marker, NULL, NULL, NULL },
+		{ "move-to-marker", menu_action_move_to_marker, NULL, NULL, NULL },
+		{ "copy-selection", menu_action_copy_selection, NULL, NULL, NULL },
+		{ "clear-text", menu_action_clear_text, NULL, NULL, NULL },
+		{ "save-text", menu_action_save_text, NULL, NULL, NULL },
+		{ "search", menu_action_search, NULL, NULL, NULL },
+		{ "search-next", menu_action_search_next, NULL, NULL, NULL },
+		{ "search-prev", menu_action_search_prev, NULL, NULL, NULL },
+		{ "contents", menu_action_contents, NULL, NULL, NULL },
+		{ "about", menu_action_about, NULL, NULL, NULL },
+	};
+
+	group = g_simple_action_group_new ();
+	g_action_map_add_action_entries (G_ACTION_MAP (group), simple_actions,
+									 G_N_ELEMENTS (simple_actions), NULL);
+
+	/* Add stateful toggle actions */
+	{
+		GSimpleAction *action;
+
+		action = g_simple_action_new_stateful ("toggle-menubar", NULL,
+			g_variant_new_boolean (!prefs.hex_gui_hide_menu));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_toggle_menubar), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+
+		action = g_simple_action_new_stateful ("toggle-topicbar", NULL,
+			g_variant_new_boolean (prefs.hex_gui_topicbar));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_toggle_topicbar), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+
+		action = g_simple_action_new_stateful ("toggle-userlist", NULL,
+			g_variant_new_boolean (!prefs.hex_gui_ulist_hide));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_toggle_userlist), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+
+		action = g_simple_action_new_stateful ("toggle-ulbuttons", NULL,
+			g_variant_new_boolean (prefs.hex_gui_ulist_buttons));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_toggle_ulbuttons), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+
+		action = g_simple_action_new_stateful ("toggle-modebuttons", NULL,
+			g_variant_new_boolean (prefs.hex_gui_mode_buttons));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_toggle_modebuttons), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+
+		action = g_simple_action_new_stateful ("toggle-fullscreen", NULL,
+			g_variant_new_boolean (FALSE));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_toggle_fullscreen), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+
+		action = g_simple_action_new_stateful ("toggle-away", NULL,
+			g_variant_new_boolean (away));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_toggle_away), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+	}
+
+	/* Add radio actions for layout and metres */
+	{
+		GSimpleAction *action;
+
+		layout_state = (prefs.hex_gui_tab_layout == 0) ? "tabs" : "tree";
+		action = g_simple_action_new_stateful ("layout", G_VARIANT_TYPE_STRING,
+			g_variant_new_string (layout_state));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_layout), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+
+		switch (prefs.hex_gui_lagometer)
+		{
+		case 0: metres_state = "off"; break;
+		case 1: metres_state = "graph"; break;
+		case 2: metres_state = "text"; break;
+		default: metres_state = "both"; break;
+		}
+		action = g_simple_action_new_stateful ("metres", G_VARIANT_TYPE_STRING,
+			g_variant_new_string (metres_state));
+		g_signal_connect (action, "activate", G_CALLBACK (menu_action_metres), NULL);
+		g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));
+		g_object_unref (action);
+	}
+
+	return group;
+}
+
+GtkWidget *
+menu_create_main (void *accel_group, int bar, int away, int toplevel,
+						GtkWidget **menu_widgets)
+{
+	GtkWidget *menu_bar;
+	GMenu *gmenu;
+	GSimpleActionGroup *action_group;
+
+	(void)accel_group;  /* Not used in GTK4 - accelerators handled differently */
+	(void)bar;          /* Always create menu bar style in GTK4 */
+
+	/* Build the menu model */
+	gmenu = menu_build_gmenu (away, toplevel);
+
+	/* Create the menu bar widget */
+	menu_bar = gtk_popover_menu_bar_new_from_model (G_MENU_MODEL (gmenu));
+	g_object_unref (gmenu);
+
+	/* Create and attach the action group */
+	action_group = menu_create_action_group (away, toplevel);
+	gtk_widget_insert_action_group (menu_bar, "menu", G_ACTION_GROUP (action_group));
+
+	/* Store action group for state updates */
+	g_object_set_data_full (G_OBJECT (menu_bar), "action-group", action_group, g_object_unref);
+	main_menu_action_group = action_group;
+
+	/* Store menu_widgets for compatibility - in GTK4 we use action states instead */
+	if (menu_widgets)
+	{
+		/* Clear menu_widgets array - we don't use widget pointers in GTK4 */
+		memset (menu_widgets, 0, sizeof (GtkWidget *) * (MENU_ID_HEXCHAT + 1));
+	}
+
+	return menu_bar;
+}
+
+/* Update away state in the menu */
+void
+menu_set_away (session_gui *gui, int away)
+{
+	GSimpleActionGroup *group;
+	GAction *action;
+
+	if (!gui || !gui->menu)
+		return;
+
+	group = g_object_get_data (G_OBJECT (gui->menu), "action-group");
+	if (!group)
+		return;
+
+	action = g_action_map_lookup_action (G_ACTION_MAP (group), "toggle-away");
+	if (action)
+		g_simple_action_set_state (G_SIMPLE_ACTION (action), g_variant_new_boolean (away));
+}
+
+void
+menu_set_fullscreen (session_gui *gui, int full)
+{
+	GSimpleActionGroup *group;
+	GAction *action;
+
+	if (!gui || !gui->menu)
+		return;
+
+	group = g_object_get_data (G_OBJECT (gui->menu), "action-group");
+	if (!group)
+		return;
+
+	action = g_action_map_lookup_action (G_ACTION_MAP (group), "toggle-fullscreen");
+	if (action)
+		g_simple_action_set_state (G_SIMPLE_ACTION (action), g_variant_new_boolean (full));
+}
+
+#else /* !HC_GTK4 - GTK3 implementation */
+
 GtkWidget *
 menu_create_main (void *accel_group, int bar, int away, int toplevel,
 						GtkWidget **menu_widgets)
@@ -3166,3 +4005,5 @@ togitem:
 		i++;
 	}
 }
+
+#endif /* !HC_GTK4 */

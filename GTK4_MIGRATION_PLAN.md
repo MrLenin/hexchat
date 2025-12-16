@@ -42,6 +42,7 @@ The GTK4 build now launches and runs without crashing. Core functionality works:
 | Static Context Menus | menu.c, banlist.c, chanlist.c | URL, nick, channel, middle-click menus |
 | Tab Context Menu | maingui.c | Detach/close actions |
 | Spell Check Menu | sexy-spell-entry.c | Word suggestions, add to dictionary |
+| Main Menu Bar | menu.c | GtkPopoverMenuBar with GMenu/GAction |
 | DND - Layout Swapping | maingui.c, chanview-tree.c | Drag userlist/chanview to scrollbar |
 | DND - File Drops to Users | userlistgui.c | Drag files onto user in list for DCC |
 | Clipboard/Selection | xtext.c | Text selection and copy |
@@ -53,6 +54,7 @@ The GTK4 build now launches and runs without crashing. Core functionality works:
 |---------|---------------|---------------|--------|
 | DND - File Drops to Channel | Drag file to xtext, DCC to dialog partner | Only works for dialog sessions; channel drops do nothing | Must use userlist for channel DCC |
 | Drag Visual Feedback | Custom drag image during layout swap | Default GTK4 drag appearance | Cosmetic only |
+| Context Menu Positioning | Menus appear at mouse cursor | Menus appear at widget origin | Usability issue - needs GdkRectangle positioning |
 
 ### ❌ DISABLED IN GTK4 (Stubbed with TODO comments)
 
@@ -206,7 +208,7 @@ A proper fix requires redesigning the menu system to use GAction/GMenu patterns.
 - `src/fe-gtk/userlistgui.c` - User list
 
 **Menus:**
-- `src/fe-gtk/menu.c` - Menu system (partial GTK4 implementation)
+- `src/fe-gtk/menu.c` - Menu system (main menu bar fully implemented with GtkPopoverMenuBar/GMenu/GAction)
 - `src/fe-gtk/menu.h` - Menu declarations
 
 **List Views:**
@@ -229,9 +231,11 @@ A proper fix requires redesigning the menu system to use GAction/GMenu patterns.
 ### Immediate (Before Release)
 1. ✅ ~~**Runtime Testing** - Launch and test basic functionality~~ DONE
 2. ✅ ~~**Fix Critical Bugs** - Address any crashes or major UI issues~~ DONE
-3. **Color Theme Support** - Fix color scheme application in GTK4
-4. **Widget Layout** - Address sizing/spacing issues
-5. **GTK3 Regression Test** - Verify GTK3 build still works
+3. ✅ ~~**Main Menu Bar** - Convert to GtkPopoverMenuBar with GMenu/GAction~~ DONE
+4. **Context Menu Positioning** - Fix popup menus to appear at mouse cursor
+5. **Color Theme Support** - Fix color scheme application in GTK4
+6. **Widget Layout** - Address sizing/spacing issues
+7. **GTK3 Regression Test** - Verify GTK3 build still works
 
 ### Future Work
 1. **Plugin Menu System** - Redesign for GAction/GMenu

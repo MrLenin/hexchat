@@ -3663,13 +3663,6 @@ mg_create_menu (session_gui *gui, GtkWidget *table, int away_state)
 											gui->menu_item);
 	gtk_widget_set_hexpand (gui->menu, TRUE);
 	gtk_grid_attach (GTK_GRID (table), gui->menu, 0, 0, 3, 1);
-
-#if HC_GTK4
-	/* In GTK4, the menu bar is a non-functional empty box (GtkMenu APIs are stubbed).
-	 * Hide it and force zero height to avoid taking up space due to grid row spacing. */
-	gtk_widget_set_visible (gui->menu, FALSE);
-	gtk_widget_set_size_request (gui->menu, -1, 0);
-#endif
 }
 
 static void

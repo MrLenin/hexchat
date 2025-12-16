@@ -210,32 +210,14 @@ hc_box_pack_end_impl (GtkBox *box, GtkWidget *child, gboolean expand)
 	gtk_widget_set_visible(widget, TRUE)
 
 /*
- * GTK4 replacement for gtk_widget_show_all() - recursively shows widget and children
- * In GTK4, widgets start visible by default, but some may have been explicitly hidden.
- * Always set visible to ensure all children are shown.
+ * GTK4 replacement for gtk_widget_show_all()
+ * In GTK4, widgets start visible by default, so we only need to ensure
+ * the widget itself is visible. Child widgets should already be visible
+ * unless explicitly hidden, and forcing visibility on children can cause
+ * issues (e.g., opening popovers prematurely).
  */
-static inline void
-hc_gtk4_widget_show_all_recursive (GtkWidget *widget)
-{
-	GtkWidget *child;
-
-	if (widget == NULL)
-		return;
-
-	/* Always set visible to ensure widget is shown */
-	gtk_widget_set_visible (widget, TRUE);
-
-	/* Iterate through children using GTK4's child iteration API */
-	for (child = gtk_widget_get_first_child (widget);
-	     child != NULL;
-	     child = gtk_widget_get_next_sibling (child))
-	{
-		hc_gtk4_widget_show_all_recursive (child);
-	}
-}
-
 #define hc_widget_show_all(widget) \
-	hc_gtk4_widget_show_all_recursive(widget)
+	gtk_widget_set_visible(widget, TRUE)
 
 #define hc_widget_hide(widget) \
 	gtk_widget_set_visible(widget, FALSE)
