@@ -100,6 +100,30 @@ The compatibility layer provides macros and inline functions for API differences
 - `GtkMenu/GtkMenuItem` typedefs - For compilation only
 - Many more (see gtk-compat.h for full list)
 
+### Page Container (GtkStack/GtkNotebook)
+- `hc_page_container_new()` - Creates GtkStack (GTK4) or GtkNotebook (GTK3)
+- `hc_page_container_append()` - Add page to container
+- `hc_page_container_get_page_num()` - Get page index
+- `hc_page_container_set_current_page()` - Switch to page by index
+- `hc_page_container_remove_page()` - Remove page by index
+
+### Debug Logging Utility
+File-based debug logging for troubleshooting GTK4 migration issues. On Windows GUI apps, stdout/stderr are not available, so this writes to a log file in the HexChat config directory.
+
+**Usage:**
+```c
+// At the top of the file, before including gtk-compat.h:
+#define HC_DEBUG_LOG 1
+#include "gtk-compat.h"
+
+// Then use anywhere in the code:
+hc_debug_log("widget visible=%d, parent=%p",
+    gtk_widget_get_visible(widget),
+    (void*)gtk_widget_get_parent(widget));
+```
+
+**Log file location:** `<config_dir>/hexchat_debug.log` (e.g., `%APPDATA%\HexChat\hexchat_debug.log` on Windows)
+
 ---
 
 ## List/Tree View Migration Summary

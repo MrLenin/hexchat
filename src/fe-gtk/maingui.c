@@ -2562,12 +2562,10 @@ mg_create_topicbar (session *sess, GtkWidget *box)
 	gui->topicbutton_box = bbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	hc_box_pack_start (hbox, bbox, 0, 0, 0);
 	mg_create_chanmodebuttons (gui, bbox);
-	gtk_widget_set_visible (bbox, TRUE);  /* GTK4: Ensure visible after creation */
 
 	gui->dialogbutton_box = bbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	hc_box_pack_start (hbox, bbox, 0, 0, 0);
 	mg_create_dialogbuttons (bbox);
-	gtk_widget_set_visible (bbox, TRUE);  /* GTK4: Ensure visible after creation */
 }
 
 /* check if a word is clickable */

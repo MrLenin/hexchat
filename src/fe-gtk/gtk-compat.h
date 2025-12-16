@@ -1980,4 +1980,65 @@ hc_page_container_remove_page (GtkWidget *container, int page_num)
 
 #endif /* HC_GTK4 */
 
+/*
+ * =============================================================================
+ * Debug Logging Utility
+ * =============================================================================
+ * File-based debug logging for GTK4 migration troubleshooting.
+ * On Windows GUI apps, stdout/stderr are not available, so this writes to
+ * a log file in the HexChat config directory.
+ *
+ * Usage:
+ *   1. Define HC_DEBUG_LOG before including gtk-compat.h (or set to 1 here)
+ *   2. Call hc_debug_log("format string", args...) to log messages
+ *   3. Log file: <config_dir>/hexchat_debug.log
+ *
+ * Example:
+ *   #define HC_DEBUG_LOG 1
+ *   #include "gtk-compat.h"
+ *   ...
+ *   hc_debug_log("widget visible=%d", gtk_widget_get_visible(widget));
+ */
+
+#ifndef HC_DEBUG_LOG
+#define HC_DEBUG_LOG 0
+#endif
+
+#if HC_DEBUG_LOG
+#include <stdarg.h>
+#include <stdio.h>
+
+/* Forward declaration - get_xdir() is defined in cfgfiles.c */
+char *get_xdir (void);
+
+static FILE *hc_debug_file = NULL;
+
+static inline void
+hc_debug_log (const char *fmt, ...)
+{
+	va_list args;
+	if (!hc_debug_file)
+	{
+		char *path = g_build_filename (get_xdir (), "hexchat_debug.log", NULL);
+		hc_debug_file = fopen (path, "a");
+		g_free (path);
+		if (hc_debug_file)
+		{
+			fprintf (hc_debug_file, "\n=== HexChat Debug Log ===\n");
+			fflush (hc_debug_file);
+		}
+	}
+	if (hc_debug_file)
+	{
+		va_start (args, fmt);
+		vfprintf (hc_debug_file, fmt, args);
+		va_end (args);
+		fprintf (hc_debug_file, "\n");
+		fflush (hc_debug_file);
+	}
+}
+#else
+#define hc_debug_log(...) ((void)0)
+#endif
+
 #endif /* HEXCHAT_GTK_COMPAT_H */
