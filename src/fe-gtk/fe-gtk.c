@@ -403,10 +403,76 @@ apply_tree_css (void)
 	font_size = pango_font_description_get_size (input_style->font_desc) / PANGO_SCALE;
 
 	/* Apply theme colors and font to chanview tree and userlist.
-	 * GTK3 tree views use treeview and row CSS nodes.
-	 * Chanview uses CSS for selection highlighting. */
+	 * GTK3 tree views use treeview:selected CSS.
+	 * GTK4 list views use listview > row:selected, columnview > row:selected CSS. */
+#if HC_GTK4
 	g_snprintf (css_buf, sizeof (css_buf),
-		/* Chanview tree styling */
+		/* Chanview tree styling - GTK4 GtkListView */
+		"#hexchat-tree { "
+		"  background-color: rgb(%d, %d, %d); "
+		"  color: rgb(%d, %d, %d); "
+		"  font-family: \"%s\"; "
+		"  font-size: %dpt; "
+		"} "
+		/* GTK4: Selection styling on the row widget */
+		"#hexchat-tree > row:selected { "
+		"  background-color: rgb(%d, %d, %d); "
+		"} "
+		/* Style labels inside selected rows to override channel colors */
+		"#hexchat-tree > row:selected label { "
+		"  color: rgb(%d, %d, %d); "
+		"} "
+		/* Userlist styling - GTK4 GtkColumnView */
+		"#hexchat-userlist { "
+		"  background-color: rgb(%d, %d, %d); "
+		"  color: rgb(%d, %d, %d); "
+		"} "
+		/* GTK4: Selection styling for columnview rows */
+		"#hexchat-userlist > row:selected { "
+		"  background-color: rgb(%d, %d, %d); "
+		"} "
+		/* Style labels inside selected userlist rows */
+		"#hexchat-userlist > row:selected label { "
+		"  color: rgb(%d, %d, %d); "
+		"}",
+		/* #hexchat-tree background */
+		(int)(colors[COL_BG].red * 255),
+		(int)(colors[COL_BG].green * 255),
+		(int)(colors[COL_BG].blue * 255),
+		/* #hexchat-tree color (foreground) */
+		(int)(colors[COL_FG].red * 255),
+		(int)(colors[COL_FG].green * 255),
+		(int)(colors[COL_FG].blue * 255),
+		/* #hexchat-tree font */
+		font_family ? font_family : "sans",
+		font_size > 0 ? font_size : 11,
+		/* #hexchat-tree > row:selected background (mark background) */
+		(int)(colors[COL_MARK_BG].red * 255),
+		(int)(colors[COL_MARK_BG].green * 255),
+		(int)(colors[COL_MARK_BG].blue * 255),
+		/* #hexchat-tree > row:selected label color (mark foreground) */
+		(int)(colors[COL_MARK_FG].red * 255),
+		(int)(colors[COL_MARK_FG].green * 255),
+		(int)(colors[COL_MARK_FG].blue * 255),
+		/* #hexchat-userlist background */
+		(int)(colors[COL_BG].red * 255),
+		(int)(colors[COL_BG].green * 255),
+		(int)(colors[COL_BG].blue * 255),
+		/* #hexchat-userlist color (foreground) */
+		(int)(colors[COL_FG].red * 255),
+		(int)(colors[COL_FG].green * 255),
+		(int)(colors[COL_FG].blue * 255),
+		/* #hexchat-userlist > row:selected background (mark background) */
+		(int)(colors[COL_MARK_BG].red * 255),
+		(int)(colors[COL_MARK_BG].green * 255),
+		(int)(colors[COL_MARK_BG].blue * 255),
+		/* #hexchat-userlist > row:selected label color (mark foreground) */
+		(int)(colors[COL_MARK_FG].red * 255),
+		(int)(colors[COL_MARK_FG].green * 255),
+		(int)(colors[COL_MARK_FG].blue * 255));
+#else
+	g_snprintf (css_buf, sizeof (css_buf),
+		/* Chanview tree styling - GTK3 GtkTreeView */
 		"#hexchat-tree { "
 		"  background-color: rgb(%d, %d, %d); "
 		"  color: rgb(%d, %d, %d); "
@@ -417,9 +483,10 @@ apply_tree_css (void)
 		"  background-color: rgb(%d, %d, %d); "
 		"  color: rgb(%d, %d, %d); "
 		"} "
-		/* Userlist styling - background color only, selection via model */
+		/* Userlist styling - background and foreground colors */
 		"#hexchat-userlist { "
 		"  background-color: rgb(%d, %d, %d); "
+		"  color: rgb(%d, %d, %d); "
 		"}",
 		/* #hexchat-tree background */
 		(int)(colors[COL_BG].red * 255),
@@ -443,7 +510,12 @@ apply_tree_css (void)
 		/* #hexchat-userlist background */
 		(int)(colors[COL_BG].red * 255),
 		(int)(colors[COL_BG].green * 255),
-		(int)(colors[COL_BG].blue * 255));
+		(int)(colors[COL_BG].blue * 255),
+		/* #hexchat-userlist color (foreground) */
+		(int)(colors[COL_FG].red * 255),
+		(int)(colors[COL_FG].green * 255),
+		(int)(colors[COL_FG].blue * 255));
+#endif
 
 #if HC_GTK4
 	gtk_css_provider_load_from_data (tree_css_provider, css_buf, -1);

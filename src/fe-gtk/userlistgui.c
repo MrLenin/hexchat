@@ -959,6 +959,70 @@ userlist_create_model (session *sess)
  */
 
 /*
+ * Helper to update nick label color based on selection state
+ * When selected, clears any nick color so CSS selection color applies.
+ * When not selected, applies the user's nick color if set.
+ */
+static void
+userlist_update_nick_color (GtkListItem *item)
+{
+	GtkWidget *hbox, *child, *nick_label = NULL;
+	HcUserItem *user_item;
+	gboolean selected;
+
+	hbox = gtk_list_item_get_child (item);
+	user_item = gtk_list_item_get_item (item);
+	selected = gtk_list_item_get_selected (item);
+
+	if (!hbox || !user_item)
+		return;
+
+	/* Find nick label */
+	for (child = gtk_widget_get_first_child (hbox); child; child = gtk_widget_get_next_sibling (child))
+	{
+		if (g_strcmp0 (gtk_widget_get_name (child), "userlist-nick") == 0)
+		{
+			nick_label = child;
+			break;
+		}
+	}
+
+	if (!nick_label)
+		return;
+
+	/* When selected, clear attributes so CSS selection color applies.
+	 * When not selected, apply nick color if set. */
+	if (selected)
+	{
+		gtk_label_set_attributes (GTK_LABEL (nick_label), NULL);
+	}
+	else if (user_item->color_index > 0)
+	{
+		GdkRGBA *color = &colors[user_item->color_index];
+		PangoAttrList *attrs = pango_attr_list_new ();
+		pango_attr_list_insert (attrs, pango_attr_foreground_new (
+			(guint16)(color->red * 65535),
+			(guint16)(color->green * 65535),
+			(guint16)(color->blue * 65535)));
+		gtk_label_set_attributes (GTK_LABEL (nick_label), attrs);
+		pango_attr_list_unref (attrs);
+	}
+	else
+	{
+		gtk_label_set_attributes (GTK_LABEL (nick_label), NULL);
+	}
+}
+
+/*
+ * Signal handler for selection state changes on userlist rows
+ */
+static void
+userlist_selection_changed_cb (GtkListItem *item, GParamSpec *pspec, gpointer user_data)
+{
+	userlist_update_nick_color (item);
+}
+
+/*
  * GtkListView row setup - creates a horizontal box containing icon, nick, and host.
  */
 static void
@@ -1004,6 +1068,9 @@ userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 	}
 
 	gtk_list_item_set_child (item, hbox);
+
+	/* Connect to selection changes to update nick color */
+	g_signal_connect (item, "notify::selected", G_CALLBACK (userlist_selection_changed_cb), NULL);
 }
 
 /*
@@ -1018,7 +1085,6 @@ userlist_bind_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer u
 	GtkWidget *picture = NULL;
 	GtkWidget *nick_label = NULL;
 	GtkWidget *host_label = NULL;
-	PangoAttrList *attrs;
 
 	if (!user_item)
 		return;
@@ -1044,28 +1110,14 @@ userlist_bind_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer u
 			gtk_picture_set_paintable (GTK_PICTURE (picture), NULL);
 	}
 
-	/* Set nick with color */
+	/* Set nick text */
 	if (nick_label)
 	{
 		gtk_label_set_text (GTK_LABEL (nick_label), user_item->nick ? user_item->nick : "");
-
-		/* Apply color if set */
-		if (user_item->color_index > 0)
-		{
-			GdkRGBA *color = &colors[user_item->color_index];
-			attrs = pango_attr_list_new ();
-			pango_attr_list_insert (attrs, pango_attr_foreground_new (
-				(guint16)(color->red * 65535),
-				(guint16)(color->green * 65535),
-				(guint16)(color->blue * 65535)));
-			gtk_label_set_attributes (GTK_LABEL (nick_label), attrs);
-			pango_attr_list_unref (attrs);
-		}
-		else
-		{
-			gtk_label_set_attributes (GTK_LABEL (nick_label), NULL);
-		}
 	}
+
+	/* Set nick color (respects selection state) */
+	userlist_update_nick_color (item);
 
 	/* Set host */
 	if (host_label)

@@ -212,10 +212,97 @@ cv_tree_sel_cb (GtkTreeSelection *sel, chanview *cv)
  * GTK4: Uses GtkGestureClick with different signature
  */
 #if HC_GTK4
-static void
-cv_tree_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chanview *cv)
+
+/*
+ * Helper to find position at coordinates in GtkListView
+ * Returns the position or GTK_INVALID_LIST_POSITION if not found.
+ *
+ * This uses gtk_widget_pick to find the widget at coordinates, then
+ * retrieves the position from the GtkTreeExpander's list row.
+ */
+static guint
+cv_tree_get_position_at_coords (GtkListView *view, double x, double y)
 {
-	guint button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+	GtkWidget *child;
+	GtkWidget *widget;
+	GtkTreeListRow *row;
+	GtkSelectionModel *sel_model;
+	GListModel *model;
+	guint n_items, i;
+
+	/* Pick the widget at the given coordinates */
+	child = gtk_widget_pick (GTK_WIDGET (view), x, y, GTK_PICK_DEFAULT);
+	if (!child)
+		return GTK_INVALID_LIST_POSITION;
+
+	/* Walk up to find the GtkTreeExpander which has our data */
+	widget = child;
+	while (widget != NULL && widget != GTK_WIDGET (view))
+	{
+		if (GTK_IS_TREE_EXPANDER (widget))
+		{
+			row = gtk_tree_expander_get_list_row (GTK_TREE_EXPANDER (widget));
+			if (row)
+			{
+				/* Find this row's position in the selection model */
+				sel_model = gtk_list_view_get_model (view);
+				model = G_LIST_MODEL (sel_model);
+				n_items = g_list_model_get_n_items (model);
+
+				for (i = 0; i < n_items; i++)
+				{
+					GtkTreeListRow *model_row = g_list_model_get_item (model, i);
+					if (model_row == row)
+					{
+						g_object_unref (model_row);
+						return i;
+					}
+					if (model_row)
+						g_object_unref (model_row);
+				}
+			}
+		}
+		widget = gtk_widget_get_parent (widget);
+	}
+
+	return GTK_INVALID_LIST_POSITION;
+}
+
+/*
+ * Left-click handler - explicitly select the clicked item.
+ * GtkListView with GtkTreeExpander doesn't always auto-select properly.
+ * We use "released" signal to set selection after GtkListView's internal
+ * handling has completed.
+ */
+static void
+cv_tree_left_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chanview *cv)
+{
+	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+	GtkListView *view = GTK_LIST_VIEW (widget);
+	GtkSelectionModel *sel_model;
+	guint position;
+
+	(void)gesture;
+	(void)n_press;
+
+	sel_model = gtk_list_view_get_model (view);
+
+	/* Find which row was clicked */
+	position = cv_tree_get_position_at_coords (view, x, y);
+
+	if (position != GTK_INVALID_LIST_POSITION)
+	{
+		/* Explicitly select this item */
+		gtk_selection_model_select_item (sel_model, position, TRUE);
+	}
+}
+
+/*
+ * Right-click handler - show context menu for selected item
+ */
+static void
+cv_tree_right_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chanview *cv)
+{
 	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
 	GtkListView *view = GTK_LIST_VIEW (widget);
 	GtkSelectionModel *sel_model;
@@ -223,10 +310,6 @@ cv_tree_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, cha
 	guint selected_pos;
 	GtkTreeListRow *row;
 	HcChanItem *item;
-
-	/* Only handle right-click for context menu */
-	if (button != 3)
-		return;
 
 	sel_model = gtk_list_view_get_model (view);
 	selection = gtk_selection_model_get_selection (sel_model);
@@ -518,7 +601,21 @@ cv_tree_init (chanview *cv)
 	                  G_CALLBACK (cv_tree_activated_cb), cv);
 
 	/* Event controllers */
-	hc_add_click_gesture (view, G_CALLBACK (cv_tree_click_cb), NULL, cv);
+	/* Left-click gesture for explicit selection (GtkListView doesn't auto-select reliably with GtkTreeExpander)
+	 * Use "released" signal so we set selection after GtkListView's internal handling completes */
+	{
+		GtkGesture *gesture = gtk_gesture_click_new ();
+		gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 1); /* Left-click only */
+		g_signal_connect (gesture, "released", G_CALLBACK (cv_tree_left_click_cb), cv);
+		gtk_widget_add_controller (view, GTK_EVENT_CONTROLLER (gesture));
+	}
+	/* Right-click gesture for context menu */
+	{
+		GtkGesture *gesture = gtk_gesture_click_new ();
+		gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 3); /* Right-click only */
+		g_signal_connect (gesture, "pressed", G_CALLBACK (cv_tree_right_click_cb), cv);
+		gtk_widget_add_controller (view, GTK_EVENT_CONTROLLER (gesture));
+	}
 	hc_add_scroll_controller (view, G_CALLBACK (cv_tree_scroll_event_cb), NULL);
 
 	/* DND - drag source for layout swapping */
@@ -912,20 +1009,52 @@ cv_tree_cleanup (chanview *cv)
 
 #endif /* HC_GTK4 */
 
+#if HC_GTK4
+/*
+ * Helper to trigger rebind of an item in the chanview tree while preserving selection.
+ * The remove/insert pattern clears GtkSingleSelection, so we save and restore it.
+ */
 static void
-cv_tree_set_color (chan *ch, PangoAttrList *list)
+cv_tree_rebind_item (chanview *cv, GListStore *store, guint position, HcChanItem *item)
 {
-	/* nothing to do, it's already set in the store */
+	treeview *tv = (treeview *)cv;
+	GtkSelectionModel *sel_model;
+	GtkBitset *selection;
+	guint saved_selection = GTK_INVALID_LIST_POSITION;
+
+	if (!tv || !tv->view || !store || !item)
+		return;
+
+	/* Save current selection */
+	sel_model = gtk_list_view_get_model (tv->view);
+	if (sel_model)
+	{
+		selection = gtk_selection_model_get_selection (sel_model);
+		if (!gtk_bitset_is_empty (selection))
+			saved_selection = gtk_bitset_get_nth (selection, 0);
+		gtk_bitset_unref (selection);
+	}
+
+	/* Perform the rebind via remove/insert */
+	g_list_store_remove (store, position);
+	g_list_store_insert (store, position, item);
+
+	/* Restore selection if it was valid */
+	if (sel_model && saved_selection != GTK_INVALID_LIST_POSITION)
+	{
+		gtk_selection_model_select_item (sel_model, saved_selection, TRUE);
+	}
 }
 
+/*
+ * Helper to find an HcChanItem in the tree and trigger rebind.
+ * Searches both root store and children stores.
+ */
 static void
-cv_tree_rename (chan *ch, char *name)
+cv_tree_rebind_chan (chan *ch)
 {
-#if HC_GTK4
-	/* In GTK4, we need to signal the model that the item changed
-	 * so the bind callback is called again with the new data.
-	 * Find the item's position and emit items-changed. */
-	treeview *tv = (treeview *)ch->cv;
+	chanview *cv = ch->cv;
+	treeview *tv = (treeview *)cv;
 	guint n_items, i;
 	HcChanItem *item;
 	GListStore *store;
@@ -934,7 +1063,7 @@ cv_tree_rename (chan *ch, char *name)
 	if (parent_ch)
 	{
 		/* It's a channel - find in parent's children store */
-		HcChanItem *parent_item = cv_tree_find_server_item (ch->cv, ch->family);
+		HcChanItem *parent_item = cv_tree_find_server_item (cv, ch->family);
 		if (parent_item && parent_item->children)
 		{
 			store = parent_item->children;
@@ -944,11 +1073,9 @@ cv_tree_rename (chan *ch, char *name)
 				item = g_list_model_get_item (G_LIST_MODEL (store), i);
 				if (item && item->ch == ch)
 				{
-					/* Signal that this item changed - triggers rebind */
-					g_list_store_remove (store, i);
-					g_list_store_insert (store, i, item);
+					cv_tree_rebind_item (cv, store, i, item);
 					g_object_unref (item);
-					break;
+					return;
 				}
 				if (item)
 					g_object_unref (item);
@@ -965,16 +1092,36 @@ cv_tree_rename (chan *ch, char *name)
 			item = g_list_model_get_item (G_LIST_MODEL (store), i);
 			if (item && item->ch == ch)
 			{
-				/* Signal that this item changed - triggers rebind */
-				g_list_store_remove (store, i);
-				g_list_store_insert (store, i, item);
+				cv_tree_rebind_item (cv, store, i, item);
 				g_object_unref (item);
-				break;
+				return;
 			}
 			if (item)
 				g_object_unref (item);
 		}
 	}
+}
+#endif /* HC_GTK4 */
+
+static void
+cv_tree_set_color (chan *ch, PangoAttrList *list)
+{
+#if HC_GTK4
+	/* In GTK4, trigger a rebind to pick up the new color from the GtkTreeStore.
+	 * The rebind helper saves and restores selection to prevent it being cleared. */
+	cv_tree_rebind_chan (ch);
+#else
+	/* GTK3: nothing to do, GtkTreeView updates automatically from store changes */
+#endif
+}
+
+static void
+cv_tree_rename (chan *ch, char *name)
+{
+#if HC_GTK4
+	/* In GTK4, trigger a rebind to pick up the new name from the GtkTreeStore.
+	 * The rebind helper saves and restores selection to prevent it being cleared. */
+	cv_tree_rebind_chan (ch);
 #endif
 	/* GTK3: nothing to do, GtkTreeView updates automatically from store changes */
 }
