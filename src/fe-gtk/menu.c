@@ -1023,7 +1023,13 @@ menu_cmbuttons_showhide_cb (session *sess)
 	{
 	case SESS_CHANNEL:
 		if (prefs.hex_gui_mode_buttons)
+		{
 			gtk_widget_show (sess->gui->topicbutton_box);
+#if HC_GTK4
+			/* GTK4: Explicitly show children after parent becomes visible */
+			hc_widget_show_all (sess->gui->topicbutton_box);
+#endif
+		}
 		else
 			gtk_widget_hide (sess->gui->topicbutton_box);
 		break;

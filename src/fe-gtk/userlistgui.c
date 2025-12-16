@@ -53,7 +53,7 @@ enum
 
 #if HC_GTK4
 /*
- * GTK4 Implementation using GListStore + GtkColumnView
+ * GTK4 Implementation using GListStore + GtkListView
  *
  * In GTK4, we use a GListStore containing HcUserItem objects instead of
  * GtkListStore. Each session still has its own model (sess->res->user_model).
@@ -118,7 +118,7 @@ hc_user_item_new (const char *nick, const char *hostname, struct User *user,
 
 #if HC_GTK4
 /* Forward declaration for GTK4 selection list function */
-static char **userlist_selection_list_gtk4 (GtkColumnView *view, int *num_ret);
+static char **userlist_selection_list_gtk4 (GtkListView *view, int *num_ret);
 #endif
 
 GdkPixbuf *
@@ -208,8 +208,8 @@ scroll_to_iter (GtkTreeIter *iter, GtkTreeView *treeview, GtkTreeModel *model)
 void
 userlist_select (session *sess, char *name)
 {
-	GtkColumnView *view = GTK_COLUMN_VIEW (sess->gui->user_tree);
-	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
+	GtkListView *view = GTK_LIST_VIEW (sess->gui->user_tree);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
 	GListModel *model;
 	guint n_items, i;
 	HcUserItem *item;
@@ -274,8 +274,8 @@ userlist_select (session *sess, char *name)
 char **
 userlist_selection_list (GtkWidget *widget, int *num_ret)
 {
-	/* GTK4: Use the column view version */
-	return userlist_selection_list_gtk4 (GTK_COLUMN_VIEW (widget), num_ret);
+	/* GTK4: Use the list view version */
+	return userlist_selection_list_gtk4 (GTK_LIST_VIEW (widget), num_ret);
 }
 #else /* GTK3 */
 char **
@@ -331,8 +331,8 @@ void
 fe_userlist_set_selected (struct session *sess)
 {
 	GListStore *store = sess->res->user_model;
-	GtkColumnView *view = GTK_COLUMN_VIEW (sess->gui->user_tree);
-	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
+	GtkListView *view = GTK_LIST_VIEW (sess->gui->user_tree);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
 	GListModel *list_model;
 	guint n_items, i;
 	HcUserItem *item;
@@ -397,7 +397,7 @@ find_row_gtk4 (GListStore *store, struct User *user, guint *position, int *selec
 void
 userlist_set_value (GtkWidget *view, gfloat val)
 {
-	/* GTK4: GtkColumnView is inside a GtkScrolledWindow */
+	/* GTK4: GtkListView is inside a GtkScrolledWindow */
 	GtkWidget *parent = gtk_widget_get_parent (view);
 	if (GTK_IS_SCROLLED_WINDOW (parent))
 	{
@@ -422,8 +422,8 @@ int
 fe_userlist_remove (session *sess, struct User *user)
 {
 	GListStore *store = sess->res->user_model;
-	GtkColumnView *view = GTK_COLUMN_VIEW (sess->gui->user_tree);
-	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
+	GtkListView *view = GTK_LIST_VIEW (sess->gui->user_tree);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
 	guint position;
 	int sel;
 
@@ -439,8 +439,8 @@ void
 fe_userlist_rehash (session *sess, struct User *user)
 {
 	GListStore *store = sess->res->user_model;
-	GtkColumnView *view = GTK_COLUMN_VIEW (sess->gui->user_tree);
-	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
+	GtkListView *view = GTK_LIST_VIEW (sess->gui->user_tree);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
 	guint position;
 	int sel;
 	int nick_color = 0;
@@ -517,8 +517,8 @@ fe_userlist_insert (session *sess, struct User *newuser, gboolean sel)
 	/* Select the new item if requested */
 	if (sel)
 	{
-		GtkColumnView *view = GTK_COLUMN_VIEW (sess->gui->user_tree);
-		GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
+		GtkListView *view = GTK_LIST_VIEW (sess->gui->user_tree);
+		GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
 		if (sel_model)
 		{
 			guint n_items = g_list_model_get_n_items (G_LIST_MODEL (store));
@@ -727,7 +727,7 @@ fe_userlist_clear (session *sess)
 /*
  * GTK4: File drop handler for userlist - drops file on the selected user
  *
- * Note: GtkColumnView doesn't have get_path_at_pos like GtkTreeView, so we
+ * Note: GtkListView doesn't have get_path_at_pos like GtkTreeView, so we
  * use the currently selected item instead of determining the row under cursor.
  * This is a simpler UX: user selects target, then drops file.
  */
@@ -736,8 +736,8 @@ userlist_file_drop_cb (GtkDropTarget *target, const GValue *value,
                        double x, double y, gpointer user_data)
 {
 	GtkWidget *view = user_data;
-	GtkColumnView *column_view = GTK_COLUMN_VIEW (view);
-	GtkSelectionModel *sel_model = gtk_column_view_get_model (column_view);
+	GtkListView *list_view = GTK_LIST_VIEW (view);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (list_view);
 	GFile *file;
 	char *uri;
 	HcUserItem *item;
@@ -792,7 +792,7 @@ userlist_drop_leave_cb (GtkDropTarget *target, gpointer user_data)
 {
 	(void)target;
 	(void)user_data;
-	/* Nothing needed for GtkColumnView - selection is handled differently */
+	/* Nothing needed for GtkListView - selection is handled differently */
 }
 
 #else /* GTK3 */
@@ -955,103 +955,123 @@ userlist_create_model (session *sess)
 
 #if HC_GTK4
 /*
- * GTK4 Factory callbacks for GtkColumnView
+ * GTK4 Factory callbacks for GtkListView
  */
 
-/* Icon column setup - creates a GtkPicture */
+/*
+ * GtkListView row setup - creates a horizontal box containing icon, nick, and host.
+ */
 static void
-userlist_setup_icon_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
 {
-	GtkWidget *picture = gtk_picture_new ();
-	gtk_picture_set_content_fit (GTK_PICTURE (picture), GTK_CONTENT_FIT_SCALE_DOWN);
-	gtk_widget_set_size_request (picture, 16, -1);
+	GtkWidget *hbox, *picture, *nick_label, *host_label;
+
+	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2);
+
+	/* Icon (only if enabled) */
+	if (prefs.hex_gui_ulist_icons)
+	{
+		picture = gtk_picture_new ();
+		gtk_picture_set_content_fit (GTK_PICTURE (picture), GTK_CONTENT_FIT_SCALE_DOWN);
+		gtk_widget_set_size_request (picture, 16, -1);
+		if (prefs.hex_gui_compact)
+			gtk_widget_set_margin_top (picture, 0);
+		gtk_widget_set_name (picture, "userlist-icon");
+		gtk_box_append (GTK_BOX (hbox), picture);
+	}
+
+	/* Nick label */
+	nick_label = gtk_label_new (NULL);
+	gtk_label_set_xalign (GTK_LABEL (nick_label), 0.0);
+	gtk_label_set_ellipsize (GTK_LABEL (nick_label), PANGO_ELLIPSIZE_END);
+	gtk_widget_set_hexpand (nick_label, TRUE);
 	if (prefs.hex_gui_compact)
-		gtk_widget_set_margin_top (picture, 0);
-	gtk_list_item_set_child (item, picture);
+		gtk_widget_set_margin_top (nick_label, 0);
+	gtk_widget_set_name (nick_label, "userlist-nick");
+	gtk_box_append (GTK_BOX (hbox), nick_label);
+
+	/* Host label (only if enabled) */
+	if (prefs.hex_gui_ulist_show_hosts)
+	{
+		host_label = gtk_label_new (NULL);
+		gtk_label_set_xalign (GTK_LABEL (host_label), 0.0);
+		gtk_label_set_ellipsize (GTK_LABEL (host_label), PANGO_ELLIPSIZE_END);
+		gtk_widget_set_hexpand (host_label, TRUE);
+		if (prefs.hex_gui_compact)
+			gtk_widget_set_margin_top (host_label, 0);
+		gtk_widget_set_name (host_label, "userlist-host");
+		gtk_box_append (GTK_BOX (hbox), host_label);
+	}
+
+	gtk_list_item_set_child (item, hbox);
 }
 
-/* Icon column bind - sets texture from HcUserItem */
+/*
+ * GtkListView row bind - populates icon, nick, and host from HcUserItem
+ */
 static void
-userlist_bind_icon_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
+userlist_bind_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
 {
-	GtkWidget *picture = gtk_list_item_get_child (item);
+	GtkWidget *hbox = gtk_list_item_get_child (item);
 	HcUserItem *user_item = gtk_list_item_get_item (item);
-
-	if (!user_item)
-		return;
-
-	if (user_item->icon)
-		gtk_picture_set_paintable (GTK_PICTURE (picture), GDK_PAINTABLE (user_item->icon));
-	else
-		gtk_picture_set_paintable (GTK_PICTURE (picture), NULL);
-}
-
-/* Nick column setup - creates a GtkLabel */
-static void
-userlist_setup_nick_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
-{
-	GtkWidget *label = gtk_label_new (NULL);
-	gtk_label_set_xalign (GTK_LABEL (label), 0.0);
-	gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
-	if (prefs.hex_gui_compact)
-		gtk_widget_set_margin_top (label, 0);
-	gtk_list_item_set_child (item, label);
-}
-
-/* Nick column bind - sets text and color from HcUserItem */
-static void
-userlist_bind_nick_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
-{
-	GtkWidget *label = gtk_list_item_get_child (item);
-	HcUserItem *user_item = gtk_list_item_get_item (item);
+	GtkWidget *child;
+	GtkWidget *picture = NULL;
+	GtkWidget *nick_label = NULL;
+	GtkWidget *host_label = NULL;
 	PangoAttrList *attrs;
 
 	if (!user_item)
 		return;
 
-	gtk_label_set_text (GTK_LABEL (label), user_item->nick ? user_item->nick : "");
-
-	/* Apply color if set */
-	if (user_item->color_index > 0)
+	/* Find the child widgets by name */
+	for (child = gtk_widget_get_first_child (hbox); child; child = gtk_widget_get_next_sibling (child))
 	{
-		GdkRGBA *color = &colors[user_item->color_index];
-		attrs = pango_attr_list_new ();
-		pango_attr_list_insert (attrs, pango_attr_foreground_new (
-			(guint16)(color->red * 65535),
-			(guint16)(color->green * 65535),
-			(guint16)(color->blue * 65535)));
-		gtk_label_set_attributes (GTK_LABEL (label), attrs);
-		pango_attr_list_unref (attrs);
+		const char *name = gtk_widget_get_name (child);
+		if (g_strcmp0 (name, "userlist-icon") == 0)
+			picture = child;
+		else if (g_strcmp0 (name, "userlist-nick") == 0)
+			nick_label = child;
+		else if (g_strcmp0 (name, "userlist-host") == 0)
+			host_label = child;
 	}
-	else
+
+	/* Set icon */
+	if (picture)
 	{
-		gtk_label_set_attributes (GTK_LABEL (label), NULL);
+		if (user_item->icon)
+			gtk_picture_set_paintable (GTK_PICTURE (picture), GDK_PAINTABLE (user_item->icon));
+		else
+			gtk_picture_set_paintable (GTK_PICTURE (picture), NULL);
 	}
-}
 
-/* Host column setup - creates a GtkLabel */
-static void
-userlist_setup_host_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
-{
-	GtkWidget *label = gtk_label_new (NULL);
-	gtk_label_set_xalign (GTK_LABEL (label), 0.0);
-	gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
-	if (prefs.hex_gui_compact)
-		gtk_widget_set_margin_top (label, 0);
-	gtk_list_item_set_child (item, label);
-}
+	/* Set nick with color */
+	if (nick_label)
+	{
+		gtk_label_set_text (GTK_LABEL (nick_label), user_item->nick ? user_item->nick : "");
 
-/* Host column bind - sets text from HcUserItem */
-static void
-userlist_bind_host_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
-{
-	GtkWidget *label = gtk_list_item_get_child (item);
-	HcUserItem *user_item = gtk_list_item_get_item (item);
+		/* Apply color if set */
+		if (user_item->color_index > 0)
+		{
+			GdkRGBA *color = &colors[user_item->color_index];
+			attrs = pango_attr_list_new ();
+			pango_attr_list_insert (attrs, pango_attr_foreground_new (
+				(guint16)(color->red * 65535),
+				(guint16)(color->green * 65535),
+				(guint16)(color->blue * 65535)));
+			gtk_label_set_attributes (GTK_LABEL (nick_label), attrs);
+			pango_attr_list_unref (attrs);
+		}
+		else
+		{
+			gtk_label_set_attributes (GTK_LABEL (nick_label), NULL);
+		}
+	}
 
-	if (!user_item)
-		return;
-
-	gtk_label_set_text (GTK_LABEL (label), user_item->hostname ? user_item->hostname : "");
+	/* Set host */
+	if (host_label)
+	{
+		gtk_label_set_text (GTK_LABEL (host_label), user_item->hostname ? user_item->hostname : "");
+	}
 }
 
 #else /* GTK3 */
@@ -1102,10 +1122,10 @@ userlist_add_columns (GtkTreeView * treeview)
 #if HC_GTK4
 /*
  * GTK4 version of userlist_selection_list
- * Gets selected nicks from GtkColumnView's selection model
+ * Gets selected nicks from GtkListView's selection model
  */
 static char **
-userlist_selection_list_gtk4 (GtkColumnView *view, int *num_ret)
+userlist_selection_list_gtk4 (GtkListView *view, int *num_ret)
 {
 	GtkSelectionModel *sel_model;
 	GtkBitset *selection;
@@ -1118,7 +1138,7 @@ userlist_selection_list_gtk4 (GtkColumnView *view, int *num_ret)
 	HcUserItem *item;
 
 	*num_ret = 0;
-	sel_model = gtk_column_view_get_model (view);
+	sel_model = gtk_list_view_get_model (view);
 	if (!sel_model)
 		return NULL;
 
@@ -1161,8 +1181,8 @@ static void
 userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gpointer userdata)
 {
 	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
-	GtkColumnView *view = GTK_COLUMN_VIEW (widget);
-	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
+	GtkListView *view = GTK_LIST_VIEW (widget);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
 	char **nicks;
 	int i;
 	int button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
@@ -1208,7 +1228,7 @@ userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gp
 		}
 
 		/* For right-click on unselected item, we'd need to figure out which row
-		 * was clicked. GtkColumnView doesn't have get_path_at_pos like GtkTreeView.
+		 * was clicked. GtkListView doesn't have get_path_at_pos like GtkTreeView.
 		 * For now, just show menu for current selection or do nothing. */
 		nicks = userlist_selection_list_gtk4 (view, &i);
 		if (nicks && i > 0)
@@ -1357,14 +1377,13 @@ userlist_key_cb (GtkWidget *wid, GdkEventKey *evt, gpointer userdata)
 
 #if HC_GTK4
 /*
- * GTK4 version: Create GtkColumnView with sorting
+ * GTK4 version: Create GtkListView (no headers, unlike GtkColumnView)
  */
 GtkWidget *
 userlist_create (GtkWidget *box)
 {
 	GtkWidget *sw, *view;
 	GtkListItemFactory *factory;
-	GtkColumnViewColumn *col;
 	GtkDropTarget *drop_target;
 
 	sw = hc_scrolled_window_new ();
@@ -1377,45 +1396,14 @@ userlist_create (GtkWidget *box)
 	hc_box_pack_start (box, sw, TRUE, TRUE, 0);
 	hc_widget_show (sw);
 
-	/* Create column view - model will be set later in userlist_show() */
-	view = gtk_column_view_new (NULL);
+	/* Create list view with single-row factory - model will be set later in userlist_show() */
+	factory = gtk_signal_list_item_factory_new ();
+	g_signal_connect (factory, "setup", G_CALLBACK (userlist_setup_row_cb), NULL);
+	g_signal_connect (factory, "bind", G_CALLBACK (userlist_bind_row_cb), NULL);
+
+	view = gtk_list_view_new (NULL, factory);
 	gtk_widget_set_name (view, "hexchat-userlist");
 	gtk_widget_set_can_focus (view, FALSE);
-	gtk_column_view_set_show_column_separators (GTK_COLUMN_VIEW (view), FALSE);
-	gtk_column_view_set_show_row_separators (GTK_COLUMN_VIEW (view), FALSE);
-
-	/* Icon column (only if icons enabled) */
-	if (prefs.hex_gui_ulist_icons)
-	{
-		factory = gtk_signal_list_item_factory_new ();
-		g_signal_connect (factory, "setup", G_CALLBACK (userlist_setup_icon_cb), NULL);
-		g_signal_connect (factory, "bind", G_CALLBACK (userlist_bind_icon_cb), NULL);
-		col = gtk_column_view_column_new (NULL, factory);
-		gtk_column_view_column_set_fixed_width (col, 20);
-		gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
-		g_object_unref (col);
-	}
-
-	/* Nick column */
-	factory = gtk_signal_list_item_factory_new ();
-	g_signal_connect (factory, "setup", G_CALLBACK (userlist_setup_nick_cb), NULL);
-	g_signal_connect (factory, "bind", G_CALLBACK (userlist_bind_nick_cb), NULL);
-	col = gtk_column_view_column_new (NULL, factory);
-	gtk_column_view_column_set_expand (col, TRUE);
-	gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
-	g_object_unref (col);
-
-	/* Host column (only if enabled) */
-	if (prefs.hex_gui_ulist_show_hosts)
-	{
-		factory = gtk_signal_list_item_factory_new ();
-		g_signal_connect (factory, "setup", G_CALLBACK (userlist_setup_host_cb), NULL);
-		g_signal_connect (factory, "bind", G_CALLBACK (userlist_bind_host_cb), NULL);
-		col = gtk_column_view_column_new (NULL, factory);
-		gtk_column_view_column_set_expand (col, TRUE);
-		gtk_column_view_append_column (GTK_COLUMN_VIEW (view), col);
-		g_object_unref (col);
-	}
 
 	/* DND: File drops for DCC (drop file on user to send) */
 	drop_target = gtk_drop_target_new (G_TYPE_FILE, GDK_ACTION_COPY | GDK_ACTION_MOVE);
@@ -1513,12 +1501,12 @@ userlist_create (GtkWidget *box)
 
 #if HC_GTK4
 /*
- * GTK4: Connect the session's model to the GtkColumnView with sorting
+ * GTK4: Connect the session's model to the GtkListView with sorting
  */
 void
 userlist_show (session *sess)
 {
-	GtkColumnView *view = GTK_COLUMN_VIEW (sess->gui->user_tree);
+	GtkListView *view = GTK_LIST_VIEW (sess->gui->user_tree);
 	GListStore *store = sess->res->user_model;
 	GtkSortListModel *sort_model;
 	GtkMultiSelection *sel_model;
@@ -1567,27 +1555,27 @@ userlist_show (session *sess)
 	sort_model = gtk_sort_list_model_new (G_LIST_MODEL (g_object_ref (store)),
 	                                       sorter ? GTK_SORTER (sorter) : NULL);
 
-	/* Create multi-selection model for the column view */
+	/* Create multi-selection model for the list view */
 	sel_model = gtk_multi_selection_new (G_LIST_MODEL (sort_model));
 
-	/* Set the model on the column view */
-	gtk_column_view_set_model (view, GTK_SELECTION_MODEL (sel_model));
+	/* Set the model on the list view */
+	gtk_list_view_set_model (view, GTK_SELECTION_MODEL (sel_model));
 
-	/* We don't unref sel_model/sort_model - the column view takes ownership */
+	/* We don't unref sel_model/sort_model - the list view takes ownership */
 }
 
 void
 fe_uselect (session *sess, char *word[], int do_clear, int scroll_to)
 {
-	GtkColumnView *view = GTK_COLUMN_VIEW (sess->gui->user_tree);
-	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
+	GtkListView *view = GTK_LIST_VIEW (sess->gui->user_tree);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
 	GListModel *model;
 	guint n_items, i;
 	HcUserItem *item;
 	int thisname;
 	char *name;
 
-	(void)scroll_to; /* TODO: Implement scroll_to for GtkColumnView */
+	(void)scroll_to; /* TODO: Implement scroll_to for GtkListView */
 
 	if (!sel_model)
 		return;

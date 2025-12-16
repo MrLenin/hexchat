@@ -61,17 +61,45 @@
 
 #if HC_GTK4
 
+/*
+ * In GTK4, box packing uses expand properties on the child widget.
+ * We need to set the correct expand property based on box orientation:
+ * - Horizontal box: set hexpand
+ * - Vertical box: set vexpand
+ */
+static inline void
+hc_box_pack_start_impl (GtkBox *box, GtkWidget *child, gboolean expand)
+{
+	if (expand)
+	{
+		GtkOrientation orient = gtk_orientable_get_orientation (GTK_ORIENTABLE (box));
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_hexpand (child, TRUE);
+		else
+			gtk_widget_set_vexpand (child, TRUE);
+	}
+	gtk_box_append (box, child);
+}
+
+static inline void
+hc_box_pack_end_impl (GtkBox *box, GtkWidget *child, gboolean expand)
+{
+	if (expand)
+	{
+		GtkOrientation orient = gtk_orientable_get_orientation (GTK_ORIENTABLE (box));
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_hexpand (child, TRUE);
+		else
+			gtk_widget_set_vexpand (child, TRUE);
+	}
+	gtk_box_prepend (box, child);
+}
+
 #define hc_box_pack_start(box, child, expand, fill, padding) \
-	do { \
-		if (expand) gtk_widget_set_hexpand(child, TRUE); \
-		gtk_box_append(GTK_BOX(box), child); \
-	} while (0)
+	hc_box_pack_start_impl(GTK_BOX(box), child, expand)
 
 #define hc_box_pack_end(box, child, expand, fill, padding) \
-	do { \
-		if (expand) gtk_widget_set_hexpand(child, TRUE); \
-		gtk_box_prepend(GTK_BOX(box), child); \
-	} while (0)
+	hc_box_pack_end_impl(GTK_BOX(box), child, expand)
 
 #define hc_box_remove(box, child) \
 	gtk_box_remove(GTK_BOX(box), child)
@@ -184,7 +212,7 @@
 /*
  * GTK4 replacement for gtk_widget_show_all() - recursively shows widget and children
  * In GTK4, widgets start visible by default, but some may have been explicitly hidden.
- * We only set visible if the widget is currently hidden to avoid unnecessary signal emissions.
+ * Always set visible to ensure all children are shown.
  */
 static inline void
 hc_gtk4_widget_show_all_recursive (GtkWidget *widget)
@@ -194,9 +222,8 @@ hc_gtk4_widget_show_all_recursive (GtkWidget *widget)
 	if (widget == NULL)
 		return;
 
-	/* Only set visible if currently hidden */
-	if (!gtk_widget_get_visible (widget))
-		gtk_widget_set_visible (widget, TRUE);
+	/* Always set visible to ensure widget is shown */
+	gtk_widget_set_visible (widget, TRUE);
 
 	/* Iterate through children using GTK4's child iteration API */
 	for (child = gtk_widget_get_first_child (widget);
@@ -1623,13 +1650,22 @@ typedef void *GtkAccelGroup;
 
 /*
  * GtkReliefStyle - removed in GTK4
- * Use CSS styling instead
+ * Use CSS styling instead. In GTK4, add "flat" CSS class for borderless look.
  */
 #ifndef GTK_RELIEF_NONE
 #define GTK_RELIEF_NONE 0
 #define GTK_RELIEF_NORMAL 1
 #endif
-#define gtk_button_set_relief(button, relief) ((void)0)
+
+static inline void
+hc_button_set_relief (GtkButton *button, int relief)
+{
+	if (relief == GTK_RELIEF_NONE)
+		gtk_widget_add_css_class (GTK_WIDGET (button), "flat");
+	else
+		gtk_widget_remove_css_class (GTK_WIDGET (button), "flat");
+}
+#define gtk_button_set_relief(button, relief) hc_button_set_relief(GTK_BUTTON(button), relief)
 
 /*
  * GtkCheckMenuItem, GtkRadioMenuItem - removed in GTK4
@@ -1824,5 +1860,124 @@ static inline void hc_entry_get_layout_offsets(GtkEntry *entry, gint *x, gint *y
 #define gtk_widget_hide(widget) gtk_widget_set_visible(widget, FALSE)
 
 #endif
+
+/*
+ * =============================================================================
+ * GtkStack as GtkNotebook replacement for GTK4
+ * =============================================================================
+ * HexChat uses GtkNotebook without tabs (show_tabs=FALSE) as a page container.
+ * In GTK4, GtkNotebook has an internal header that takes space even with tabs hidden.
+ * GtkStack is the proper GTK4 widget for this use case.
+ *
+ * These macros allow using GtkStack in GTK4 while keeping GtkNotebook in GTK3.
+ */
+
+#if HC_GTK4
+
+/* Create a new page container - GtkStack in GTK4 */
+static inline GtkWidget *
+hc_page_container_new (void)
+{
+	GtkWidget *stack = gtk_stack_new ();
+	gtk_stack_set_hhomogeneous (GTK_STACK (stack), FALSE);
+	gtk_stack_set_vhomogeneous (GTK_STACK (stack), FALSE);
+	return stack;
+}
+
+/* Add a page to the container */
+static inline void
+hc_page_container_append (GtkWidget *container, GtkWidget *child)
+{
+	/* Use the widget pointer as a unique name */
+	char name[32];
+	g_snprintf (name, sizeof (name), "page_%p", (void *)child);
+	gtk_stack_add_named (GTK_STACK (container), child, name);
+}
+
+/* Get page number (index) for a child widget - returns -1 if not found */
+static inline int
+hc_page_container_get_page_num (GtkWidget *container, GtkWidget *child)
+{
+	GtkSelectionModel *pages = gtk_stack_get_pages (GTK_STACK (container));
+	guint n = g_list_model_get_n_items (G_LIST_MODEL (pages));
+	for (guint i = 0; i < n; i++)
+	{
+		GtkStackPage *page = GTK_STACK_PAGE (g_list_model_get_item (G_LIST_MODEL (pages), i));
+		if (gtk_stack_page_get_child (page) == child)
+		{
+			g_object_unref (page);
+			return (int)i;
+		}
+		g_object_unref (page);
+	}
+	return -1;
+}
+
+/* Set the visible page by index */
+static inline void
+hc_page_container_set_current_page (GtkWidget *container, int page_num)
+{
+	GtkSelectionModel *pages = gtk_stack_get_pages (GTK_STACK (container));
+	guint n = g_list_model_get_n_items (G_LIST_MODEL (pages));
+	if (page_num >= 0 && (guint)page_num < n)
+	{
+		GtkStackPage *page = GTK_STACK_PAGE (g_list_model_get_item (G_LIST_MODEL (pages), page_num));
+		gtk_stack_set_visible_child (GTK_STACK (container), gtk_stack_page_get_child (page));
+		g_object_unref (page);
+	}
+}
+
+/* Remove a page by index */
+static inline void
+hc_page_container_remove_page (GtkWidget *container, int page_num)
+{
+	GtkSelectionModel *pages = gtk_stack_get_pages (GTK_STACK (container));
+	guint n = g_list_model_get_n_items (G_LIST_MODEL (pages));
+	if (page_num >= 0 && (guint)page_num < n)
+	{
+		GtkStackPage *page = GTK_STACK_PAGE (g_list_model_get_item (G_LIST_MODEL (pages), page_num));
+		GtkWidget *child = gtk_stack_page_get_child (page);
+		g_object_unref (page);
+		gtk_stack_remove (GTK_STACK (container), child);
+	}
+}
+
+#else /* GTK3 */
+
+/* In GTK3, use GtkNotebook */
+static inline GtkWidget *
+hc_page_container_new (void)
+{
+	GtkWidget *notebook = gtk_notebook_new ();
+	gtk_notebook_set_show_tabs (GTK_NOTEBOOK (notebook), FALSE);
+	gtk_notebook_set_show_border (GTK_NOTEBOOK (notebook), FALSE);
+	return notebook;
+}
+
+static inline void
+hc_page_container_append (GtkWidget *container, GtkWidget *child)
+{
+	gtk_notebook_append_page (GTK_NOTEBOOK (container), child, NULL);
+}
+
+static inline int
+hc_page_container_get_page_num (GtkWidget *container, GtkWidget *child)
+{
+	return gtk_notebook_page_num (GTK_NOTEBOOK (container), child);
+}
+
+static inline void
+hc_page_container_set_current_page (GtkWidget *container, int page_num)
+{
+	gtk_notebook_set_current_page (GTK_NOTEBOOK (container), page_num);
+}
+
+static inline void
+hc_page_container_remove_page (GtkWidget *container, int page_num)
+{
+	gtk_notebook_remove_page (GTK_NOTEBOOK (container), page_num);
+}
+
+#endif /* HC_GTK4 */
 
 #endif /* HEXCHAT_GTK_COMPAT_H */

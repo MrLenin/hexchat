@@ -576,8 +576,8 @@ mg_show_generic_tab (GtkWidget *box)
 	if (current_sess && gtk_widget_has_focus (current_sess->gui->input_box))
 		f = current_sess->gui->input_box;
 
-	num = gtk_notebook_page_num (GTK_NOTEBOOK (mg_gui->note_book), box);
-	gtk_notebook_set_current_page (GTK_NOTEBOOK (mg_gui->note_book), num);
+	num = hc_page_container_get_page_num (mg_gui->note_book, box);
+	hc_page_container_set_current_page (mg_gui->note_book, num);
 	gtk_tree_view_set_model (GTK_TREE_VIEW (mg_gui->user_tree), NULL);
 	gtk_window_set_title (GTK_WINDOW (mg_gui->window),
 								 g_object_get_data (G_OBJECT (box), "title"));
@@ -934,19 +934,38 @@ mg_populate (session *sess)
 	default:
 		/* hide the dialog buttons */
 		gtk_widget_hide (gui->dialogbutton_box);
-		if (prefs.hex_gui_mode_buttons)
-			gtk_widget_show (gui->topicbutton_box);
 		/* show the userlist */
 		mg_decide_userlist (sess, FALSE);
 		/* let the topic be editted */
 		gtk_editable_set_editable (GTK_EDITABLE (gui->topic_entry), TRUE);
 		if (prefs.hex_gui_topicbar)
 			gtk_widget_show (gui->topic_bar);
+		/* Show mode buttons after topic_bar is visible */
+		if (prefs.hex_gui_mode_buttons)
+		{
+#if HC_GTK4
+			/* GTK4: Force visibility state change by hiding then showing */
+			gtk_widget_set_visible (gui->topicbutton_box, FALSE);
+			gtk_widget_set_visible (gui->topicbutton_box, TRUE);
+			/* Also force visibility of all children */
+			{
+				GtkWidget *child;
+				for (child = gtk_widget_get_first_child (gui->topicbutton_box);
+				     child != NULL;
+				     child = gtk_widget_get_next_sibling (child))
+				{
+					gtk_widget_set_visible (child, TRUE);
+				}
+			}
+#else
+			gtk_widget_show (gui->topicbutton_box);
+#endif
+		}
 	}
 
 	/* move to THE irc tab */
 	if (gui->is_tab)
-		gtk_notebook_set_current_page (GTK_NOTEBOOK (gui->note_book), 0);
+		hc_page_container_set_current_page (gui->note_book, 0);
 
 	/* xtext size change? Then don't render, wait for the expose caused
       by showing/hidding the userlist */
@@ -1549,8 +1568,8 @@ mg_link_gentab (chan *ch, GtkWidget *box)
 
 	g_object_ref (box);
 
-	num = gtk_notebook_page_num (GTK_NOTEBOOK (mg_gui->note_book), box);
-	gtk_notebook_remove_page (GTK_NOTEBOOK (mg_gui->note_book), num);
+	num = hc_page_container_get_page_num (mg_gui->note_book, box);
+	hc_page_container_remove_page (mg_gui->note_book, num);
 	mg_chan_remove (ch);
 
 	win = gtkutil_window_new (g_object_get_data (G_OBJECT (box), "title"), "",
@@ -2349,7 +2368,10 @@ mg_create_flagbutton (char *tip, GtkWidget *box, char *face)
 	gtk_label_set_markup (GTK_LABEL(lbl), label_markup);
 
 	btn = gtk_toggle_button_new ();
+#if !HC_GTK4
+	/* GTK3: Allow shrinking below natural height */
 	gtk_widget_set_size_request (btn, -1, 0);
+#endif
 	gtk_widget_set_tooltip_text (btn, tip);
 	hc_button_set_child (btn, lbl);
 
@@ -2426,6 +2448,7 @@ mg_create_chanmodebuttons (session_gui *gui, GtkWidget *box)
 	hc_box_pack_start (box, gui->key_entry, 0, 0, 0);
 	g_signal_connect (G_OBJECT (gui->key_entry), "activate",
 							G_CALLBACK (mg_key_entry_cb), NULL);
+	gtk_widget_show (gui->key_entry);
 
 	if (prefs.hex_gui_input_style)
 		mg_apply_entry_style (gui->key_entry);
@@ -2438,6 +2461,7 @@ mg_create_chanmodebuttons (session_gui *gui, GtkWidget *box)
 	hc_box_pack_start (box, gui->limit_entry, 0, 0, 0);
 	g_signal_connect (G_OBJECT (gui->limit_entry), "activate",
 							G_CALLBACK (mg_limit_entry_cb), NULL);
+	gtk_widget_show (gui->limit_entry);
 
 	if (prefs.hex_gui_input_style)
 		mg_apply_entry_style (gui->limit_entry);
@@ -2491,7 +2515,10 @@ mg_dialog_button (GtkWidget *box, char *name, char *cmd)
 	hc_box_pack_start (box, wid, FALSE, FALSE, 0);
 	g_signal_connect (G_OBJECT (wid), "clicked",
 							G_CALLBACK (mg_dialog_button_cb), cmd);
+#if !HC_GTK4
+	/* GTK3: Allow shrinking below natural height */
 	gtk_widget_set_size_request (wid, -1, 0);
+#endif
 }
 
 static void
@@ -2535,10 +2562,12 @@ mg_create_topicbar (session *sess, GtkWidget *box)
 	gui->topicbutton_box = bbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	hc_box_pack_start (hbox, bbox, 0, 0, 0);
 	mg_create_chanmodebuttons (gui, bbox);
+	gtk_widget_set_visible (bbox, TRUE);  /* GTK4: Ensure visible after creation */
 
 	gui->dialogbutton_box = bbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	hc_box_pack_start (hbox, bbox, 0, 0, 0);
 	mg_create_dialogbuttons (bbox);
+	gtk_widget_set_visible (bbox, TRUE);  /* GTK4: Ensure visible after creation */
 }
 
 /* check if a word is clickable */
@@ -3026,11 +3055,16 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 	gtk_widget_set_vexpand (gui->hpane_left, TRUE);
 	hc_box_add (box, gui->hpane_left);
 
-	gui->note_book = book = gtk_notebook_new ();
-	gtk_notebook_set_show_tabs (GTK_NOTEBOOK (book), FALSE);
-	gtk_notebook_set_show_border (GTK_NOTEBOOK (book), FALSE);
+	gui->note_book = book = hc_page_container_new ();
 	/* Set a small minimum size to allow shrinking below child minimum sizes */
 	gtk_widget_set_size_request (book, 1, -1);
+#if HC_GTK4
+	/* GTK4: Ensure page container fills its container and content is anchored at top */
+	gtk_widget_set_halign (book, GTK_ALIGN_FILL);
+	gtk_widget_set_valign (book, GTK_ALIGN_FILL);
+	gtk_widget_set_hexpand (book, TRUE);
+	gtk_widget_set_vexpand (book, TRUE);
+#endif
 	gtk_paned_pack1 (GTK_PANED (gui->hpane_right), book, TRUE, TRUE);
 
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
@@ -3045,7 +3079,14 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 	gui->user_box = hbox;
 
 	vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 3);
-	gtk_notebook_append_page (GTK_NOTEBOOK (book), vbox, NULL);
+#if HC_GTK4
+	/* GTK4: Ensure vbox fills page container and is anchored at top-left */
+	gtk_widget_set_halign (vbox, GTK_ALIGN_FILL);
+	gtk_widget_set_valign (vbox, GTK_ALIGN_FILL);
+	gtk_widget_set_hexpand (vbox, TRUE);
+	gtk_widget_set_vexpand (vbox, TRUE);
+#endif
+	hc_page_container_append (book, vbox);
 	mg_create_topicbar (sess, vbox);
 
 	if (prefs.hex_gui_search_pos)
@@ -3624,6 +3665,13 @@ mg_create_menu (session_gui *gui, GtkWidget *table, int away_state)
 											gui->menu_item);
 	gtk_widget_set_hexpand (gui->menu, TRUE);
 	gtk_grid_attach (GTK_GRID (table), gui->menu, 0, 0, 3, 1);
+
+#if HC_GTK4
+	/* In GTK4, the menu bar is a non-functional empty box (GtkMenu APIs are stubbed).
+	 * Hide it and force zero height to avoid taking up space due to grid row spacing. */
+	gtk_widget_set_visible (gui->menu, FALSE);
+	gtk_widget_set_size_request (gui->menu, -1, 0);
+#endif
 }
 
 static void
@@ -3898,15 +3946,15 @@ mg_create_tabwindow (session *sess)
 	mg_place_userlist_and_chanview (sess->gui);
 
 #if HC_GTK4
+	/* GTK4: Ensure topic bar children are visible before presenting window */
+	if (prefs.hex_gui_mode_buttons)
+	{
+		gtk_widget_set_visible (sess->gui->topicbutton_box, TRUE);
+		hc_widget_show_all (sess->gui->topicbutton_box);
+	}
 	gtk_window_present (GTK_WINDOW (win));
 #else
 	gtk_widget_show (win);
-#endif
-
-/* GTK3 only: Register Windows time change filter */
-#if defined(G_OS_WIN32) && !HC_GTK4
-	parent_win = gtk_widget_get_window (win);
-	gdk_window_add_filter (parent_win, mg_time_change, NULL);
 #endif
 }
 
@@ -3937,7 +3985,7 @@ mg_add_generic_tab (char *name, char *title, void *family, GtkWidget *box)
 {
 	chan *ch;
 
-	gtk_notebook_append_page (GTK_NOTEBOOK (mg_gui->note_book), box, NULL);
+	hc_page_container_append (mg_gui->note_book, box);
 	gtk_widget_show (box);
 
 	ch = chanview_add (mg_gui->chanview, name, NULL, box, TRUE, TAG_UTIL, pix_tree_util);

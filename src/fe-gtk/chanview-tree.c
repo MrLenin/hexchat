@@ -94,6 +94,7 @@ hc_chan_item_new (chan *ch, gboolean is_server)
 static void cv_tree_rebuild_model (chanview *cv);
 static HcChanItem *cv_tree_find_item (chanview *cv, chan *ch);
 static HcChanItem *cv_tree_find_server_item (chanview *cv, void *family);
+static chan *cv_tree_get_parent (chan *ch);
 
 #else /* GTK3 */
 
@@ -325,13 +326,14 @@ cv_tree_scroll_event_cb (GtkWidget *widget, GdkEventScroll *event, gpointer user
 static void
 cv_tree_factory_setup_cb (GtkListItemFactory *factory, GtkListItem *item, chanview *cv)
 {
-	GtkWidget *box, *expander, *icon, *label;
-
-	/* Create horizontal box to hold expander + icon + label */
-	box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+	GtkWidget *expander, *content_box, *icon, *label;
 
 	/* Tree expander for expand/collapse */
 	expander = gtk_tree_expander_new ();
+	gtk_widget_set_hexpand (expander, TRUE);
+
+	/* Create horizontal box to hold icon + label inside expander */
+	content_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
 
 	/* Icon (only if icons are enabled) */
 	if (cv->use_icons)
@@ -341,7 +343,7 @@ cv_tree_factory_setup_cb (GtkListItemFactory *factory, GtkListItem *item, chanvi
 		gtk_widget_set_size_request (icon, 16, -1);
 		if (prefs.hex_gui_compact)
 			gtk_widget_set_margin_top (icon, 0);
-		gtk_box_append (GTK_BOX (box), icon);
+		gtk_box_append (GTK_BOX (content_box), icon);
 		g_object_set_data (G_OBJECT (item), "icon", icon);
 	}
 
@@ -352,12 +354,12 @@ cv_tree_factory_setup_cb (GtkListItemFactory *factory, GtkListItem *item, chanvi
 	if (prefs.hex_gui_compact)
 		gtk_widget_set_margin_top (label, 0);
 	gtk_widget_set_hexpand (label, TRUE);
+	gtk_box_append (GTK_BOX (content_box), label);
 
-	/* Put label inside expander, expander in box */
-	gtk_tree_expander_set_child (GTK_TREE_EXPANDER (expander), label);
-	gtk_box_prepend (GTK_BOX (box), expander);
+	/* Put content box (icon + label) inside expander */
+	gtk_tree_expander_set_child (GTK_TREE_EXPANDER (expander), content_box);
 
-	gtk_list_item_set_child (item, box);
+	gtk_list_item_set_child (item, expander);
 
 	/* Store references for bind callback */
 	g_object_set_data (G_OBJECT (item), "expander", expander);
@@ -919,7 +921,62 @@ cv_tree_set_color (chan *ch, PangoAttrList *list)
 static void
 cv_tree_rename (chan *ch, char *name)
 {
-	/* nothing to do, it's already renamed in the store */
+#if HC_GTK4
+	/* In GTK4, we need to signal the model that the item changed
+	 * so the bind callback is called again with the new data.
+	 * Find the item's position and emit items-changed. */
+	treeview *tv = (treeview *)ch->cv;
+	guint n_items, i;
+	HcChanItem *item;
+	GListStore *store;
+	chan *parent_ch = cv_tree_get_parent (ch);
+
+	if (parent_ch)
+	{
+		/* It's a channel - find in parent's children store */
+		HcChanItem *parent_item = cv_tree_find_server_item (ch->cv, ch->family);
+		if (parent_item && parent_item->children)
+		{
+			store = parent_item->children;
+			n_items = g_list_model_get_n_items (G_LIST_MODEL (store));
+			for (i = 0; i < n_items; i++)
+			{
+				item = g_list_model_get_item (G_LIST_MODEL (store), i);
+				if (item && item->ch == ch)
+				{
+					/* Signal that this item changed - triggers rebind */
+					g_list_store_remove (store, i);
+					g_list_store_insert (store, i, item);
+					g_object_unref (item);
+					break;
+				}
+				if (item)
+					g_object_unref (item);
+			}
+		}
+	}
+	else
+	{
+		/* It's a server - find in root store */
+		store = tv->root_store;
+		n_items = g_list_model_get_n_items (G_LIST_MODEL (store));
+		for (i = 0; i < n_items; i++)
+		{
+			item = g_list_model_get_item (G_LIST_MODEL (store), i);
+			if (item && item->ch == ch)
+			{
+				/* Signal that this item changed - triggers rebind */
+				g_list_store_remove (store, i);
+				g_list_store_insert (store, i, item);
+				g_object_unref (item);
+				break;
+			}
+			if (item)
+				g_object_unref (item);
+		}
+	}
+#endif
+	/* GTK3: nothing to do, GtkTreeView updates automatically from store changes */
 }
 
 static chan *

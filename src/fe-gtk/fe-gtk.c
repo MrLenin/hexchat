@@ -465,6 +465,26 @@ fe_init (void)
 	channelwin_pix = pixmap_load_from_file (prefs.hex_text_background);
 	input_style = create_input_style (NULL);
 	apply_tree_css ();
+
+#if HC_GTK4
+	/* GTK4: Apply CSS for various UI adjustments */
+	{
+		static GtkCssProvider *layout_css = NULL;
+		if (!layout_css)
+		{
+			layout_css = gtk_css_provider_new ();
+			gtk_css_provider_load_from_string (layout_css,
+				/* Ensure paned handles don't take excess space */
+				"paned > separator { min-width: 1px; min-height: 1px; } "
+				/* GtkStack (used as page container) styling */
+				"stack { padding: 0; margin: 0; }");
+			gtk_style_context_add_provider_for_display (
+				gdk_display_get_default (),
+				GTK_STYLE_PROVIDER (layout_css),
+				GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+		}
+	}
+#endif
 }
 
 #ifdef HAVE_GTK_MAC
