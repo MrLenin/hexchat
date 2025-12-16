@@ -298,9 +298,19 @@ sexy_spell_entry_get_preedit_length (GtkEntry *entry)
 {
 	const gchar *text = hc_entry_get_text (GTK_WIDGET(entry));
 	PangoLayout *layout = gtk_entry_get_layout (entry);
-	const gchar *layout_text = pango_layout_get_text (layout);
-	gint text_len = strlen (text);
-	gint layout_len = strlen (layout_text);
+	const gchar *layout_text;
+	gint text_len, layout_len;
+
+	/* GTK4: gtk_entry_get_layout returns NULL - no preedit support */
+	if (layout == NULL)
+		return 0;
+
+	layout_text = pango_layout_get_text (layout);
+	if (layout_text == NULL)
+		return 0;
+
+	text_len = strlen (text);
+	layout_len = strlen (layout_text);
 
 	/* Preedit text is included in layout but not in entry text */
 	return (layout_len > text_len) ? (layout_len - text_len) : 0;
@@ -1166,7 +1176,9 @@ sexy_spell_entry_recheck_all(SexySpellEntry *entry)
 	}
 
 	layout = gtk_entry_get_layout(GTK_ENTRY(entry));
-	pango_layout_set_attributes(layout, entry->priv->attr_list);
+	/* GTK4: gtk_entry_get_layout returns NULL - skip attribute setting */
+	if (layout != NULL)
+		pango_layout_set_attributes(layout, entry->priv->attr_list);
 
 	if (gtk_widget_get_realized (GTK_WIDGET(entry)))
 	{
@@ -1194,6 +1206,15 @@ sexy_spell_entry_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
 	gint preedit_length;
 
 	layout = gtk_entry_get_layout(gtk_entry);
+
+	/* GTK4: gtk_entry_get_layout returns NULL - spell underlining disabled
+	 * Just chain up to parent class to draw the entry normally */
+	if (layout == NULL)
+	{
+		GTK_WIDGET_CLASS(parent_class)->snapshot (widget, snapshot);
+		return;
+	}
+
 	preedit_length = sexy_spell_entry_get_preedit_length (gtk_entry);
 
 	if (preedit_length == 0)
@@ -1477,6 +1498,16 @@ entry_strsplit_utf8(GtkEntry *entry, gchar ***set, gint **starts, gint **ends)
 	PangoLogAttr a;
 
 	layout = gtk_entry_get_layout(GTK_ENTRY(entry));
+
+	/* GTK4: gtk_entry_get_layout returns NULL - return empty word list */
+	if (layout == NULL)
+	{
+		*set = g_new0(gchar *, 1);
+		*starts = g_new0(gint, 1);
+		*ends = g_new0(gint, 1);
+		return;
+	}
+
 	text = hc_entry_get_text(GTK_WIDGET(entry));
 	log_attrs = pango_layout_get_log_attrs_readonly (layout, &n_attrs);
 

@@ -170,6 +170,10 @@
  * =============================================================================
  * GTK3: Widgets start hidden, need gtk_widget_show()/gtk_widget_show_all()
  * GTK4: Widgets start visible, no gtk_widget_show_all()
+ *
+ * IMPORTANT: GTK4 removed gtk_widget_show_all(). In GTK3, this function
+ * recursively showed all children. We implement a replacement that does
+ * the same by iterating through children.
  */
 
 #if HC_GTK4
@@ -177,8 +181,34 @@
 #define hc_widget_show(widget) \
 	gtk_widget_set_visible(widget, TRUE)
 
+/*
+ * GTK4 replacement for gtk_widget_show_all() - recursively shows widget and children
+ * In GTK4, widgets start visible by default, but some may have been explicitly hidden.
+ * We only set visible if the widget is currently hidden to avoid unnecessary signal emissions.
+ */
+static inline void
+hc_gtk4_widget_show_all_recursive (GtkWidget *widget)
+{
+	GtkWidget *child;
+
+	if (widget == NULL)
+		return;
+
+	/* Only set visible if currently hidden */
+	if (!gtk_widget_get_visible (widget))
+		gtk_widget_set_visible (widget, TRUE);
+
+	/* Iterate through children using GTK4's child iteration API */
+	for (child = gtk_widget_get_first_child (widget);
+	     child != NULL;
+	     child = gtk_widget_get_next_sibling (child))
+	{
+		hc_gtk4_widget_show_all_recursive (child);
+	}
+}
+
 #define hc_widget_show_all(widget) \
-	gtk_widget_set_visible(widget, TRUE)
+	hc_gtk4_widget_show_all_recursive(widget)
 
 #define hc_widget_hide(widget) \
 	gtk_widget_set_visible(widget, FALSE)
@@ -206,16 +236,48 @@
 
 #if HC_GTK4
 
-#define hc_widget_destroy(widget) \
-	do { \
-		if (GTK_IS_WINDOW(widget)) \
-			gtk_window_destroy(GTK_WINDOW(widget)); \
-		else \
-			g_object_unref(widget); \
-	} while (0)
+/*
+ * In GTK4, widgets must be unparented before they can be destroyed.
+ * For windows, use gtk_window_destroy().
+ * For other widgets, unparent first (if parented) - this will destroy
+ * the widget since the parent holds the only reference.
+ * If not parented, the widget has a floating ref that needs to be sunk.
+ */
+static inline void
+hc_widget_destroy_impl (GtkWidget *widget)
+{
+	if (GTK_IS_WINDOW (widget))
+	{
+		gtk_window_destroy (GTK_WINDOW (widget));
+	}
+	else
+	{
+		if (gtk_widget_get_parent (widget) != NULL)
+		{
+			/* Unparenting will destroy the widget as the parent
+			 * releases its reference */
+			gtk_widget_unparent (widget);
+		}
+		else
+		{
+			/* Widget was never parented - it has a floating ref.
+			 * Sink it and then unref to destroy. */
+			g_object_ref_sink (widget);
+			g_object_unref (widget);
+		}
+	}
+}
 
+#define hc_widget_destroy(widget) \
+	hc_widget_destroy_impl(GTK_WIDGET(widget))
+
+/*
+ * In GTK4, gtk_window_close() allows proper cleanup and event processing
+ * before destruction, which is safer than gtk_window_destroy() for windows
+ * that may have pending events.
+ */
 #define hc_window_destroy(window) \
-	gtk_window_destroy(GTK_WINDOW(window))
+	gtk_window_close(GTK_WINDOW(window))
 
 #else /* GTK3 */
 
@@ -647,11 +709,31 @@ hc_add_drag_source (GtkWidget *widget, GCallback prepare_cb, gpointer user_data)
 
 #if HC_GTK4
 
+/*
+ * GTK4: gtk_paned_pack1/pack2 replaced with set_start_child/set_end_child
+ * plus separate resize/shrink property setters
+ */
+static inline void
+hc_gtk4_paned_pack1 (GtkPaned *paned, GtkWidget *child, gboolean resize, gboolean shrink)
+{
+	gtk_paned_set_start_child (paned, child);
+	gtk_paned_set_resize_start_child (paned, resize);
+	gtk_paned_set_shrink_start_child (paned, shrink);
+}
+
+static inline void
+hc_gtk4_paned_pack2 (GtkPaned *paned, GtkWidget *child, gboolean resize, gboolean shrink)
+{
+	gtk_paned_set_end_child (paned, child);
+	gtk_paned_set_resize_end_child (paned, resize);
+	gtk_paned_set_shrink_end_child (paned, shrink);
+}
+
 #define hc_paned_pack1(paned, child, resize, shrink) \
-	gtk_paned_set_start_child(GTK_PANED(paned), child)
+	hc_gtk4_paned_pack1(GTK_PANED(paned), child, resize, shrink)
 
 #define hc_paned_pack2(paned, child, resize, shrink) \
-	gtk_paned_set_end_child(GTK_PANED(paned), child)
+	hc_gtk4_paned_pack2(GTK_PANED(paned), child, resize, shrink)
 
 #else /* GTK3 */
 
@@ -1428,10 +1510,14 @@ hc_pixbuf_to_texture (GdkPixbuf *pixbuf)
  */
 #define gtk_paned_get_child1(paned) gtk_paned_get_start_child(GTK_PANED(paned))
 #define gtk_paned_get_child2(paned) gtk_paned_get_end_child(GTK_PANED(paned))
+
+/*
+ * gtk_paned_pack1/pack2 - use the inline functions defined earlier
+ */
 #define gtk_paned_pack1(paned, child, resize, shrink) \
-	gtk_paned_set_start_child(GTK_PANED(paned), child)
+	hc_gtk4_paned_pack1(GTK_PANED(paned), child, resize, shrink)
 #define gtk_paned_pack2(paned, child, resize, shrink) \
-	gtk_paned_set_end_child(GTK_PANED(paned), child)
+	hc_gtk4_paned_pack2(GTK_PANED(paned), child, resize, shrink)
 
 /*
  * gtk_widget_style_get - removed in GTK4
@@ -1449,10 +1535,37 @@ hc_pixbuf_to_texture (GdkPixbuf *pixbuf)
 
 /*
  * gtk_container_remove - removed in GTK4
- * Use specific container methods
+ * Use specific container methods based on container type
  */
+static inline void
+hc_container_remove (GtkWidget *container, GtkWidget *widget)
+{
+	if (GTK_IS_BOX (container))
+		gtk_box_remove (GTK_BOX (container), widget);
+	else if (GTK_IS_PANED (container))
+	{
+		/* In GTK4, use the paned API to properly clear children.
+		 * Note: The paned widget handles NULL children correctly for
+		 * size requests, but we need to use set_start/end_child. */
+		GtkPaned *paned = GTK_PANED (container);
+		if (gtk_paned_get_start_child (paned) == widget)
+			gtk_paned_set_start_child (paned, NULL);
+		else if (gtk_paned_get_end_child (paned) == widget)
+			gtk_paned_set_end_child (paned, NULL);
+	}
+	else if (GTK_IS_GRID (container))
+		gtk_grid_remove (GTK_GRID (container), widget);
+	else if (GTK_IS_WINDOW (container))
+		gtk_window_set_child (GTK_WINDOW (container), NULL);
+	else
+	{
+		/* Fallback: try to unparent the widget */
+		gtk_widget_unparent (widget);
+	}
+}
+
 #define gtk_container_remove(container, widget) \
-	gtk_box_remove(GTK_BOX(container), widget)
+	hc_container_remove(GTK_WIDGET(container), widget)
 
 /*
  * gtk_container_set_border_width - removed in GTK4
@@ -1563,9 +1676,8 @@ typedef GtkWidget GtkMenuItem;
 /*
  * gtk_main / gtk_main_quit - removed in GTK4
  * GTK4 uses GApplication main loop
+ * These are implemented directly in fe-gtk.c with proper main loop handling
  */
-#define gtk_main() g_main_loop_run(g_main_loop_new(NULL, FALSE))
-#define gtk_main_quit() ((void)0)
 
 /*
  * gtk_css_provider_load_from_data - signature changed in GTK4
@@ -1701,6 +1813,15 @@ static inline void hc_entry_get_layout_offsets(GtkEntry *entry, gint *x, gint *y
 #define gtk_widget_show_all COMPILE_ERROR_USE_gtk_widget_set_visible
 #define gtk_widget_destroy COMPILE_ERROR_USE_appropriate_method
 /* Note: gtk_container_add is now mapped above to cause build issues for debugging */
+
+/*
+ * gtk_widget_show - In GTK4, widgets are visible by default.
+ * Calling gtk_widget_show on a toplevel window requires the window
+ * to be properly initialized. Map to gtk_widget_set_visible which is safer.
+ * For windows, calling gtk_widget_set_visible(w, TRUE) is equivalent.
+ */
+#define gtk_widget_show(widget) gtk_widget_set_visible(widget, TRUE)
+#define gtk_widget_hide(widget) gtk_widget_set_visible(widget, FALSE)
 
 #endif
 

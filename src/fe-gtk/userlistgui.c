@@ -977,6 +977,9 @@ userlist_bind_icon_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 	GtkWidget *picture = gtk_list_item_get_child (item);
 	HcUserItem *user_item = gtk_list_item_get_item (item);
 
+	if (!user_item)
+		return;
+
 	if (user_item->icon)
 		gtk_picture_set_paintable (GTK_PICTURE (picture), GDK_PAINTABLE (user_item->icon));
 	else
@@ -1003,7 +1006,10 @@ userlist_bind_nick_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 	HcUserItem *user_item = gtk_list_item_get_item (item);
 	PangoAttrList *attrs;
 
-	gtk_label_set_text (GTK_LABEL (label), user_item->nick);
+	if (!user_item)
+		return;
+
+	gtk_label_set_text (GTK_LABEL (label), user_item->nick ? user_item->nick : "");
 
 	/* Apply color if set */
 	if (user_item->color_index > 0)
@@ -1041,6 +1047,9 @@ userlist_bind_host_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 {
 	GtkWidget *label = gtk_list_item_get_child (item);
 	HcUserItem *user_item = gtk_list_item_get_item (item);
+
+	if (!user_item)
+		return;
 
 	gtk_label_set_text (GTK_LABEL (label), user_item->hostname ? user_item->hostname : "");
 }

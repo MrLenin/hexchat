@@ -380,6 +380,10 @@ cv_tree_factory_bind_cb (GtkListItemFactory *factory, GtkListItem *item, chanvie
 	icon = g_object_get_data (G_OBJECT (item), "icon");
 	label = g_object_get_data (G_OBJECT (item), "label");
 
+	/* Safety checks for stored widget references */
+	if (!expander || !label)
+		return;
+
 	row = gtk_list_item_get_item (item);
 	if (!row)
 		return;
@@ -432,7 +436,12 @@ cv_tree_factory_bind_cb (GtkListItemFactory *factory, GtkListItem *item, chanvie
 static void
 cv_tree_factory_unbind_cb (GtkListItemFactory *factory, GtkListItem *item, chanview *cv)
 {
-	GtkWidget *expander = g_object_get_data (G_OBJECT (item), "expander");
+	GtkWidget *expander;
+
+	if (!item)
+		return;
+
+	expander = g_object_get_data (G_OBJECT (item), "expander");
 	if (expander)
 		gtk_tree_expander_set_list_row (GTK_TREE_EXPANDER (expander), NULL);
 }

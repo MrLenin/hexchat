@@ -776,8 +776,12 @@ mg_set_topic_tip (session *sess)
 static void
 mg_hide_empty_pane (GtkPaned *pane)
 {
-	if ((gtk_paned_get_child1 (pane) == NULL || !gtk_widget_get_visible (gtk_paned_get_child1 (pane))) &&
-		(gtk_paned_get_child2 (pane) == NULL || !gtk_widget_get_visible (gtk_paned_get_child2 (pane))))
+	GtkWidget *child1 = gtk_paned_get_child1 (pane);
+	GtkWidget *child2 = gtk_paned_get_child2 (pane);
+	gboolean child1_visible = (child1 != NULL && gtk_widget_get_visible (child1));
+	gboolean child2_visible = (child2 != NULL && gtk_widget_get_visible (child2));
+
+	if (!child1_visible && !child2_visible)
 	{
 		gtk_widget_hide (GTK_WIDGET (pane));
 		return;
@@ -1065,7 +1069,6 @@ mg_switch_page (int relative, int num)
 static void
 mg_topdestroy_cb (GtkWidget *win, session *sess)
 {
-/*	printf("enter mg_topdestroy. sess %p was destroyed\n", sess);*/
 	session_free (sess);	/* tell hexchat.c about it */
 }
 
@@ -2124,7 +2127,6 @@ mg_tabwindow_kill_cb (GtkWidget *win, gpointer userdata)
 	GSList *list, *next;
 	session *sess;
 
-/*	puts("enter mg_tabwindow_kill_cb");*/
 	hexchat_is_quitting = TRUE;
 
 	/* see if there's any non-tab windows left */
@@ -2985,9 +2987,18 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 
 	/* sep between top and bottom of left side */
 	gui->vpane_left = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
+#if HC_GTK4
+	/* GTK4: Hide empty paned widgets initially to prevent crashes during
+	 * size computation. They will be shown by mg_hide_empty_pane when
+	 * children are added by mg_place_userlist_and_chanview. */
+	gtk_widget_set_visible (gui->vpane_left, FALSE);
+#endif
 
 	/* sep between top and bottom of right side */
 	gui->vpane_right = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
+#if HC_GTK4
+	gtk_widget_set_visible (gui->vpane_right, FALSE);
+#endif
 
 	/* sep between left and xtext */
 	gui->hpane_left = gtk_paned_new (GTK_ORIENTATION_HORIZONTAL);
@@ -3023,7 +3034,12 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 	gtk_paned_pack1 (GTK_PANED (gui->hpane_right), book, TRUE, TRUE);
 
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+#if !HC_GTK4
+	/* In GTK3, pack the userlist here. In GTK4, we defer to mg_place_userlist_and_chanview
+	 * to avoid issues with reparenting widgets in paned containers. GTK4's paned widget
+	 * has stricter requirements about child management. */
 	gtk_paned_pack1 (GTK_PANED (gui->vpane_right), hbox, FALSE, FALSE);
+#endif
 	mg_create_userlist (gui, hbox);
 
 	gui->user_box = hbox;
@@ -3640,12 +3656,27 @@ mg_create_topwindow (session *sess)
 	hc_container_set_border_width (win, GUI_BORDER);
 	gtk_window_set_opacity (GTK_WINDOW (win), (prefs.hex_gui_transparency / 255.));
 
+#if HC_GTK4
+	{
+		GtkEventController *focus_controller = gtk_event_controller_focus_new ();
+		g_signal_connect (focus_controller, "enter",
+								G_CALLBACK (mg_topwin_focus_cb), sess);
+		gtk_widget_add_controller (win, focus_controller);
+	}
+	g_signal_connect (G_OBJECT (win), "destroy",
+							G_CALLBACK (mg_topdestroy_cb), sess);
+	g_signal_connect (G_OBJECT (win), "notify::default-width",
+							G_CALLBACK (mg_configure_cb), sess);
+	g_signal_connect (G_OBJECT (win), "notify::default-height",
+							G_CALLBACK (mg_configure_cb), sess);
+#else
 	g_signal_connect (G_OBJECT (win), "focus_in_event",
 							G_CALLBACK (mg_topwin_focus_cb), sess);
 	g_signal_connect (G_OBJECT (win), "destroy",
 							G_CALLBACK (mg_topdestroy_cb), sess);
 	g_signal_connect (G_OBJECT (win), "configure_event",
 							G_CALLBACK (mg_configure_cb), sess);
+#endif
 
 	palette_alloc (win);
 
@@ -3701,7 +3732,11 @@ mg_create_topwindow (session *sess)
 
 	mg_place_userlist_and_chanview (sess->gui);
 
+#if HC_GTK4
+	gtk_window_present (GTK_WINDOW (win));
+#else
 	gtk_widget_show (win);
+#endif
 }
 
 #if HC_GTK4
@@ -3720,7 +3755,9 @@ mg_tabwindow_de_cb (GtkWindow *win)
 	{
 		sess = list->data;
 		if (!sess->gui->is_tab)
+		{
 			return FALSE;
+		}
 		list = list->next;
 	}
 
@@ -3790,6 +3827,26 @@ mg_create_tabwindow (session *sess)
 	gtk_window_set_opacity (GTK_WINDOW (win), (prefs.hex_gui_transparency / 255.));
 	hc_container_set_border_width (win, GUI_BORDER);
 
+#if HC_GTK4
+	g_signal_connect (G_OBJECT (win), "close-request",
+						   G_CALLBACK (mg_tabwindow_de_cb), 0);
+	g_signal_connect (G_OBJECT (win), "destroy",
+						   G_CALLBACK (mg_tabwindow_kill_cb), 0);
+	{
+		GtkEventController *focus_controller = gtk_event_controller_focus_new ();
+		g_signal_connect (focus_controller, "enter",
+								G_CALLBACK (mg_tabwin_focus_cb), NULL);
+		gtk_widget_add_controller (win, focus_controller);
+	}
+	g_signal_connect (G_OBJECT (win), "notify::default-width",
+							G_CALLBACK (mg_configure_cb), NULL);
+	g_signal_connect (G_OBJECT (win), "notify::default-height",
+							G_CALLBACK (mg_configure_cb), NULL);
+	g_signal_connect (G_OBJECT (win), "notify::maximized",
+							G_CALLBACK (mg_windowstate_cb), NULL);
+	g_signal_connect (G_OBJECT (win), "notify::fullscreened",
+							G_CALLBACK (mg_windowstate_cb), NULL);
+#else
 	g_signal_connect (G_OBJECT (win), "delete_event",
 						   G_CALLBACK (mg_tabwindow_de_cb), 0);
 	g_signal_connect (G_OBJECT (win), "destroy",
@@ -3800,6 +3857,7 @@ mg_create_tabwindow (session *sess)
 							G_CALLBACK (mg_configure_cb), NULL);
 	g_signal_connect (G_OBJECT (win), "window_state_event",
 							G_CALLBACK (mg_windowstate_cb), NULL);
+#endif
 
 	palette_alloc (win);
 
@@ -3839,7 +3897,11 @@ mg_create_tabwindow (session *sess)
 
 	mg_place_userlist_and_chanview (sess->gui);
 
+#if HC_GTK4
+	gtk_window_present (GTK_WINDOW (win));
+#else
 	gtk_widget_show (win);
+#endif
 
 /* GTK3 only: Register Windows time change filter */
 #if defined(G_OS_WIN32) && !HC_GTK4

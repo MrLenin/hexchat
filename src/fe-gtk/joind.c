@@ -61,7 +61,8 @@ static void
 joind_entryfocus_cb (GtkEventControllerFocus *controller, server *serv)
 {
 	(void)controller;
-	gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (serv->gui->joind_radio2), TRUE);
+	/* GTK4: Radio buttons are mapped to check buttons */
+	gtk_check_button_set_active (GTK_CHECK_BUTTON (serv->gui->joind_radio2), TRUE);
 }
 #else
 static void
@@ -88,11 +89,20 @@ joind_ok_cb (GtkWidget *ok, server *serv)
 	}
 
 	/* do nothing */
+#if HC_GTK4
+	/* GTK4: Radio buttons are mapped to check buttons */
+	if (gtk_check_button_get_active (GTK_CHECK_BUTTON (serv->gui->joind_radio1)))
+#else
 	if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (serv->gui->joind_radio1)))
+#endif
 		goto xit;
 
 	/* join specific channel */
+#if HC_GTK4
+	if (gtk_check_button_get_active (GTK_CHECK_BUTTON (serv->gui->joind_radio2)))
+#else
 	if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (serv->gui->joind_radio2)))
+#endif
 	{
 		char *text = (char *)hc_entry_get_text (serv->gui->joind_entry);
 		if (strlen (text) < 1)
@@ -137,6 +147,19 @@ joind_show_dialog (server *serv)
 	char buf[256];
 	char buf2[256];
 
+#if HC_GTK4
+	/* GTK4: GtkDialog is deprecated, use GtkWindow with manual layout */
+	serv->gui->joind_win = dialog1 = gtk_window_new ();
+	g_snprintf(buf, sizeof(buf), _("Connection Complete - %s"), _(DISPLAY_NAME));
+	gtk_window_set_title (GTK_WINDOW (dialog1), buf);
+	gtk_window_set_transient_for (GTK_WINDOW(dialog1), GTK_WINDOW(serv->front_session->gui->window));
+	gtk_window_set_modal (GTK_WINDOW (dialog1), TRUE);
+	gtk_window_set_resizable (GTK_WINDOW (dialog1), FALSE);
+
+	/* Create content area manually */
+	dialog_vbox1 = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+	gtk_window_set_child (GTK_WINDOW (dialog1), dialog_vbox1);
+#else
 	serv->gui->joind_win = dialog1 = gtk_dialog_new ();
 	g_snprintf(buf, sizeof(buf), _("Connection Complete - %s"), _(DISPLAY_NAME));
 	gtk_window_set_title (GTK_WINDOW (dialog1), buf);
@@ -148,6 +171,7 @@ joind_show_dialog (server *serv)
 
 	dialog_vbox1 = gtk_dialog_get_content_area (GTK_DIALOG (dialog1));
 	gtk_widget_show (dialog_vbox1);
+#endif
 
 	vbox1 = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
 	gtk_widget_show (vbox1);
@@ -240,18 +264,45 @@ joind_show_dialog (server *serv)
 	gtk_widget_show (checkbutton1);
 	hc_box_pack_start (vbox1, checkbutton1, FALSE, FALSE, 0);
 
+#if HC_GTK4
+	/* GTK4: Create OK button manually since we're using GtkWindow */
+	{
+		GtkWidget *button_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+		gtk_widget_set_halign (button_box, GTK_ALIGN_END);
+		gtk_widget_set_margin_top (button_box, 12);
+		gtk_widget_set_margin_bottom (button_box, 12);
+		gtk_widget_set_margin_end (button_box, 12);
+		hc_box_pack_start (dialog_vbox1, button_box, FALSE, FALSE, 0);
+
+		okbutton1 = gtk_button_new_with_mnemonic (_("_OK"));
+		gtk_box_append (GTK_BOX (button_box), okbutton1);
+	}
+#else
 	/* Use gtk_dialog_add_button() instead of deprecated gtk_dialog_get_action_area() */
 	okbutton1 = gtk_dialog_add_button (GTK_DIALOG (dialog1), _("_OK"), GTK_RESPONSE_OK);
 	gtk_widget_set_can_default (okbutton1, TRUE);
+#endif
 
 	g_signal_connect (G_OBJECT (dialog1), "destroy",
 							G_CALLBACK (joind_destroy_cb), serv);
+#if HC_GTK4
+	/* GTK4: Use focus controller instead of focus_in_event signal */
+	{
+		GtkEventController *focus_controller = gtk_event_controller_focus_new ();
+		g_signal_connect (focus_controller, "enter", G_CALLBACK (joind_entryfocus_cb), serv);
+		gtk_widget_add_controller (entry1, focus_controller);
+	}
+#else
 	g_signal_connect (G_OBJECT (entry1), "focus_in_event",
 							G_CALLBACK (joind_entryfocus_cb), serv);
+#endif
 	g_signal_connect (G_OBJECT (entry1), "activate",
 							G_CALLBACK (joind_entryenter_cb), okbutton1);
+#if !HC_GTK4
+	/* GTK4: Radio buttons are mapped to check buttons, toggled signal works differently */
 	g_signal_connect (G_OBJECT (radiobutton2), "toggled",
 							G_CALLBACK (joind_radio2_cb), serv);
+#endif
 	g_signal_connect (G_OBJECT (okbutton1), "clicked",
 							G_CALLBACK (joind_ok_cb), serv);
 							
@@ -262,7 +313,12 @@ joind_show_dialog (server *serv)
 		}
 
 	gtk_widget_grab_focus (okbutton1);
+#if HC_GTK4
+	/* GTK4: Use gtk_window_present instead of show_all for dialogs */
+	gtk_window_present (GTK_WINDOW (dialog1));
+#else
 	hc_widget_show_all (dialog1);
+#endif
 }
 
 void

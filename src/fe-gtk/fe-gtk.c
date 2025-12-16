@@ -64,6 +64,11 @@
 
 cairo_surface_t *channelwin_pix;
 
+#if HC_GTK4
+/* GTK4 doesn't have gtk_main/gtk_main_quit, so we use a GMainLoop */
+static GMainLoop *gtk4_main_loop = NULL;
+#endif
+
 #ifdef USE_LIBCANBERRA
 static ca_context *ca_con;
 #endif
@@ -482,7 +487,15 @@ fe_main (void)
 	GtkSettings* settings = gtk_settings_get_default();
 	g_object_set(settings, "gtk-theme-name", "Default", NULL);
 
+#if HC_GTK4
+	/* GTK4: Use GMainLoop since gtk_main() was removed */
+	gtk4_main_loop = g_main_loop_new (NULL, FALSE);
+	g_main_loop_run (gtk4_main_loop);
+	g_main_loop_unref (gtk4_main_loop);
+	gtk4_main_loop = NULL;
+#else
 	gtk_main ();
+#endif
 
 	/* sleep for 2 seconds so any QUIT messages are not lost. The  */
 	/* GUI is closed at this point, so the user doesn't even know! */
@@ -502,7 +515,12 @@ fe_cleanup (void)
 void
 fe_exit (void)
 {
+#if HC_GTK4
+	if (gtk4_main_loop && g_main_loop_is_running (gtk4_main_loop))
+		g_main_loop_quit (gtk4_main_loop);
+#else
 	gtk_main_quit ();
+#endif
 }
 
 int

@@ -710,6 +710,9 @@ gtk_xtext_realize (GtkWidget * widget)
 	GtkXText *xtext;
 	GdkDisplay *display;
 
+	/* GTK4: MUST chain up to parent class realize first */
+	GTK_WIDGET_CLASS (parent_class)->realize (widget);
+
 	xtext = GTK_XTEXT (widget);
 
 	/* GTK4: Assume 32-bit depth (RGBA) */
@@ -817,6 +820,37 @@ gtk_xtext_realize (GtkWidget * widget)
 }
 #endif
 
+#if HC_GTK4
+/* GTK4: measure vfunc replaces get_preferred_width/height */
+static void
+gtk_xtext_measure (GtkWidget *widget,
+                   GtkOrientation orientation,
+                   int for_size,
+                   int *minimum,
+                   int *natural,
+                   int *minimum_baseline,
+                   int *natural_baseline)
+{
+	if (orientation == GTK_ORIENTATION_HORIZONTAL)
+	{
+		/* Use small minimum to allow paned to shrink the text area */
+		*minimum = 100;
+		*natural = 200;
+	}
+	else
+	{
+		*minimum = 90;
+		*natural = 90;
+	}
+
+	if (minimum_baseline)
+		*minimum_baseline = -1;
+	if (natural_baseline)
+		*natural_baseline = -1;
+}
+
+#else /* GTK3 */
+
 static void
 gtk_xtext_get_preferred_width (GtkWidget *widget, gint *minimum, gint *natural)
 {
@@ -831,6 +865,8 @@ gtk_xtext_get_preferred_height (GtkWidget *widget, gint *minimum, gint *natural)
 	*minimum = 90;
 	*natural = 90;
 }
+
+#endif /* GTK3 */
 
 #if HC_GTK4
 /* GTK4: size_allocate has different signature - width, height, baseline */
@@ -3013,6 +3049,7 @@ gtk_xtext_class_init (GtkXTextClass * class)
 #if HC_GTK4
 	/* GTK4: Use measure vfunc instead of get_preferred_width/height */
 	/* GTK4: Event handling is done via controllers in init, not vfuncs */
+	widget_class->measure = gtk_xtext_measure;
 	widget_class->snapshot = gtk_xtext_snapshot;
 #else
 	widget_class->get_preferred_width = gtk_xtext_get_preferred_width;

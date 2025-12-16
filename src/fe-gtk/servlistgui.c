@@ -36,6 +36,10 @@
 #include "pixmaps.h"
 #include "fkeys.h"
 
+#ifdef WIN32
+#include <windows.h>
+#endif
+
 #define SERVLIST_X_PADDING 4			/* horizontal paddig in the network editor */
 #define SERVLIST_Y_PADDING 0			/* vertical padding in the network editor */
 

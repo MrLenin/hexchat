@@ -6,8 +6,21 @@ This document tracks the GTK4 migration status for HexChat. The migration uses c
 
 **Build Status (2024-12-15):**
 - ✅ **GTK4 Compilation**: SUCCESSFUL (Visual Studio on Windows)
-- ⚠️ **GTK4 Runtime**: NOT YET TESTED
+- ✅ **GTK4 Runtime**: RUNS WITHOUT CRASHING (Windows)
 - ✅ **GTK3 Compilation**: Working (needs re-verification after recent changes)
+
+**Runtime Status:**
+The GTK4 build now launches and runs without crashing. Core functionality works:
+- Main window displays and is interactive
+- Server list dialog works
+- Connecting to IRC servers works
+- Joining channels works
+- User list populates correctly
+
+**Known UI Issues (to be resolved):**
+- Widget layout/sizing issues in various areas
+- Color themes not being applied (colors appear default)
+- Visual rendering differences from GTK3
 
 **Statistics:**
 - 291 `#if HC_GTK4` conditional blocks
@@ -129,12 +142,19 @@ ninja -C build
 
 ## Known Issues and Limitations
 
-### Runtime (Untested)
-The GTK4 build compiles but has not been runtime tested. Expected areas needing fixes:
-1. Widget initialization order
-2. CSS styling differences
-3. Window management behavior
-4. Event propagation differences
+### Runtime UI Issues
+The GTK4 build runs without crashing but has visual/layout issues:
+1. **Color Themes** - Custom color schemes not being applied; UI uses default GTK4 colors
+2. **Widget Layout** - Some widgets may have sizing or spacing differences from GTK3
+3. **Visual Rendering** - Minor cosmetic differences in widget appearance
+
+### Resolved Runtime Issues
+The following crashes were fixed during initial testing:
+1. **xtext realize crash** - GTK4 realize must chain to parent class
+2. **sexy-spell-entry crash** - `gtk_entry_get_layout()` returns NULL in GTK4
+3. **joind.c dialog crash** - GtkDialog deprecated, replaced with GtkWindow
+4. **gtk_widget_do_pick crash** - Widget destruction must properly unparent first
+5. **Empty paned crash** - Paned widgets must be hidden when children are NULL
 
 ### Plugin System
 Plugin menu integration is completely non-functional in GTK4. This affects:
@@ -183,9 +203,11 @@ A proper fix requires redesigning the menu system to use GAction/GMenu patterns.
 ## Next Steps
 
 ### Immediate (Before Release)
-1. **Runtime Testing** - Launch and test basic functionality
-2. **Fix Critical Bugs** - Address any crashes or major UI issues
-3. **GTK3 Regression Test** - Verify GTK3 build still works
+1. ✅ ~~**Runtime Testing** - Launch and test basic functionality~~ DONE
+2. ✅ ~~**Fix Critical Bugs** - Address any crashes or major UI issues~~ DONE
+3. **Color Theme Support** - Fix color scheme application in GTK4
+4. **Widget Layout** - Address sizing/spacing issues
+5. **GTK3 Regression Test** - Verify GTK3 build still works
 
 ### Future Work
 1. **Plugin Menu System** - Redesign for GAction/GMenu
