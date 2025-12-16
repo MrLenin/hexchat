@@ -590,9 +590,27 @@ gtkutil_button (GtkWidget *box, char *icon, char *tip, void *callback,
 
 	if (labeltext)
 	{
+#if HC_GTK4
+		/* GTK4: Create a box with icon and label as button child.
+		 * gtk_button_set_image() was removed - button can only have one child. */
+		GtkWidget *label;
+
+		bbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+		hc_button_set_child (wid, bbox);
+
+		if (icon)
+		{
+			img = hc_image_new_from_icon_name (icon, GTK_ICON_SIZE_MENU);
+			gtk_box_append (GTK_BOX (bbox), img);
+		}
+
+		label = gtk_label_new_with_mnemonic (labeltext);
+		gtk_box_append (GTK_BOX (bbox), label);
+#else
 		gtk_button_set_label (GTK_BUTTON (wid), labeltext);
 		gtk_button_set_image (GTK_BUTTON (wid), hc_image_new_from_icon_name (icon, GTK_ICON_SIZE_MENU));
 		gtk_button_set_use_underline (GTK_BUTTON (wid), TRUE);
+#endif
 		if (box)
 			hc_box_add (box, wid);
 	}
