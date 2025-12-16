@@ -54,7 +54,6 @@ The GTK4 build now launches and runs without crashing. Core functionality works:
 |---------|---------------|---------------|--------|
 | DND - File Drops to Channel | Drag file to xtext, DCC to dialog partner | Only works for dialog sessions; channel drops do nothing | Must use userlist for channel DCC |
 | Drag Visual Feedback | Custom drag image during layout swap | Default GTK4 drag appearance | Cosmetic only |
-| Context Menu Positioning | Menus appear at mouse cursor | Menus appear at widget origin | Usability issue - needs GdkRectangle positioning |
 
 ### ❌ DISABLED IN GTK4 (Stubbed with TODO comments)
 
@@ -232,7 +231,7 @@ A proper fix requires redesigning the menu system to use GAction/GMenu patterns.
 1. ✅ ~~**Runtime Testing** - Launch and test basic functionality~~ DONE
 2. ✅ ~~**Fix Critical Bugs** - Address any crashes or major UI issues~~ DONE
 3. ✅ ~~**Main Menu Bar** - Convert to GtkPopoverMenuBar with GMenu/GAction~~ DONE
-4. **Context Menu Positioning** - Fix popup menus to appear at mouse cursor
+4. ✅ ~~**Context Menu Positioning** - Fix popup menus to appear at mouse cursor~~ DONE
 5. **Color Theme Support** - Fix color scheme application in GTK4
 6. **Widget Layout** - Address sizing/spacing issues
 7. **GTK3 Regression Test** - Verify GTK3 build still works

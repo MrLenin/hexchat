@@ -1896,7 +1896,7 @@ tab_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 }
 
 static void
-mg_create_tabmenu (session *sess, chan *ch)
+mg_create_tabmenu (session *sess, chan *ch, GtkWidget *parent, double x, double y)
 {
 	GMenu *gmenu;
 	GtkWidget *popover;
@@ -1907,8 +1907,10 @@ mg_create_tabmenu (session *sess, chan *ch)
 	tab_menu_sess = sess;
 	tab_menu_ch = ch;
 
-	/* Get widget to attach popover to */
-	parent_widget = chan_get_impl_widget (ch);
+	/* Use provided parent widget, or find one */
+	parent_widget = parent;
+	if (!parent_widget)
+		parent_widget = chan_get_impl_widget (ch);
 	if (!parent_widget)
 	{
 		/* Fallback to chanview box if no tab widget */
@@ -1946,6 +1948,8 @@ mg_create_tabmenu (session *sess, chan *ch)
 	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
 	gtk_widget_insert_action_group (popover, "tab", G_ACTION_GROUP (action_group));
 	gtk_widget_set_parent (popover, parent_widget);
+	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+								 &(GdkRectangle){ (int)x, (int)y, 1, 1 });
 	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
 	/* Clean up action group when popover is closed */
@@ -1960,11 +1964,11 @@ mg_create_tabmenu (session *sess, chan *ch)
 static gboolean
 mg_tab_contextmenu_cb (chanview *cv, chan *ch, int tag, gpointer ud, GtkWidget *parent, double x, double y)
 {
-	(void)cv; (void)parent; (void)x; (void)y;
+	(void)cv;
 	if (tag == TAG_IRC)
-		mg_create_tabmenu (ud, ch);
+		mg_create_tabmenu (ud, ch, parent, x, y);
 	else
-		mg_create_tabmenu (NULL, ch);
+		mg_create_tabmenu (NULL, ch, parent, x, y);
 	return TRUE;
 }
 #else
@@ -2587,17 +2591,25 @@ mg_word_check (GtkWidget * xtext, char *word)
 
 #if HC_GTK4
 static void
-mg_word_clicked (GtkWidget *xtext, char *word, guint button, GdkModifierType state, double x, double y)
+mg_word_clicked (GtkWidget *xtext_widget, char *word, gpointer event_unused)
 {
 	session *sess = current_sess;
 	int word_type = 0, start, end;
 	char *tmp;
-	GtkXText *xt = GTK_XTEXT (xtext);
-	int n_press = xt->last_click_n_press;
+	GtkXText *xtext = GTK_XTEXT (xtext_widget);
+
+	/* GTK4: Get click info from xtext structure (stored before signal emission) */
+	guint button = xtext->last_click_button;
+	GdkModifierType state = xtext->last_click_state;
+	int n_press = xtext->last_click_n_press;
+	double x = xtext->last_click_x;
+	double y = xtext->last_click_y;
+
+	(void)event_unused;  /* Unused in GTK4 */
 
 	if (word)
 	{
-		word_type = mg_word_check (xtext, word);
+		word_type = mg_word_check (xtext_widget, word);
 		url_last (&start, &end);
 	}
 
@@ -2626,7 +2638,7 @@ mg_word_clicked (GtkWidget *xtext, char *word, guint button, GdkModifierType sta
 	if (button == 2)
 	{
 		if (sess->type == SESS_DIALOG)
-			menu_middlemenu (sess, xtext, x, y);
+			menu_middlemenu (sess, xtext_widget, x, y);
 		else if (n_press == 2)
 			userlist_select (sess, word);
 		return;
@@ -2638,34 +2650,34 @@ mg_word_clicked (GtkWidget *xtext, char *word, guint button, GdkModifierType sta
 	{
 	case 0:
 	case WORD_PATH:
-		menu_middlemenu (sess, xtext, x, y);
+		menu_middlemenu (sess, xtext_widget, x, y);
 		break;
 	case WORD_URL:
 	case WORD_HOST6:
 	case WORD_HOST:
 		word[end] = 0;
 		word += start;
-		menu_urlmenu (xtext, x, y, word);
+		menu_urlmenu (xtext_widget, x, y, word);
 		break;
 	case WORD_NICK:
 		word[end] = 0;
 		word += start;
-		menu_nickmenu (sess, xtext, x, y, word, FALSE);
+		menu_nickmenu (sess, xtext_widget, x, y, word, FALSE);
 		break;
 	case WORD_CHANNEL:
 		word[end] = 0;
 		word += start;
-		menu_chanmenu (sess, xtext, x, y, word);
+		menu_chanmenu (sess, xtext_widget, x, y, word);
 		break;
 	case WORD_EMAIL:
 		word[end] = 0;
 		word += start;
 		tmp = g_strdup_printf ("mailto:%s", word + (ispunct (*word) ? 1 : 0));
-		menu_urlmenu (xtext, x, y, tmp);
+		menu_urlmenu (xtext_widget, x, y, tmp);
 		g_free (tmp);
 		break;
 	case WORD_DIALOG:
-		menu_nickmenu (sess, xtext, x, y, sess->channel, FALSE);
+		menu_nickmenu (sess, xtext_widget, x, y, sess->channel, FALSE);
 		break;
 	}
 }

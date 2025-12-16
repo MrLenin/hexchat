@@ -897,21 +897,14 @@ nick_action_devoice (GSimpleAction *action, GVariant *parameter, gpointer user_d
 void
 menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick, int num_sel)
 {
-	GtkWidget *xtext_widget;
-	GtkXText *xtext;
 	GMenu *gmenu;
 	GMenu *ops_section;
 	GtkWidget *popover;
 	GSimpleActionGroup *action_group;
 	char buf[256];
 
-	(void)parent; (void)x; (void)y;  /* Used for popover positioning */
-
-	if (!sess || !sess->gui || !sess->gui->xtext)
+	if (!sess)
 		return;
-
-	xtext_widget = sess->gui->xtext;
-	xtext = GTK_XTEXT (xtext_widget);
 
 	g_free (str_copy);
 	str_copy = g_strdup (nick);
@@ -968,9 +961,9 @@ menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick,
 	/* Create and configure the popover */
 	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
 	gtk_widget_insert_action_group (popover, "nick", G_ACTION_GROUP (action_group));
-	gtk_widget_set_parent (popover, xtext_widget);
+	gtk_widget_set_parent (popover, parent);
 	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
-								 &(GdkRectangle){ xtext->last_click_x, xtext->last_click_y, 1, 1 });
+								 &(GdkRectangle){ (int)x, (int)y, 1, 1 });
 	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
 	/* Clean up action group when popover is closed */
