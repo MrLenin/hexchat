@@ -773,135 +773,292 @@ menu_nickmenu (session *sess, GdkEventButton *event, char *nick, int num_sel)
 #else
 /* GTK4: Action callbacks for nick menu */
 static session *nick_menu_sess = NULL;  /* session for nick menu actions */
+static char **nick_popup_cmds = NULL;   /* array of popup commands for current menu */
+static int nick_popup_cmd_count = 0;    /* count of popup commands */
+static char *nick_all_nicks = NULL;     /* all selected nicks (space-separated) */
 
+/* Generic popup command action callback - uses action parameter as command index */
 static void
-nick_action_query (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_popup_action_cb (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-	char buf[512];
-	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
-	{
-		g_snprintf (buf, sizeof buf, "QUERY %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
-	}
+	int index;
+	(void)action; (void)user_data;
+
+	if (!parameter || !nick_menu_sess)
+		return;
+
+	index = g_variant_get_int32 (parameter);
+	if (index < 0 || index >= nick_popup_cmd_count || !nick_popup_cmds[index])
+		return;
+
+	/* Use nick_command_parse to handle %s, %a, etc. placeholders */
+	nick_command_parse (nick_menu_sess, nick_popup_cmds[index],
+						str_copy ? str_copy : "",
+						nick_all_nicks ? nick_all_nicks : (str_copy ? str_copy : ""));
 }
 
 static void
-nick_action_whois (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_popup_cmds_free (void)
 {
-	char buf[512];
-	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
+	int i;
+	if (nick_popup_cmds)
 	{
-		g_snprintf (buf, sizeof buf, "WHOIS %s %s", str_copy, str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
+		for (i = 0; i < nick_popup_cmd_count; i++)
+			g_free (nick_popup_cmds[i]);
+		g_free (nick_popup_cmds);
+		nick_popup_cmds = NULL;
 	}
+	nick_popup_cmd_count = 0;
+	g_free (nick_all_nicks);
+	nick_all_nicks = NULL;
+}
+
+/* Static storage for user info to copy (freed on menu close) */
+static char *nick_info_realname = NULL;
+static char *nick_info_hostname = NULL;
+static char *nick_info_account = NULL;
+static char *nick_info_servername = NULL;
+static char *nick_info_away = NULL;
+
+static void
+nick_action_copy_realname (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (nick_info_realname)
+		gtkutil_copy_to_clipboard (NULL, FALSE, nick_info_realname);
 }
 
 static void
-nick_action_notify (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_action_copy_hostname (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-	char buf[512];
 	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
-	{
-		g_snprintf (buf, sizeof buf, "NOTIFY %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
-	}
+	if (nick_info_hostname)
+		gtkutil_copy_to_clipboard (NULL, FALSE, nick_info_hostname);
 }
 
 static void
-nick_action_ignore (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_action_copy_account (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-	char buf[512];
 	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
-	{
-		g_snprintf (buf, sizeof buf, "IGNORE %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
-	}
+	if (nick_info_account)
+		gtkutil_copy_to_clipboard (NULL, FALSE, nick_info_account);
 }
 
 static void
-nick_action_kick (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_action_copy_servername (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-	char buf[512];
 	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
-	{
-		g_snprintf (buf, sizeof buf, "KICK %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
-	}
+	if (nick_info_servername)
+		gtkutil_copy_to_clipboard (NULL, FALSE, nick_info_servername);
 }
 
 static void
-nick_action_ban (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_action_copy_away (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-	char buf[512];
 	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
-	{
-		g_snprintf (buf, sizeof buf, "BAN %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
-	}
+	if (nick_info_away)
+		gtkutil_copy_to_clipboard (NULL, FALSE, nick_info_away);
 }
 
 static void
-nick_action_op (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_menu_free_info (void)
 {
-	char buf[512];
-	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
-	{
-		g_snprintf (buf, sizeof buf, "OP %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
-	}
+	g_free (nick_info_realname);
+	g_free (nick_info_hostname);
+	g_free (nick_info_account);
+	g_free (nick_info_servername);
+	g_free (nick_info_away);
+	nick_info_realname = NULL;
+	nick_info_hostname = NULL;
+	nick_info_account = NULL;
+	nick_info_servername = NULL;
+	nick_info_away = NULL;
 }
 
 static void
-nick_action_deop (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+nick_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 {
-	char buf[512];
-	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
-	{
-		g_snprintf (buf, sizeof buf, "DEOP %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
-	}
+	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
+	gtk_widget_unparent (GTK_WIDGET (popover));
+	nick_menu_free_info ();
+	nick_popup_cmds_free ();
+	if (action_group)
+		g_object_unref (action_group);
 }
 
-static void
-nick_action_voice (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+/* Build popup_list menu items into a GMenu, creating actions in the action group.
+ * Returns the number of items added (for sizing the command array).
+ * This is a two-pass operation: first count items, then build menu.
+ */
+static int
+nick_menu_count_popup_items (GSList *list)
 {
-	char buf[512];
-	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
+	int count = 0;
+	struct popup *pop;
+
+	while (list)
 	{
-		g_snprintf (buf, sizeof buf, "VOICE %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
+		pop = (struct popup *) list->data;
+		/* Only count actual menu items (not SUB, ENDSUB, SEP, TOGGLE) */
+		if (g_ascii_strncasecmp (pop->name, "SUB", 3) != 0 &&
+			g_ascii_strncasecmp (pop->name, "ENDSUB", 6) != 0 &&
+			g_ascii_strncasecmp (pop->name, "SEP", 3) != 0 &&
+			g_ascii_strncasecmp (pop->name, "TOGGLE", 6) != 0)
+		{
+			count++;
+		}
+		list = list->next;
 	}
+	return count;
 }
 
-static void
-nick_action_devoice (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+/* Extract label from popup name (removes ~icon~ part) */
+static char *
+nick_menu_extract_label (const char *name)
 {
-	char buf[512];
-	(void)action; (void)parameter; (void)user_data;
-	if (nick_menu_sess && str_copy)
+	const char *p = name;
+	const char *tilde = NULL;
+
+	/* Find first unescaped ~ */
+	while (*p)
 	{
-		g_snprintf (buf, sizeof buf, "DEVOICE %s", str_copy);
-		handle_command (nick_menu_sess, buf, FALSE);
+		if (*p == '~' && (p == name || p[-1] != '\\'))
+		{
+			tilde = p;
+			break;
+		}
+		p++;
 	}
+
+	if (tilde)
+		return g_strndup (name, tilde - name);
+	else
+		return g_strdup (name);
+}
+
+/* Build popup menu items into a GMenu
+ * target: nick for single selection, NULL for multi-selection
+ * cmd_index: pointer to current command index (incremented as commands are added)
+ */
+static void
+nick_menu_build_popup (GMenu *menu, GSList *list, const char *target,
+					   GSimpleActionGroup *action_group, int *cmd_index)
+{
+	struct popup *pop;
+	GMenu *current_menu = menu;
+	GMenu *current_section = NULL;
+	GSList *menu_stack = NULL;
+	char action_name[64];
+	char detailed_action[128];
+	char *label;
+	GSimpleAction *action;
+
+	/* Push the root menu onto the stack */
+	menu_stack = g_slist_prepend (NULL, menu);
+
+	while (list)
+	{
+		pop = (struct popup *) list->data;
+
+		if (g_ascii_strncasecmp (pop->name, "SUB", 3) == 0)
+		{
+			/* Create a new submenu */
+			GMenu *submenu = g_menu_new ();
+			label = nick_menu_extract_label (pop->cmd);
+
+			/* Add submenu to current menu/section */
+			if (current_section)
+				g_menu_append_submenu (current_section, label, G_MENU_MODEL (submenu));
+			else
+				g_menu_append_submenu (current_menu, label, G_MENU_MODEL (submenu));
+
+			g_free (label);
+
+			/* Push current menu onto stack and make submenu current */
+			menu_stack = g_slist_prepend (menu_stack, current_menu);
+			current_menu = submenu;
+			current_section = NULL;
+			g_object_unref (submenu);
+		}
+		else if (g_ascii_strncasecmp (pop->name, "ENDSUB", 6) == 0)
+		{
+			/* Pop back to parent menu */
+			if (menu_stack)
+			{
+				current_menu = menu_stack->data;
+				menu_stack = g_slist_delete_link (menu_stack, menu_stack);
+				current_section = NULL;
+			}
+		}
+		else if (g_ascii_strncasecmp (pop->name, "SEP", 3) == 0)
+		{
+			/* Start a new section */
+			current_section = g_menu_new ();
+			g_menu_append_section (current_menu, NULL, G_MENU_MODEL (current_section));
+			g_object_unref (current_section);
+		}
+		else if (g_ascii_strncasecmp (pop->name, "TOGGLE", 6) == 0)
+		{
+			/* TODO: Toggle items need stateful actions - skip for now */
+			list = list->next;
+			continue;
+		}
+		else
+		{
+			/* Regular menu item */
+			/* Check notify condition: skip if already in notify list */
+			if (pop->cmd[0] == 'n' && strcmp (pop->cmd, "notify -n ASK %s") == 0)
+			{
+				if (!target || notify_is_in_list (nick_menu_sess->server, target))
+				{
+					list = list->next;
+					continue;
+				}
+			}
+
+			label = nick_menu_extract_label (pop->name);
+
+			/* Create action for this command */
+			g_snprintf (action_name, sizeof action_name, "popup%d", *cmd_index);
+			action = g_simple_action_new (action_name, G_VARIANT_TYPE_INT32);
+			g_signal_connect (action, "activate", G_CALLBACK (nick_popup_action_cb), NULL);
+			g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+			g_object_unref (action);
+
+			/* Store the command */
+			nick_popup_cmds[*cmd_index] = g_strdup (pop->cmd);
+
+			/* Add menu item with action and parameter */
+			g_snprintf (detailed_action, sizeof detailed_action, "nick.popup%d(%d)",
+						*cmd_index, *cmd_index);
+
+			if (current_section)
+				g_menu_append (current_section, label, detailed_action);
+			else
+				g_menu_append (current_menu, label, detailed_action);
+
+			g_free (label);
+			(*cmd_index)++;
+		}
+
+		list = list->next;
+	}
+
+	g_slist_free (menu_stack);
 }
 
 void
 menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick, int num_sel)
 {
 	GMenu *gmenu;
-	GMenu *ops_section;
+	GMenu *info_submenu;
+	GMenu *popup_section;
 	GtkWidget *popover;
 	GSimpleActionGroup *action_group;
-	char buf[256];
+	struct User *user = NULL;
+	char buf[512];
+	int cmd_index = 0;
+	int popup_count;
 
 	if (!sess)
 		return;
@@ -910,23 +1067,56 @@ menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick,
 	str_copy = g_strdup (nick);
 	nick_menu_sess = sess;
 
+	/* Free any previous info and popup commands */
+	nick_menu_free_info ();
+	nick_popup_cmds_free ();
+
 	/* Create action group for this menu */
 	action_group = g_simple_action_group_new ();
 
-	static const GActionEntry nick_actions[] = {
-		{ "query", nick_action_query, NULL, NULL, NULL },
-		{ "whois", nick_action_whois, NULL, NULL, NULL },
-		{ "notify", nick_action_notify, NULL, NULL, NULL },
-		{ "ignore", nick_action_ignore, NULL, NULL, NULL },
-		{ "kick", nick_action_kick, NULL, NULL, NULL },
-		{ "ban", nick_action_ban, NULL, NULL, NULL },
-		{ "op", nick_action_op, NULL, NULL, NULL },
-		{ "deop", nick_action_deop, NULL, NULL, NULL },
-		{ "voice", nick_action_voice, NULL, NULL, NULL },
-		{ "devoice", nick_action_devoice, NULL, NULL, NULL },
+	/* Add copy actions for user info */
+	static const GActionEntry nick_info_actions[] = {
+		{ "copy-realname", nick_action_copy_realname, NULL, NULL, NULL },
+		{ "copy-hostname", nick_action_copy_hostname, NULL, NULL, NULL },
+		{ "copy-account", nick_action_copy_account, NULL, NULL, NULL },
+		{ "copy-servername", nick_action_copy_servername, NULL, NULL, NULL },
+		{ "copy-away", nick_action_copy_away, NULL, NULL, NULL },
 	};
-	g_action_map_add_action_entries (G_ACTION_MAP (action_group), nick_actions,
-									 G_N_ELEMENTS (nick_actions), NULL);
+	g_action_map_add_action_entries (G_ACTION_MAP (action_group), nick_info_actions,
+									 G_N_ELEMENTS (nick_info_actions), NULL);
+
+	/* Count popup items and allocate command array */
+	popup_count = nick_menu_count_popup_items (popup_list);
+	if (popup_count > 0)
+	{
+		nick_popup_cmds = g_new0 (char *, popup_count);
+		nick_popup_cmd_count = popup_count;
+	}
+
+	/* Build allnicks string for multi-selection */
+	if (num_sel > 1)
+	{
+		char **nicks;
+		int i, num;
+		nicks = userlist_selection_list (sess->gui->user_tree, &num);
+		if (nicks && num > 0)
+		{
+			GString *all = g_string_new (NULL);
+			for (i = 0; i < num && nicks[i]; i++)
+			{
+				if (i > 0)
+					g_string_append_c (all, ' ');
+				g_string_append (all, nicks[i]);
+				g_free (nicks[i]);
+			}
+			g_free (nicks);
+			nick_all_nicks = g_string_free (all, FALSE);
+		}
+	}
+	else
+	{
+		nick_all_nicks = g_strdup (nick);
+	}
 
 	gmenu = g_menu_new ();
 
@@ -938,25 +1128,105 @@ menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick,
 	}
 	else
 	{
-		g_menu_append (gmenu, nick, NULL);
+		/* Try to find user info for single nick */
+		user = userlist_find (sess, nick);
+		if (!user)
+			user = userlist_find_global (sess->server, nick);
+
+		/* Create user info submenu if we have a user */
+		if (user)
+		{
+			const char *unknown = _("Unknown");
+			char *real;
+
+			info_submenu = g_menu_new ();
+
+			/* Store info for copy actions */
+			nick_info_realname = user->realname ? g_strdup (user->realname) : NULL;
+			nick_info_hostname = user->hostname ? g_strdup (user->hostname) : NULL;
+			nick_info_account = user->account ? g_strdup (user->account) : NULL;
+			nick_info_servername = user->servername ? g_strdup (user->servername) : NULL;
+
+			/* Real Name */
+			if (user->realname)
+			{
+				real = strip_color (user->realname, -1, STRIP_ALL);
+				g_snprintf (buf, sizeof buf, "%s: %s", _("Real Name"), real);
+				g_free (real);
+			}
+			else
+				g_snprintf (buf, sizeof buf, "%s: %s", _("Real Name"), unknown);
+			g_menu_append (info_submenu, buf, "nick.copy-realname");
+
+			/* Hostname */
+			g_snprintf (buf, sizeof buf, "%s: %s", _("User"),
+						user->hostname ? user->hostname : unknown);
+			g_menu_append (info_submenu, buf, "nick.copy-hostname");
+
+			/* Account */
+			g_snprintf (buf, sizeof buf, "%s: %s", _("Account"),
+						user->account ? user->account : unknown);
+			g_menu_append (info_submenu, buf, "nick.copy-account");
+
+			/* Country (if available) */
+			{
+				const char *users_country = country (user->hostname);
+				if (users_country)
+				{
+					g_snprintf (buf, sizeof buf, "%s: %s", _("Country"), users_country);
+					g_menu_append (info_submenu, buf, NULL);
+				}
+			}
+
+			/* Server */
+			g_snprintf (buf, sizeof buf, "%s: %s", _("Server"),
+						user->servername ? user->servername : unknown);
+			g_menu_append (info_submenu, buf, "nick.copy-servername");
+
+			/* Last message time */
+			if (user->lasttalk)
+			{
+				g_snprintf (buf, sizeof buf, "%s: %u %s", _("Last Msg"),
+							(unsigned int)((time (0) - user->lasttalk) / 60),
+							_("minutes ago"));
+			}
+			else
+				g_snprintf (buf, sizeof buf, "%s: %s", _("Last Msg"), unknown);
+			g_menu_append (info_submenu, buf, NULL);
+
+			/* Away message (if away) */
+			if (user->away)
+			{
+				struct away_msg *away = server_away_find_message (sess->server, user->nick);
+				if (away && away->message)
+				{
+					char *msg = strip_color (away->message, -1, STRIP_ALL);
+					nick_info_away = g_strdup (away->message);
+					g_snprintf (buf, sizeof buf, "%s: %s", _("Away Msg"), msg);
+					g_free (msg);
+					g_menu_append (info_submenu, buf, "nick.copy-away");
+				}
+			}
+
+			g_menu_append_submenu (gmenu, nick, G_MENU_MODEL (info_submenu));
+			g_object_unref (info_submenu);
+		}
+		else
+		{
+			g_menu_append (gmenu, nick, NULL);
+		}
 	}
 
-	/* Basic actions */
-	g_menu_append (gmenu, _("Open Dialog"), "nick.query");
-	g_menu_append (gmenu, _("WhoIs"), "nick.whois");
-	g_menu_append (gmenu, _("Add to Friends"), "nick.notify");
-	g_menu_append (gmenu, _("Ignore"), "nick.ignore");
-
-	/* Operator actions section */
-	ops_section = g_menu_new ();
-	g_menu_append (ops_section, _("Kick"), "nick.kick");
-	g_menu_append (ops_section, _("Ban"), "nick.ban");
-	g_menu_append (ops_section, _("Op"), "nick.op");
-	g_menu_append (ops_section, _("DeOp"), "nick.deop");
-	g_menu_append (ops_section, _("Voice"), "nick.voice");
-	g_menu_append (ops_section, _("DeVoice"), "nick.devoice");
-	g_menu_append_section (gmenu, _("Operator"), G_MENU_MODEL (ops_section));
-	g_object_unref (ops_section);
+	/* Build popup_list menu items in a new section */
+	if (popup_list)
+	{
+		popup_section = g_menu_new ();
+		nick_menu_build_popup (popup_section, popup_list,
+							   num_sel > 1 ? NULL : str_copy,
+							   action_group, &cmd_index);
+		g_menu_append_section (gmenu, NULL, G_MENU_MODEL (popup_section));
+		g_object_unref (popup_section);
+	}
 
 	/* Create and configure the popover */
 	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
@@ -966,8 +1236,8 @@ menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick,
 								 &(GdkRectangle){ (int)x, (int)y, 1, 1 });
 	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
-	/* Clean up action group when popover is closed */
-	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), action_group);
+	/* Clean up action group and info when popover is closed */
+	g_signal_connect (popover, "closed", G_CALLBACK (nick_menu_popover_closed_cb), action_group);
 
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
@@ -1169,10 +1439,68 @@ middle_action_save_text (GSimpleAction *action, GVariant *parameter, gpointer us
 }
 
 static void
+middle_action_copy_selection (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess && middle_menu_sess->gui && middle_menu_sess->gui->xtext)
+		gtk_xtext_copy_selection (GTK_XTEXT (middle_menu_sess->gui->xtext));
+}
+
+static void
+middle_action_reset_marker (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		handle_command (middle_menu_sess, "RESETMARKER", FALSE);
+}
+
+static void
+middle_action_move_to_marker (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		handle_command (middle_menu_sess, "MOVETOMARKER", FALSE);
+}
+
+static void
 middle_action_menubar_toggle (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
 	(void)action; (void)parameter; (void)user_data;
 	menu_bar_toggle ();
+}
+
+static void
+middle_action_disconnect (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		handle_command (middle_menu_sess, "DISCON", FALSE);
+}
+
+static void
+middle_action_reconnect (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		handle_command (middle_menu_sess, "RECONNECT", FALSE);
+}
+
+static void
+middle_action_away_toggle (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+	gboolean new_state;
+	(void)user_data;
+
+	if (!middle_menu_sess)
+		return;
+
+	new_state = g_variant_get_boolean (value);
+	if (new_state)
+		handle_command (middle_menu_sess, "AWAY", FALSE);
+	else
+		handle_command (middle_menu_sess, "BACK", FALSE);
+
+	g_simple_action_set_state (action, value);
 }
 
 static void
@@ -1183,15 +1511,33 @@ middle_action_settings (GSimpleAction *action, GVariant *parameter, gpointer use
 		handle_command (middle_menu_sess, "SETTINGS", FALSE);
 }
 
-#if HC_GTK4
+static void
+middle_action_detach (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		mg_detach (middle_menu_sess, 0);
+}
+
+static void
+middle_action_close (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (middle_menu_sess)
+		fe_close_window (middle_menu_sess);
+}
+
 void
 menu_middlemenu (session *sess, GtkWidget *parent, double x, double y)
 {
 	GtkWidget *xtext_widget;
 	GtkXText *xtext;
 	GMenu *gmenu;
+	GMenu *section;
 	GtkWidget *popover;
 	GSimpleActionGroup *action_group;
+	GSimpleAction *away_action;
+	gboolean is_away;
 
 	(void)parent; (void)x; (void)y;
 
@@ -1201,25 +1547,6 @@ menu_middlemenu (session *sess, GtkWidget *parent, double x, double y)
 	xtext_widget = sess->gui->xtext;
 	xtext = GTK_XTEXT (xtext_widget);
 	middle_menu_sess = sess;
-#else
-void
-menu_middlemenu (session *sess, GdkEventButton *event)
-{
-	GtkWidget *xtext_widget;
-	GtkXText *xtext;
-	GMenu *gmenu;
-	GtkWidget *popover;
-	GSimpleActionGroup *action_group;
-
-	(void)event;
-
-	if (!sess || !sess->gui || !sess->gui->xtext)
-		return;
-
-	xtext_widget = sess->gui->xtext;
-	xtext = GTK_XTEXT (xtext_widget);
-	middle_menu_sess = sess;
-#endif
 
 	/* Create action group for this menu */
 	action_group = g_simple_action_group_new ();
@@ -1228,26 +1555,68 @@ menu_middlemenu (session *sess, GdkEventButton *event)
 		{ "clear-text", middle_action_clear_text, NULL, NULL, NULL },
 		{ "search", middle_action_search, NULL, NULL, NULL },
 		{ "save-text", middle_action_save_text, NULL, NULL, NULL },
+		{ "copy-selection", middle_action_copy_selection, NULL, NULL, NULL },
+		{ "reset-marker", middle_action_reset_marker, NULL, NULL, NULL },
+		{ "move-to-marker", middle_action_move_to_marker, NULL, NULL, NULL },
 		{ "menubar-toggle", middle_action_menubar_toggle, NULL, NULL, NULL },
+		{ "disconnect", middle_action_disconnect, NULL, NULL, NULL },
+		{ "reconnect", middle_action_reconnect, NULL, NULL, NULL },
 		{ "settings", middle_action_settings, NULL, NULL, NULL },
+		{ "detach", middle_action_detach, NULL, NULL, NULL },
+		{ "close", middle_action_close, NULL, NULL, NULL },
 	};
 	g_action_map_add_action_entries (G_ACTION_MAP (action_group), middle_actions,
 									 G_N_ELEMENTS (middle_actions), NULL);
 
+	/* Add away toggle as stateful action */
+	is_away = sess->server ? sess->server->is_away : FALSE;
+	away_action = g_simple_action_new_stateful ("away", NULL, g_variant_new_boolean (is_away));
+	g_signal_connect (away_action, "change-state", G_CALLBACK (middle_action_away_toggle), NULL);
+	g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (away_action));
+	g_object_unref (away_action);
+
 	gmenu = g_menu_new ();
 
-	/* Window operations */
-	g_menu_append (gmenu, _("Clear Text"), "middle.clear-text");
-	g_menu_append (gmenu, _("Search Text..."), "middle.search");
-	g_menu_append (gmenu, _("Save Text..."), "middle.save-text");
+	/* Window operations section */
+	section = g_menu_new ();
+	g_menu_append (section, _("Copy Selection"), "middle.copy-selection");
+	g_menu_append (section, _("Clear Text"), "middle.clear-text");
+	g_menu_append (section, _("Search Text" ELLIPSIS), "middle.search");
+	g_menu_append (section, _("Save Text" ELLIPSIS), "middle.save-text");
+	g_menu_append_section (gmenu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
 
-	/* View options */
+	/* Marker line section */
+	section = g_menu_new ();
+	g_menu_append (section, _("Reset Marker Line"), "middle.reset-marker");
+	g_menu_append (section, _("Move to Marker Line"), "middle.move-to-marker");
+	g_menu_append_section (gmenu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	/* Server actions section */
+	section = g_menu_new ();
+	g_menu_append (section, _("Disconnect"), "middle.disconnect");
+	g_menu_append (section, _("Reconnect"), "middle.reconnect");
+	g_menu_append (section, _("Marked Away"), "middle.away");
+	g_menu_append_section (gmenu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
+
+	/* View options section */
+	section = g_menu_new ();
 	if (prefs.hex_gui_hide_menu)
-		g_menu_append (gmenu, _("Show Menubar"), "middle.menubar-toggle");
+		g_menu_append (section, _("Show Menubar"), "middle.menubar-toggle");
 	else
-		g_menu_append (gmenu, _("Hide Menubar"), "middle.menubar-toggle");
+		g_menu_append (section, _("Hide Menubar"), "middle.menubar-toggle");
+	g_menu_append (section, _("Preferences"), "middle.settings");
+	g_menu_append_section (gmenu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
 
-	g_menu_append (gmenu, _("Preferences"), "middle.settings");
+	/* Window management section */
+	section = g_menu_new ();
+	g_menu_append (section, sess->gui->is_tab ? _("Detach") : _("Attach"), "middle.detach");
+	g_menu_append (section, _("Close"), "middle.close");
+	g_menu_append_section (gmenu, NULL, G_MENU_MODEL (section));
+	g_object_unref (section);
 
 	/* Create and configure the popover */
 	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
@@ -1316,6 +1685,9 @@ menu_urlmenu (GdkEventButton *event, char *url)
 }
 #else
 /* GTK4: Action callbacks for URL menu */
+static char **url_handler_cmds = NULL;   /* array of URL handler commands */
+static int url_handler_cmd_count = 0;    /* count of URL handler commands */
+
 static void
 url_action_open (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -1333,32 +1705,143 @@ url_action_copy (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
 	(void)action; (void)parameter;
 	if (str_copy)
-#if HC_GTK4
 		gtkutil_copy_to_clipboard (GTK_WIDGET (user_data), FALSE, str_copy);
-#else
-		gtkutil_copy_to_clipboard (GTK_WIDGET (user_data), NULL, str_copy);
-#endif
+}
+
+/* Generic URL handler command callback */
+static void
+url_handler_action_cb (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	int index;
+	char *buf;
+	int len;
+	(void)action; (void)user_data;
+
+	if (!parameter || !str_copy)
+		return;
+
+	index = g_variant_get_int32 (parameter);
+	if (index < 0 || index >= url_handler_cmd_count || !url_handler_cmds[index])
+		return;
+
+	/* Handle command execution with %s substitution */
+	len = strlen (url_handler_cmds[index]) + strlen (str_copy) + 8;
+	buf = g_malloc (len);
+	auto_insert (buf, len, url_handler_cmds[index], 0, 0, "", "",
+				 str_copy, "", "", "", "", "");
+
+	if (buf[0] == '!')
+		hexchat_exec (buf + 1);
+	else
+		handle_command (current_sess, buf, FALSE);
+
+	g_free (buf);
+}
+
+static void
+url_handler_cmds_free (void)
+{
+	int i;
+	if (url_handler_cmds)
+	{
+		for (i = 0; i < url_handler_cmd_count; i++)
+			g_free (url_handler_cmds[i]);
+		g_free (url_handler_cmds);
+		url_handler_cmds = NULL;
+	}
+	url_handler_cmd_count = 0;
 }
 
 static void
 menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 {
 	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
-	(void)popover;
+	gtk_widget_unparent (GTK_WIDGET (popover));
 	if (action_group)
 		g_object_unref (action_group);
+}
+
+static void
+url_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
+{
+	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
+	gtk_widget_unparent (GTK_WIDGET (popover));
+	url_handler_cmds_free ();
+	if (action_group)
+		g_object_unref (action_group);
+}
+
+/* Build URL handler menu items, similar to nick popup but simpler */
+static void
+url_menu_build_handlers (GMenu *menu, GSList *list, GSimpleActionGroup *action_group, int *cmd_index)
+{
+	struct popup *pop;
+	char action_name[64];
+	char detailed_action[128];
+	char *label;
+	GSimpleAction *action;
+
+	while (list)
+	{
+		pop = (struct popup *) list->data;
+
+		/* Skip SUB/ENDSUB/SEP/TOGGLE for URL menu - keep it simple */
+		if (g_ascii_strncasecmp (pop->name, "SUB", 3) == 0 ||
+			g_ascii_strncasecmp (pop->name, "ENDSUB", 6) == 0 ||
+			g_ascii_strncasecmp (pop->name, "SEP", 3) == 0 ||
+			g_ascii_strncasecmp (pop->name, "TOGGLE", 6) == 0)
+		{
+			list = list->next;
+			continue;
+		}
+
+		/* Check if program is in path for ! commands */
+		if (pop->cmd[0] == '!' && !is_in_path (pop->cmd))
+		{
+			list = list->next;
+			continue;
+		}
+
+		label = nick_menu_extract_label (pop->name);
+
+		/* Create action for this handler */
+		g_snprintf (action_name, sizeof action_name, "handler%d", *cmd_index);
+		action = g_simple_action_new (action_name, G_VARIANT_TYPE_INT32);
+		g_signal_connect (action, "activate", G_CALLBACK (url_handler_action_cb), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+
+		/* Store the command */
+		url_handler_cmds[*cmd_index] = g_strdup (pop->cmd);
+
+		/* Add menu item */
+		g_snprintf (detailed_action, sizeof detailed_action, "url.handler%d(%d)",
+					*cmd_index, *cmd_index);
+		g_menu_append (menu, label, detailed_action);
+
+		g_free (label);
+		(*cmd_index)++;
+
+		list = list->next;
+	}
 }
 
 void
 menu_urlmenu (GtkWidget *parent, double x, double y, char *url)
 {
 	GMenu *gmenu;
+	GMenu *handlers_section;
 	GtkWidget *popover;
 	GSimpleActionGroup *action_group;
 	char *tmp, *chop;
+	int cmd_index = 0;
+	int handler_count;
 
 	g_free (str_copy);
 	str_copy = g_strdup (url);
+
+	/* Free any previous handler commands */
+	url_handler_cmds_free ();
 
 	/* Create action group for this menu */
 	action_group = g_simple_action_group_new ();
@@ -1369,6 +1852,14 @@ menu_urlmenu (GtkWidget *parent, double x, double y, char *url)
 	};
 	g_action_map_add_action_entries (G_ACTION_MAP (action_group), url_actions,
 									 G_N_ELEMENTS (url_actions), parent);
+
+	/* Count and allocate URL handlers */
+	handler_count = nick_menu_count_popup_items (urlhandler_list);
+	if (handler_count > 0)
+	{
+		url_handler_cmds = g_new0 (char *, handler_count);
+		url_handler_cmd_count = handler_count;
+	}
 
 	gmenu = g_menu_new ();
 
@@ -1397,6 +1888,16 @@ menu_urlmenu (GtkWidget *parent, double x, double y, char *url)
 
 	g_menu_append (gmenu, _("Copy Selected Link"), "url.copy");
 
+	/* Add custom URL handlers from urlhandlers.conf */
+	if (urlhandler_list)
+	{
+		handlers_section = g_menu_new ();
+		url_menu_build_handlers (handlers_section, urlhandler_list, action_group, &cmd_index);
+		if (g_menu_model_get_n_items (G_MENU_MODEL (handlers_section)) > 0)
+			g_menu_append_section (gmenu, NULL, G_MENU_MODEL (handlers_section));
+		g_object_unref (handlers_section);
+	}
+
 	/* Create and configure the popover */
 	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
 	gtk_widget_insert_action_group (popover, "url", G_ACTION_GROUP (action_group));
@@ -1405,8 +1906,8 @@ menu_urlmenu (GtkWidget *parent, double x, double y, char *url)
 								 &(GdkRectangle){ (int)x, (int)y, 1, 1 });
 	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
-	/* Clean up action group when popover is closed */
-	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), action_group);
+	/* Clean up action group and handlers when popover is closed */
+	g_signal_connect (popover, "closed", G_CALLBACK (url_menu_popover_closed_cb), action_group);
 
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
@@ -1504,6 +2005,8 @@ menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 }
 #else
 /* GTK4: Action callbacks for channel menu */
+static server *chan_menu_server = NULL;  /* server for autojoin toggle */
+
 static void
 chan_action_join (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
@@ -1552,17 +2055,36 @@ chan_action_cycle (GSimpleAction *action, GVariant *parameter, gpointer user_dat
 	}
 }
 
-#if HC_GTK4
+/* Toggle autojoin action for channel menu */
+static void
+chan_action_autojoin_toggled (GSimpleAction *action, GVariant *value, gpointer user_data)
+{
+	gboolean new_state;
+	(void)user_data;
+
+	if (!chan_menu_server || !chan_menu_server->network || !str_copy)
+		return;
+
+	new_state = g_variant_get_boolean (value);
+	servlist_autojoinedit (chan_menu_server->network, str_copy, new_state);
+
+	/* Update the action state */
+	g_simple_action_set_state (action, value);
+}
+
 void
 menu_chanmenu (session *sess, GtkWidget *parent, double x, double y, char *chan)
 {
 	GtkWidget *xtext_widget;
 	GtkXText *xtext;
 	GMenu *gmenu;
+	GMenu *options_section;
 	GtkWidget *popover;
 	GSimpleActionGroup *action_group;
+	GSimpleAction *autojoin_action;
 	int is_joined = FALSE;
 	session *chan_session;
+	gboolean is_autojoin;
 
 	(void)parent; (void)x; (void)y;
 
@@ -1571,26 +2093,6 @@ menu_chanmenu (session *sess, GtkWidget *parent, double x, double y, char *chan)
 
 	xtext_widget = sess->gui->xtext;
 	xtext = GTK_XTEXT (xtext_widget);
-#else
-void
-menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
-{
-	GtkWidget *xtext_widget;
-	GtkXText *xtext;
-	GMenu *gmenu;
-	GtkWidget *popover;
-	GSimpleActionGroup *action_group;
-	int is_joined = FALSE;
-	session *chan_session;
-
-	(void)event;
-
-	if (!sess || !sess->gui || !sess->gui->xtext)
-		return;
-
-	xtext_widget = sess->gui->xtext;
-	xtext = GTK_XTEXT (xtext_widget);
-#endif
 
 	chan_session = find_channel (sess->server, chan);
 	if (chan_session)
@@ -1598,6 +2100,7 @@ menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 
 	g_free (str_copy);
 	str_copy = g_strdup (chan);
+	chan_menu_server = sess->server;
 
 	/* Create action group for this menu */
 	action_group = g_simple_action_group_new ();
@@ -1610,6 +2113,18 @@ menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 	};
 	g_action_map_add_action_entries (G_ACTION_MAP (action_group), chan_actions,
 									 G_N_ELEMENTS (chan_actions), NULL);
+
+	/* Add autojoin toggle action if we have a network */
+	if (sess->server && sess->server->network)
+	{
+		is_autojoin = joinlist_is_in_list (sess->server, chan);
+		autojoin_action = g_simple_action_new_stateful ("autojoin", NULL,
+														g_variant_new_boolean (is_autojoin));
+		g_signal_connect (autojoin_action, "change-state",
+						  G_CALLBACK (chan_action_autojoin_toggled), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (autojoin_action));
+		g_object_unref (autojoin_action);
+	}
 
 	gmenu = g_menu_new ();
 
@@ -1627,6 +2142,15 @@ menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
 			g_menu_append (gmenu, _("Focus Channel"), "chan.focus");
 		g_menu_append (gmenu, _("Part Channel"), "chan.part");
 		g_menu_append (gmenu, _("Cycle Channel"), "chan.cycle");
+	}
+
+	/* Add autojoin toggle in a separate section if we have a network */
+	if (sess->server && sess->server->network)
+	{
+		options_section = g_menu_new ();
+		g_menu_append (options_section, _("Autojoin Channel"), "chan.autojoin");
+		g_menu_append_section (gmenu, NULL, G_MENU_MODEL (options_section));
+		g_object_unref (options_section);
 	}
 
 	/* Create and configure the popover */

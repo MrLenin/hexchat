@@ -39,7 +39,7 @@ The GTK4 build now launches and runs without crashing. Core functionality works:
 | Event Controllers | xtext.c, fkeys.c, chanview-*.c, userlistgui.c, etc. | All button/key/scroll/motion events converted |
 | Container/Widget APIs | All fe-gtk files | 102+ deprecated calls converted via macros |
 | List/Tree Views | 12 files | All migrated to GtkColumnView/GtkListView |
-| Static Context Menus | menu.c, banlist.c, chanlist.c | URL, nick, channel, middle-click menus |
+| Context Menus | menu.c, banlist.c, chanlist.c | Full feature parity with GTK3 (see below) |
 | Tab Context Menu | maingui.c | Detach/close actions |
 | Spell Check Menu | sexy-spell-entry.c | Word suggestions, add to dictionary |
 | Main Menu Bar | menu.c | GtkPopoverMenuBar with GMenu/GAction |
@@ -47,6 +47,31 @@ The GTK4 build now launches and runs without crashing. Core functionality works:
 | DND - File Drops to Users | userlistgui.c | Drag files onto user in list for DCC |
 | Clipboard/Selection | xtext.c | Text selection and copy |
 | Dialogs | fe-gtk.c, maingui.c | Async response handling (no gtk_dialog_run) |
+
+#### Context Menu Details
+
+**Nick Menu** (`menu_nickmenu`):
+- User info submenu with Real Name, User/hostname, Account, Country, Server, Last Msg, Away Msg
+- Copy-to-clipboard support for all info fields
+- Dynamic `popup_list` items from popup.conf with SUB/ENDSUB, SEP support
+- Nick substitution (%s, %a) in commands
+
+**URL Menu** (`menu_urlmenu`):
+- Open Link / Connect (for irc:// URLs)
+- Copy Selected Link
+- Custom URL handlers from urlhandlers.conf
+- External program execution (! commands) with PATH checking
+
+**Channel Menu** (`menu_chanmenu`):
+- Join/Part/Cycle/Focus actions
+- Autojoin toggle (stateful checkbox integrated with servlist)
+
+**Middle-Click Menu** (`menu_middlemenu`):
+- Window operations: Copy Selection, Clear Text, Search, Save Text
+- Marker line: Reset/Move to Marker
+- Server: Disconnect, Reconnect, Away toggle
+- View: Show/Hide Menubar, Preferences
+- Window: Detach/Attach, Close
 
 ### ⚠️ PARTIALLY IMPLEMENTED (Reduced functionality in GTK4)
 
