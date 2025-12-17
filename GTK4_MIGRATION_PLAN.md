@@ -53,6 +53,7 @@ The GTK4 build is fully functional with feature parity to GTK3:
 | Button Layout | Various | Buttons with icon+label render correctly |
 | Toggle Button Dispatch | gtk-compat.h | Runtime type checking for GtkToggleButton vs GtkCheckButton |
 | Tab Close Handling | chanview.c | Iterator-based sibling lookup for reliable rapid close |
+| Channel List Menu | chanlist.c | Join, copy, autojoin actions with deferred cleanup |
 
 #### Context Menu Details
 
@@ -72,6 +73,11 @@ The GTK4 build is fully functional with feature parity to GTK3:
 - Join/Part/Cycle/Focus actions
 - Autojoin toggle (stateful checkbox integrated with servlist)
 
+**Channel List Menu** (`chanlist_button_cb`):
+- Join Channel, Copy Channel Name, Copy Topic Text
+- Autojoin toggle (when connected to a network)
+- Uses deferred cleanup via g_idle_add() for action timing
+
 **Middle-Click Menu** (`menu_middlemenu`):
 - Window operations: Copy Selection, Clear Text, Search, Save Text
 - Marker line: Reset/Move to Marker
@@ -85,7 +91,6 @@ The GTK4 build is fully functional with feature parity to GTK3:
 |---------|---------------|---------------|--------|
 | DND - File Drops to Channel | Drag file to xtext, DCC to dialog partner | Only works for dialog sessions; channel drops do nothing | Must use userlist for channel DCC |
 | Drag Visual Feedback | Custom drag image during layout swap | Default GTK4 drag appearance | Cosmetic only |
-| Channel Favorites Menu | Add channel to favorites from channel list | Not yet implemented | Can't add favorites from channel list dialog |
 
 ---
 
@@ -257,13 +262,13 @@ The following have been fixed during the migration:
 11. ✅ **Button Layout** - Buttons with icon+label render correctly
 12. ✅ **Toggle Button Types** - Runtime dispatch for GtkToggleButton vs GtkCheckButton
 13. ✅ **Tab Close Handling** - Reliable focus transfer when rapidly closing tabs
+14. ✅ **Channel List Menu** - Context menu with join, copy, autojoin actions
 
 ### Remaining Work (Nice-to-Have)
 1. **Spell Check Layout** - Alternative approach for underlines (spell check menu works)
 2. **DND Improvements** - File drops to channels (userlist drops work)
-3. **Channel Favorites** - Add to favorites from channel list dialog
-4. **Performance Testing** - Compare GTK3 vs GTK4
-5. **GTK3 Regression Test** - Deprioritized; GTK4 is the primary target
+3. **Performance Testing** - Compare GTK3 vs GTK4
+4. **GTK3 Regression Test** - Deprioritized; GTK4 is the primary target
 
 ---
 
