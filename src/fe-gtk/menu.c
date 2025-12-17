@@ -28,6 +28,9 @@
 #include <unistd.h>
 #endif
 
+/* Debug logging for popover cleanup troubleshooting - set to 1 to enable */
+#define HC_DEBUG_LOG 0
+
 #include "fe-gtk.h"
 
 #include <gdk/gdkkeysyms.h>
@@ -875,15 +878,61 @@ nick_menu_free_info (void)
 	nick_info_away = NULL;
 }
 
+/* Data for nick menu popover cleanup */
+typedef struct {
+	GtkWidget *popover;           /* NULL if popover was destroyed */
+	GSimpleActionGroup *action_group;
+} NickMenuCleanupData;
+
+/* Weak notify - called when popover is finalized */
+static void
+nick_menu_popover_weak_notify (gpointer data, GObject *where_the_object_was)
+{
+	NickMenuCleanupData *cleanup = data;
+	(void)where_the_object_was;
+	cleanup->popover = NULL;  /* Mark as destroyed */
+}
+
+/* Idle callback to clean up nick menu popover and action group */
+static gboolean
+nick_menu_popover_cleanup_idle (gpointer user_data)
+{
+	NickMenuCleanupData *cleanup = user_data;
+
+	/* Clean up action group */
+	if (cleanup->action_group)
+		g_object_unref (cleanup->action_group);
+
+	/* Free nick menu resources */
+	nick_menu_free_info ();
+	nick_popup_cmds_free ();
+
+	/* Remove weak ref if popover still exists.
+	 * We do NOT unparent the popover - GTK4 automatically cleans up popovers
+	 * when their parent window is destroyed. Trying to unparent after the
+	 * parent hierarchy is partially destroyed causes crashes. */
+	if (cleanup->popover != NULL)
+		g_object_weak_unref (G_OBJECT (cleanup->popover), nick_menu_popover_weak_notify, cleanup);
+
+	g_free (cleanup);
+	return G_SOURCE_REMOVE;
+}
+
 static void
 nick_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 {
-	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
-	gtk_widget_unparent (GTK_WIDGET (popover));
-	nick_menu_free_info ();
-	nick_popup_cmds_free ();
-	if (action_group)
-		g_object_unref (action_group);
+	GSimpleActionGroup *action_group = g_object_get_data (G_OBJECT (popover), "action-group");
+	NickMenuCleanupData *cleanup = g_new0 (NickMenuCleanupData, 1);
+
+	cleanup->popover = GTK_WIDGET (popover);
+	cleanup->action_group = action_group;
+
+	/* Use weak ref to detect if popover is destroyed before our idle runs */
+	g_object_weak_ref (G_OBJECT (popover), nick_menu_popover_weak_notify, cleanup);
+
+	/* Defer cleanup to allow action callbacks to complete */
+	g_idle_add (nick_menu_popover_cleanup_idle, cleanup);
+	(void)user_data;
 }
 
 /* Build popup_list menu items into a GMenu, creating actions in the action group.
@@ -1240,8 +1289,11 @@ menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick,
 								 &(GdkRectangle){ (int)x, (int)y, 1, 1 });
 	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
-	/* Clean up action group and info when popover is closed */
-	g_signal_connect (popover, "closed", G_CALLBACK (nick_menu_popover_closed_cb), action_group);
+	/* Store action group on popover for cleanup to find it */
+	g_object_set_data (G_OBJECT (popover), "action-group", action_group);
+
+	/* Clean up when popover is closed - deferred to allow actions to complete */
+	g_signal_connect (popover, "closed", G_CALLBACK (nick_menu_popover_closed_cb), NULL);
 
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
@@ -1510,17 +1562,22 @@ middle_action_away_toggle (GSimpleAction *action, GVariant *value, gpointer user
 static void
 middle_action_settings (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
+	extern void setup_open (void);
 	(void)action; (void)parameter; (void)user_data;
-	if (middle_menu_sess)
-		handle_command (middle_menu_sess, "SETTINGS", FALSE);
+	setup_open ();
 }
 
 static void
 middle_action_detach (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
 	(void)action; (void)parameter; (void)user_data;
+	hc_debug_log ("middle_action_detach: called, sess=%p", (void*)middle_menu_sess);
 	if (middle_menu_sess)
+	{
+		hc_debug_log ("  -> calling mg_detach");
 		mg_detach (middle_menu_sess, 0);
+		hc_debug_log ("  -> mg_detach returned");
+	}
 }
 
 static void
@@ -1630,8 +1687,11 @@ menu_middlemenu (session *sess, GtkWidget *parent, double x, double y)
 								 &(GdkRectangle){ xtext->last_click_x, xtext->last_click_y, 1, 1 });
 	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
-	/* Clean up action group when popover is closed */
-	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), action_group);
+	/* Store action group on popover for cleanup to find it */
+	g_object_set_data (G_OBJECT (popover), "action-group", action_group);
+
+	/* Clean up when popover is closed - deferred to allow actions to complete */
+	g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), NULL);
 
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
@@ -1756,23 +1816,132 @@ url_handler_cmds_free (void)
 	url_handler_cmd_count = 0;
 }
 
+/* Data for middle menu popover cleanup */
+typedef struct {
+	GtkWidget *popover;           /* NULL if popover was destroyed */
+	GSimpleActionGroup *action_group;
+} MiddleMenuCleanupData;
+
+/* Weak notify - called when popover is finalized */
+static void
+menu_popover_weak_notify (gpointer data, GObject *where_the_object_was)
+{
+	MiddleMenuCleanupData *cleanup = data;
+	hc_debug_log ("menu_popover_weak_notify: popover %p finalized", where_the_object_was);
+	cleanup->popover = NULL;  /* Mark as destroyed */
+}
+
+/* Idle callback to clean up action group after actions complete */
+static gboolean
+menu_popover_cleanup_idle (gpointer user_data)
+{
+	MiddleMenuCleanupData *cleanup = user_data;
+
+	hc_debug_log ("menu_popover_cleanup_idle: cleanup=%p, popover=%p, action_group=%p",
+	              (void*)cleanup, (void*)cleanup->popover, (void*)cleanup->action_group);
+
+	/* Clean up action group */
+	if (cleanup->action_group)
+	{
+		hc_debug_log ("  -> unreffing action_group");
+		g_object_unref (cleanup->action_group);
+	}
+
+	/* Remove weak ref if popover still exists.
+	 * We do NOT unparent the popover - GTK4 automatically cleans up popovers
+	 * when their parent window is destroyed. Trying to unparent after the
+	 * parent hierarchy is partially destroyed causes crashes. */
+	if (cleanup->popover != NULL)
+	{
+		hc_debug_log ("  -> popover still valid, removing weak ref");
+		g_object_weak_unref (G_OBJECT (cleanup->popover), menu_popover_weak_notify, cleanup);
+	}
+	else
+	{
+		hc_debug_log ("  -> popover was destroyed (weak notify fired)");
+	}
+
+	g_free (cleanup);
+	hc_debug_log ("  -> cleanup complete");
+	return G_SOURCE_REMOVE;
+}
+
 static void
 menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 {
-	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
-	gtk_widget_unparent (GTK_WIDGET (popover));
-	if (action_group)
-		g_object_unref (action_group);
+	GSimpleActionGroup *action_group = g_object_get_data (G_OBJECT (popover), "action-group");
+	MiddleMenuCleanupData *cleanup = g_new0 (MiddleMenuCleanupData, 1);
+
+	hc_debug_log ("menu_popover_closed_cb: popover=%p, action_group=%p",
+	              (void*)popover, (void*)action_group);
+
+	cleanup->popover = GTK_WIDGET (popover);
+	cleanup->action_group = action_group;
+
+	/* Use weak ref to detect if popover is destroyed before our idle runs */
+	g_object_weak_ref (G_OBJECT (popover), menu_popover_weak_notify, cleanup);
+
+	/* Defer cleanup to allow action callbacks to complete.
+	 * The action fires AFTER the closed signal, so we can't clean up here. */
+	g_idle_add (menu_popover_cleanup_idle, cleanup);
+	hc_debug_log ("  -> scheduled idle cleanup");
+	(void)user_data;
+}
+
+/* Data for URL menu popover cleanup */
+typedef struct {
+	GtkWidget *popover;           /* NULL if popover was destroyed */
+	GSimpleActionGroup *action_group;
+} UrlMenuCleanupData;
+
+/* Weak notify - called when popover is finalized */
+static void
+url_menu_popover_weak_notify (gpointer data, GObject *where_the_object_was)
+{
+	UrlMenuCleanupData *cleanup = data;
+	(void)where_the_object_was;
+	cleanup->popover = NULL;  /* Mark as destroyed */
+}
+
+/* Idle callback to clean up URL menu popover and action group */
+static gboolean
+url_menu_popover_cleanup_idle (gpointer user_data)
+{
+	UrlMenuCleanupData *cleanup = user_data;
+
+	/* Clean up action group */
+	if (cleanup->action_group)
+		g_object_unref (cleanup->action_group);
+
+	/* Free URL handler resources */
+	url_handler_cmds_free ();
+
+	/* Remove weak ref if popover still exists.
+	 * We do NOT unparent the popover - GTK4 automatically cleans up popovers
+	 * when their parent window is destroyed. Trying to unparent after the
+	 * parent hierarchy is partially destroyed causes crashes. */
+	if (cleanup->popover != NULL)
+		g_object_weak_unref (G_OBJECT (cleanup->popover), url_menu_popover_weak_notify, cleanup);
+
+	g_free (cleanup);
+	return G_SOURCE_REMOVE;
 }
 
 static void
 url_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 {
-	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
-	gtk_widget_unparent (GTK_WIDGET (popover));
-	url_handler_cmds_free ();
-	if (action_group)
-		g_object_unref (action_group);
+	GSimpleActionGroup *action_group = g_object_get_data (G_OBJECT (popover), "action-group");
+	UrlMenuCleanupData *cleanup = g_new0 (UrlMenuCleanupData, 1);
+
+	cleanup->popover = GTK_WIDGET (popover);
+	cleanup->action_group = action_group;
+
+	/* Use weak ref to detect if popover is destroyed before our idle runs */
+	g_object_weak_ref (G_OBJECT (popover), url_menu_popover_weak_notify, cleanup);
+
+	/* Defer cleanup to allow action callbacks to complete */
+	g_idle_add (url_menu_popover_cleanup_idle, cleanup);
+	(void)user_data;
 }
 
 /* Build URL handler menu items, similar to nick popup but simpler */
@@ -1914,8 +2083,11 @@ menu_urlmenu (GtkWidget *parent, double x, double y, char *url)
 								 &(GdkRectangle){ (int)x, (int)y, 1, 1 });
 	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
-	/* Clean up action group and handlers when popover is closed */
-	g_signal_connect (popover, "closed", G_CALLBACK (url_menu_popover_closed_cb), action_group);
+	/* Store action group on popover for cleanup to find it */
+	g_object_set_data (G_OBJECT (popover), "action-group", action_group);
+
+	/* Clean up when popover is closed - deferred to allow actions to complete */
+	g_signal_connect (popover, "closed", G_CALLBACK (url_menu_popover_closed_cb), NULL);
 
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
