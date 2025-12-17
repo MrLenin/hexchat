@@ -46,6 +46,10 @@ GtkWidget *create_icon_menu (char *labeltext, void *stock_name, int is_stock);
 void menu_create (GtkWidget *menu, GSList *list, char *target, int check_path);
 void menu_bar_toggle (void);
 void menu_add_plugin_items (GtkWidget *menu, char *root, char *target);
+#if HC_GTK4
+void menu_add_plugin_items_gmenu (GMenu *menu, GSimpleActionGroup *action_group,
+                                  const char *root, const char *target);
+#endif
 void menu_change_layout (void);
 
 void menu_set_away (session_gui *gui, int away);

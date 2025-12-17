@@ -262,10 +262,11 @@ A proper fix requires redesigning the menu system to use GAction/GMenu patterns.
 7. ~~**GTK3 Regression Test**~~ - Deprioritized; GTK4 is the primary target going forward
 
 ### Future Work
-1. **Plugin Menu System** - Redesign for GAction/GMenu
-2. **Spell Check Layout** - Alternative approach for underlines
-3. **DND Improvements** - File drops to channels
-4. **Performance Testing** - Compare GTK3 vs GTK4
+1. ✅ ~~**Plugin Menu System** - Redesign for GAction/GMenu~~ DONE - integrated into context menus
+2. **Middle-Click Menu Fallback** - When menubar is hidden, show main menu as popup instead of simplified menu
+3. **Spell Check Layout** - Alternative approach for underlines
+4. **DND Improvements** - File drops to channels
+5. **Performance Testing** - Compare GTK3 vs GTK4
 
 ---
 
