@@ -3754,7 +3754,15 @@ mg_create_search(session *sess, GtkWidget *box)
 	hc_box_pack_start(gui->shbox, entry, FALSE, FALSE, 0);
 	gtk_widget_set_size_request (gui->shentry, 180, -1);
 	gui->search_changed_signal = g_signal_connect(G_OBJECT(entry), "changed", G_CALLBACK(search_handle_change), sess);
+#if HC_GTK4
+	{
+		GtkEventController *key_controller = gtk_event_controller_key_new ();
+		g_signal_connect (key_controller, "key-pressed", G_CALLBACK (search_handle_esc), sess);
+		gtk_widget_add_controller (entry, key_controller);
+	}
+#else
 	g_signal_connect (G_OBJECT (entry), "key_press_event", G_CALLBACK (search_handle_esc), sess);
+#endif
 	g_signal_connect(G_OBJECT(entry), "activate", G_CALLBACK(mg_search_handle_next), sess);
 	gtk_entry_set_icon_activatable (GTK_ENTRY (entry), GTK_ENTRY_ICON_SECONDARY, FALSE);
 	gtk_entry_set_icon_tooltip_text (GTK_ENTRY (sess->gui->shentry), GTK_ENTRY_ICON_SECONDARY, _("Search hit end or not found."));
@@ -3826,12 +3834,30 @@ mg_create_entry (session *sess, GtkWidget *box)
 	hc_box_add (hbox, entry);
 
 	gtk_widget_set_name (entry, "hexchat-inputbox");
+#if HC_GTK4
+	{
+		GtkEventController *key_controller = gtk_event_controller_key_new ();
+		/* Use capture phase to handle keys before focus navigation */
+		gtk_event_controller_set_propagation_phase (key_controller, GTK_PHASE_CAPTURE);
+		g_signal_connect (key_controller, "key-pressed",
+								G_CALLBACK (key_handle_key_press), NULL);
+		gtk_widget_add_controller (entry, key_controller);
+	}
+	{
+		GtkEventController *focus_controller = gtk_event_controller_focus_new ();
+		g_signal_connect (focus_controller, "enter",
+								G_CALLBACK (mg_inputbox_focus), gui);
+		gtk_widget_add_controller (entry, focus_controller);
+	}
+	/* GTK4: populate_popup doesn't exist, context menu handled differently */
+#else
 	g_signal_connect (G_OBJECT (entry), "key_press_event",
 							G_CALLBACK (key_handle_key_press), NULL);
 	g_signal_connect (G_OBJECT (entry), "focus_in_event",
 							G_CALLBACK (mg_inputbox_focus), gui);
 	g_signal_connect (G_OBJECT (entry), "populate_popup",
 							G_CALLBACK (mg_inputbox_rightclick), NULL);
+#endif
 	g_signal_connect (G_OBJECT (entry), "word-check",
 							G_CALLBACK (mg_spellcheck_cb), NULL);
 	gtk_widget_grab_focus (entry);
@@ -4036,6 +4062,11 @@ mg_create_topwindow (session *sess)
 	mg_create_irctab (sess, table);
 	mg_create_menu (sess->gui, table, sess->server->is_away);
 
+#if HC_GTK4
+	/* Set up keyboard shortcuts for menu actions */
+	menu_add_shortcuts (win, sess->gui->menu);
+#endif
+
 	if (sess->res->buffer == NULL)
 	{
 		sess->res->buffer = gtk_xtext_buffer_new (GTK_XTEXT (sess->gui->xtext));
@@ -4217,6 +4248,11 @@ mg_create_tabwindow (session *sess)
 	mg_create_irctab (sess, table);
 	mg_create_tabs (sess->gui);
 	mg_create_menu (sess->gui, table, sess->server->is_away);
+
+#if HC_GTK4
+	/* Set up keyboard shortcuts for menu actions */
+	menu_add_shortcuts (win, sess->gui->menu);
+#endif
 
 	mg_focus (sess);
 

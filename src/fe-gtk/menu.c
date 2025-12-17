@@ -28,7 +28,7 @@
 #include <unistd.h>
 #endif
 
-/* Debug logging for popover cleanup troubleshooting - set to 1 to enable */
+/* Debug logging - set to 1 to enable */
 #define HC_DEBUG_LOG 0
 
 #include "fe-gtk.h"
@@ -4722,6 +4722,94 @@ menu_set_fullscreen (session_gui *gui, int full)
 	action = g_action_map_lookup_action (G_ACTION_MAP (group), "toggle-fullscreen");
 	if (action)
 		g_simple_action_set_state (G_SIMPLE_ACTION (action), g_variant_new_boolean (full));
+}
+
+/*
+ * Set up keyboard shortcuts for GTK4
+ * GTK4 doesn't use GtkAccelGroup, so we need to use GtkShortcutController
+ * to connect keyboard shortcuts to menu actions.
+ */
+void
+menu_add_shortcuts (GtkWidget *window, GtkWidget *menu_bar)
+{
+	GtkEventController *controller;
+	GtkShortcut *shortcut;
+	GtkShortcutTrigger *trigger;
+	GtkShortcutAction *action;
+	GSimpleActionGroup *action_group;
+
+	/* Get the action group from the menu bar and also insert it on the window
+	 * so that GtkNamedAction can find it when shortcuts are triggered */
+	action_group = g_object_get_data (G_OBJECT (menu_bar), "action-group");
+	if (action_group)
+		gtk_widget_insert_action_group (window, "menu", G_ACTION_GROUP (action_group));
+
+	controller = gtk_shortcut_controller_new ();
+	gtk_shortcut_controller_set_scope (GTK_SHORTCUT_CONTROLLER (controller),
+	                                   GTK_SHORTCUT_SCOPE_GLOBAL);
+	gtk_widget_add_controller (window, controller);
+
+	/* Search: Ctrl+F */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary>f");
+	action = gtk_named_action_new ("menu.search");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Search Next: Ctrl+G */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary>g");
+	action = gtk_named_action_new ("menu.search-next");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Search Previous: Ctrl+Shift+G */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary><Shift>g");
+	action = gtk_named_action_new ("menu.search-prev");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Help Contents: F1 */
+	trigger = gtk_shortcut_trigger_parse_string ("F1");
+	action = gtk_named_action_new ("menu.help-contents");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Copy Selection: Ctrl+Shift+C */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary><Shift>c");
+	action = gtk_named_action_new ("menu.copy-selection");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Reset Marker Line: Ctrl+M */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary>m");
+	action = gtk_named_action_new ("menu.reset-marker");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Move to Marker Line: Ctrl+Shift+M */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary><Shift>m");
+	action = gtk_named_action_new ("menu.move-to-marker");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Disconnect: Ctrl+D - only if not in emacs key mode */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary>d");
+	action = gtk_named_action_new ("menu.disconnect");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Reconnect: Ctrl+R */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary>r");
+	action = gtk_named_action_new ("menu.reconnect");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	/* Close Tab: Ctrl+W or Ctrl+Shift+W depending on key theme */
+	trigger = gtk_shortcut_trigger_parse_string ("<Primary>w");
+	action = gtk_named_action_new ("menu.close-tab");
+	shortcut = gtk_shortcut_new (trigger, action);
+	gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+	(void)menu_bar; /* May be used for action group lookup if needed */
 }
 
 #else /* !HC_GTK4 - GTK3 implementation */

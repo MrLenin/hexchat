@@ -49,6 +49,7 @@ void menu_add_plugin_items (GtkWidget *menu, char *root, char *target);
 #if HC_GTK4
 void menu_add_plugin_items_gmenu (GMenu *menu, GSimpleActionGroup *action_group,
                                   const char *root, const char *target);
+void menu_add_shortcuts (GtkWidget *window, GtkWidget *menu_bar);
 #endif
 void menu_change_layout (void);
 
