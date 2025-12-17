@@ -52,6 +52,7 @@ static GtkWidget *setup_window = NULL;
 static int last_selected_page = 0;
 static int last_selected_row = 0; /* sound row */
 static gboolean color_change;
+static gboolean setup_applying = FALSE; /* Guard against callbacks during apply/destroy */
 static struct hexchatprefs setup_prefs;
 static GtkWidget *cancel_button;
 static GtkWidget *font_dialog = NULL;
@@ -678,6 +679,10 @@ static const setting identd_settings[] =
 static void
 setup_3oggle_cb (GtkToggleButton *but, unsigned int *setting)
 {
+	/* In GTK4, toggle signals can fire during widget destruction.
+	 * Ignore callbacks after we've started applying settings. */
+	if (setup_applying)
+		return;
 	*setting = gtk_toggle_button_get_active (but);
 }
 
@@ -753,16 +758,24 @@ static void
 setup_toggle_cb (GtkToggleButton *but, const setting *set)
 {
 	GtkWidget *label, *disable_wid;
+	int active_val;
 
-	setup_set_int (&setup_prefs, set, gtk_toggle_button_get_active (but));
+	/* In GTK4, toggle signals can fire during widget destruction.
+	 * Ignore callbacks after we've started applying settings. */
+	if (setup_applying)
+		return;
+
+	active_val = gtk_toggle_button_get_active (but);
+	hc_debug_log ("setup_toggle_cb: %s offset=%d active=%d", set->label, set->offset, active_val);
+	setup_set_int (&setup_prefs, set, active_val);
 
 	/* does this toggle also enable/disable another widget? */
 	disable_wid = g_object_get_data (G_OBJECT (but), "nxt");
 	if (disable_wid)
 	{
-		gtk_widget_set_sensitive (disable_wid, gtk_toggle_button_get_active (but));
+		gtk_widget_set_sensitive (disable_wid, active_val);
 		label = g_object_get_data (G_OBJECT (disable_wid), "lbl");
-		gtk_widget_set_sensitive (label, gtk_toggle_button_get_active (but));
+		gtk_widget_set_sensitive (label, active_val);
 	}
 }
 
@@ -776,10 +789,12 @@ static void
 setup_create_toggleR (GtkWidget *tab, int row, const setting *set)
 {
 	GtkWidget *wid;
+	int val;
 
 	wid = gtk_check_button_new_with_label (_(set->label));
-	hc_check_button_set_active (wid,
-											setup_get_int (&setup_prefs, set));
+	val = setup_get_int (&setup_prefs, set);
+	hc_debug_log ("setup_create_toggleR: %s offset=%d val=%d", set->label, set->offset, val);
+	hc_check_button_set_active (wid, val);
 	g_signal_connect (G_OBJECT (wid), "toggled",
 							G_CALLBACK (setup_toggle_cb), (gpointer)set);
 	if (set->tooltip)
@@ -792,10 +807,12 @@ static GtkWidget *
 setup_create_toggleL (GtkWidget *tab, int row, const setting *set)
 {
 	GtkWidget *wid;
+	int val;
 
 	wid = gtk_check_button_new_with_label (_(set->label));
-	hc_check_button_set_active (wid,
-											setup_get_int (&setup_prefs, set));
+	val = setup_get_int (&setup_prefs, set);
+	hc_debug_log ("setup_create_toggleL: %s offset=%d val=%d", set->label, set->offset, val);
+	hc_check_button_set_active (wid, val);
 	g_signal_connect (G_OBJECT (wid), "toggled",
 							G_CALLBACK (setup_toggle_cb), (gpointer)set);
 	if (set->tooltip)
@@ -1853,6 +1870,9 @@ setup_add_page (const char *title, GtkWidget *book, GtkWidget *tab)
 	gtk_widget_set_margin_bottom (label, 1);
 	hc_box_pack_start (vvbox, label, FALSE, FALSE, 2);
 
+	/* Settings grid should expand to fill available space */
+	gtk_widget_set_hexpand (tab, TRUE);
+	gtk_widget_set_vexpand (tab, TRUE);
 	hc_box_add (vvbox, tab);
 
 	sw = GTK_SCROLLED_WINDOW(hc_scrolled_window_new ());
@@ -1866,7 +1886,7 @@ setup_add_page (const char *title, GtkWidget *book, GtkWidget *tab)
 	hc_viewport_set_child (viewport, vvbox);
 	hc_scrolled_window_set_child (GTK_WIDGET (sw), viewport);
 
-	gtk_notebook_append_page (GTK_NOTEBOOK (book), GTK_WIDGET(sw), NULL);
+	hc_page_container_append (book, GTK_WIDGET(sw));
 }
 
 static const char *const cata[] =
@@ -1899,7 +1919,7 @@ setup_create_pages (GtkWidget *box)
 	GtkWidget *book;
 	GtkWindow *win = GTK_WINDOW(gtk_widget_get_toplevel (box));
 
-	book = gtk_notebook_new ();
+	book = hc_page_container_new ();
 
 	setup_add_page (cata[1], book, setup_create_page (appearance_settings));
 	setup_add_page (cata[2], book, setup_create_page (inputbox_settings));
@@ -1934,8 +1954,9 @@ setup_create_pages (GtkWidget *box)
 	setup_add_page (cata[16], book, setup_create_page (filexfer_settings));
 	setup_add_page (cata[17], book, setup_create_page (identd_settings));
 
-	gtk_notebook_set_show_tabs (GTK_NOTEBOOK (book), FALSE);
-	gtk_notebook_set_show_border (GTK_NOTEBOOK (book), FALSE);
+	/* Page container should expand to fill available space */
+	gtk_widget_set_hexpand (book, TRUE);
+	gtk_widget_set_vexpand (book, TRUE);
 	hc_box_add (box, book);
 
 	return book;
@@ -1954,7 +1975,7 @@ setup_tree_cb (GtkTreeView *treeview, GtkWidget *book)
 		gtk_tree_model_get (model, &iter, 1, &page, -1);
 		if (page != -1)
 		{
-			gtk_notebook_set_current_page (GTK_NOTEBOOK (book), page);
+			hc_page_container_set_current_page (book, page);
 			last_selected_page = page;
 		}
 	}
@@ -2023,6 +2044,8 @@ setup_create_tree (GtkWidget *box, GtkWidget *book)
 
 	frame = gtk_frame_new (NULL);
 	hc_frame_set_child (frame, tree);
+	/* Tree frame expands vertically but not horizontally */
+	gtk_widget_set_vexpand (frame, TRUE);
 	hc_box_pack_start (box, frame, 0, 0, 0);
 	gtk_box_reorder_child (GTK_BOX (box), frame, 0);
 
@@ -2273,10 +2296,15 @@ setup_apply (struct hexchatprefs *pr)
 static void
 setup_ok_cb (GtkWidget *but, GtkWidget *win)
 {
+	hc_debug_log ("setup_ok_cb: setup_prefs.hex_gui_ulist_color=%d", setup_prefs.hex_gui_ulist_color);
+	/* Set flag to prevent toggle callbacks from corrupting settings during window destruction */
+	setup_applying = TRUE;
 	hc_window_destroy (win);
 	setup_apply (&setup_prefs);
+	hc_debug_log ("setup_ok_cb: after apply, prefs.hex_gui_ulist_color=%d", prefs.hex_gui_ulist_color);
 	save_config ();
 	palette_save ();
+	setup_applying = FALSE;
 }
 
 static GtkWidget *
@@ -2293,6 +2321,8 @@ setup_window_open (void)
 	hc_window_set_child (win, vbox);
 
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 4);
+	/* Main content area should expand to fill available space */
+	gtk_widget_set_vexpand (hbox, TRUE);
 	hc_box_add (vbox, hbox);
 
 	setup_create_tree (hbox, setup_create_pages (hbox));
@@ -2340,6 +2370,8 @@ setup_open (void)
 	}
 
 	memcpy (&setup_prefs, &prefs, sizeof (prefs));
+	hc_debug_log ("setup_open: prefs.hex_gui_ulist_color=%d setup_prefs.hex_gui_ulist_color=%d",
+	              prefs.hex_gui_ulist_color, setup_prefs.hex_gui_ulist_color);
 
 	color_change = FALSE;
 	setup_window = setup_window_open ();

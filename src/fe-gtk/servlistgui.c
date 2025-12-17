@@ -2392,6 +2392,10 @@ servlist_open_networks (void)
 	gtk_widget_show (hbuttonbox1);
 	hc_box_pack_start (vbox1, hbuttonbox1, FALSE, TRUE, 0);
 	hc_container_set_border_width (hbuttonbox1, 8);
+#if HC_GTK4
+	/* GTK4: Use FILL alignment with spacer to get Close on left, Connect on right */
+	gtk_widget_set_halign (hbuttonbox1, GTK_ALIGN_FILL);
+#endif
 
 	button_close = gtk_button_new_with_mnemonic (_("_Close"));
 	gtk_widget_show (button_close);
@@ -2399,6 +2403,15 @@ servlist_open_networks (void)
 							G_CALLBACK (servlist_close_cb), 0);
 	hc_box_add (hbuttonbox1, button_close);
 	gtk_widget_set_can_default (button_close, TRUE);
+
+#if HC_GTK4
+	/* GTK4: Add spacer to push Connect button to the right */
+	{
+		GtkWidget *spacer = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+		gtk_widget_set_hexpand (spacer, TRUE);
+		gtk_box_append (GTK_BOX (hbuttonbox1), spacer);
+	}
+#endif
 
 	button_connect = gtkutil_button (hbuttonbox1, "network-transmit-receive", NULL,
 												servlist_connect_cb, NULL, _("C_onnect"));

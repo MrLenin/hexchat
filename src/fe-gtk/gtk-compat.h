@@ -81,18 +81,39 @@ hc_box_pack_start_impl (GtkBox *box, GtkWidget *child, gboolean expand)
 	gtk_box_append (box, child);
 }
 
+/*
+ * hc_box_pack_end - emulate GTK3's pack_end behavior in GTK4
+ *
+ * GTK3's pack_end anchors widgets to the end of the box (bottom for vertical,
+ * right for horizontal). In GTK4, we achieve this by:
+ * 1. Appending the widget (so it's added at the end)
+ * 2. Setting valign=END for vertical boxes, halign=END for horizontal boxes
+ *
+ * Note: This works best when the widget doesn't expand. For expanding widgets,
+ * the alignment doesn't have a visual effect.
+ */
 static inline void
 hc_box_pack_end_impl (GtkBox *box, GtkWidget *child, gboolean expand)
 {
+	GtkOrientation orient = gtk_orientable_get_orientation (GTK_ORIENTABLE (box));
+
 	if (expand)
 	{
-		GtkOrientation orient = gtk_orientable_get_orientation (GTK_ORIENTABLE (box));
 		if (orient == GTK_ORIENTATION_HORIZONTAL)
 			gtk_widget_set_hexpand (child, TRUE);
 		else
 			gtk_widget_set_vexpand (child, TRUE);
 	}
-	gtk_box_prepend (box, child);
+	else
+	{
+		/* For non-expanding widgets packed at end, set alignment to push to end */
+		if (orient == GTK_ORIENTATION_VERTICAL)
+			gtk_widget_set_valign (child, GTK_ALIGN_END);
+		else
+			gtk_widget_set_halign (child, GTK_ALIGN_END);
+	}
+
+	gtk_box_append (box, child);
 }
 
 #define hc_box_pack_start(box, child, expand, fill, padding) \
@@ -1013,17 +1034,75 @@ hc_image_new_from_icon_name(const char *icon_name, int gtk3_size)
  * ButtonBox Compatibility
  * =============================================================================
  * GTK3: GtkButtonBox with gtk_button_box_set_layout()
- * GTK4: GtkButtonBox removed - use GtkBox with CSS or widget halign/valign
+ * GTK4: GtkButtonBox removed - use GtkBox with halign/valign instead
+ *
+ * Layout mapping:
+ * - GTK_BUTTONBOX_START (2) -> GTK_ALIGN_START
+ * - GTK_BUTTONBOX_END (3) -> GTK_ALIGN_END (halign for horizontal, valign for vertical)
+ * - GTK_BUTTONBOX_CENTER (4) -> GTK_ALIGN_CENTER
+ * - GTK_BUTTONBOX_SPREAD (0), GTK_BUTTONBOX_EDGE (1), GTK_BUTTONBOX_EXPAND (5) -> default fill
  */
 
 #if HC_GTK4
 
 /* In GTK4, GtkButtonBox is removed. Use a regular GtkBox.
- * Layout hints are ignored - use CSS or widget alignment properties. */
+ * GTK3's GtkButtonBox defaults to GTK_BUTTONBOX_END for horizontal boxes,
+ * which pushes buttons to the right (dialog-style). We replicate this by
+ * setting halign=END on the box. */
+static inline GtkWidget *
+hc_button_box_new_impl (GtkOrientation orientation)
+{
+	GtkWidget *box = gtk_box_new (orientation, 6);
+	/* Default to END alignment like GTK3 ButtonBox */
+	if (orientation == GTK_ORIENTATION_HORIZONTAL)
+		gtk_widget_set_halign (box, GTK_ALIGN_END);
+	else
+		gtk_widget_set_valign (box, GTK_ALIGN_END);
+	return box;
+}
 #define hc_button_box_new(orientation) \
-	gtk_box_new(orientation, 6)
+	hc_button_box_new_impl(orientation)
 
-#define hc_button_box_set_layout(bbox, layout) ((void)0)
+/* Map button box layout to widget alignment.
+ * GTK3 GtkButtonBoxStyle enum values:
+ * - GTK_BUTTONBOX_SPREAD = 0
+ * - GTK_BUTTONBOX_EDGE = 1
+ * - GTK_BUTTONBOX_START = 2
+ * - GTK_BUTTONBOX_END = 3
+ * - GTK_BUTTONBOX_CENTER = 4
+ * - GTK_BUTTONBOX_EXPAND = 5
+ */
+static inline void
+hc_button_box_set_layout_impl (GtkWidget *bbox, int layout)
+{
+	GtkOrientation orient = gtk_orientable_get_orientation (GTK_ORIENTABLE (bbox));
+
+	if (layout == 3) /* GTK_BUTTONBOX_END */
+	{
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_halign (bbox, GTK_ALIGN_END);
+		else
+			gtk_widget_set_valign (bbox, GTK_ALIGN_END);
+	}
+	else if (layout == 2) /* GTK_BUTTONBOX_START */
+	{
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_halign (bbox, GTK_ALIGN_START);
+		else
+			gtk_widget_set_valign (bbox, GTK_ALIGN_START);
+	}
+	else if (layout == 4) /* GTK_BUTTONBOX_CENTER */
+	{
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_halign (bbox, GTK_ALIGN_CENTER);
+		else
+			gtk_widget_set_valign (bbox, GTK_ALIGN_CENTER);
+	}
+	/* For SPREAD (0), EDGE (1), and EXPAND (5), use fill (default behavior) */
+}
+
+#define hc_button_box_set_layout(bbox, layout) \
+	hc_button_box_set_layout_impl(GTK_WIDGET(bbox), layout)
 
 #else /* GTK3 */
 
@@ -1216,6 +1295,22 @@ hc_misc_set_alignment(GtkWidget *widget, float xalign, float yalign)
 	gtk_check_button_get_active(GTK_CHECK_BUTTON(button))
 
 #define hc_check_button_set_active(button, active) \
+	gtk_check_button_set_active(GTK_CHECK_BUTTON(button), active)
+
+/*
+ * In GTK4, GtkCheckButton no longer inherits from GtkToggleButton.
+ * GtkToggleButton still exists as a separate widget, but HexChat's code
+ * uses GtkCheckButton widgets with gtk_toggle_button_* API calls.
+ * We remap these calls to the GtkCheckButton equivalents.
+ *
+ * Note: The actual GtkToggleButton type still exists in GTK4, so we can't
+ * typedef it. Instead, callbacks that take GtkToggleButton* parameters
+ * will receive GtkCheckButton* which is compatible at the GtkWidget level.
+ */
+#define gtk_toggle_button_get_active(button) \
+	gtk_check_button_get_active(GTK_CHECK_BUTTON(button))
+
+#define gtk_toggle_button_set_active(button, active) \
 	gtk_check_button_set_active(GTK_CHECK_BUTTON(button), active)
 
 #else /* GTK3 */
@@ -1437,9 +1532,59 @@ hc_pixbuf_to_texture (GdkPixbuf *pixbuf)
 
 /*
  * gtk_box_reorder_child - removed in GTK4
- * Use gtk_box_reorder_child_after() instead, but signature differs
+ * Use gtk_box_reorder_child_after() instead, but signature differs.
+ *
+ * GTK4 API: gtk_box_reorder_child_after(box, child, sibling)
+ * Places child after sibling. If sibling is NULL, places child at the start.
+ *
+ * Position values:
+ * - 0: Move to start
+ * - positive: Move to that position
+ * - negative (-1): Move to end
  */
-#define gtk_box_reorder_child(box, child, position) ((void)0)
+static inline void
+hc_box_reorder_child (GtkBox *box, GtkWidget *child, int position)
+{
+	if (position == 0)
+	{
+		/* Move to start of box - use NULL as sibling */
+		gtk_box_reorder_child_after (box, child, NULL);
+	}
+	else if (position < 0)
+	{
+		/* Move to end - find last child */
+		GtkWidget *sibling = gtk_widget_get_last_child (GTK_WIDGET (box));
+		/* If the child itself is the last, find the one before it */
+		if (sibling == child)
+			sibling = gtk_widget_get_prev_sibling (child);
+		if (sibling)
+			gtk_box_reorder_child_after (box, child, sibling);
+		/* If no sibling found, child is already at the right place */
+	}
+	else
+	{
+		/* Find the widget at position-1 and place child after it */
+		GtkWidget *sibling = gtk_widget_get_first_child (GTK_WIDGET (box));
+		int i = 0;
+		while (sibling && i < position - 1)
+		{
+			/* Skip the child we're moving when counting */
+			if (sibling != child)
+				i++;
+			sibling = gtk_widget_get_next_sibling (sibling);
+		}
+		/* Skip the child itself if we're looking at it */
+		if (sibling == child)
+			sibling = gtk_widget_get_next_sibling (sibling);
+		if (sibling)
+			gtk_box_reorder_child_after (box, child, sibling);
+		else
+			/* Position beyond end, move to end */
+			hc_box_reorder_child (box, child, -1);
+	}
+}
+#define gtk_box_reorder_child(box, child, position) \
+	hc_box_reorder_child(GTK_BOX(box), child, position)
 
 /*
  * gtk_widget_get_toplevel - removed in GTK4
