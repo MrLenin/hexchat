@@ -257,9 +257,9 @@ A proper fix requires redesigning the menu system to use GAction/GMenu patterns.
 2. ✅ ~~**Fix Critical Bugs** - Address any crashes or major UI issues~~ DONE
 3. ✅ ~~**Main Menu Bar** - Convert to GtkPopoverMenuBar with GMenu/GAction~~ DONE
 4. ✅ ~~**Context Menu Positioning** - Fix popup menus to appear at mouse cursor~~ DONE
-5. **Color Theme Support** - Fix color scheme application in GTK4
-6. **Widget Layout** - Address sizing/spacing issues
-7. **GTK3 Regression Test** - Verify GTK3 build still works
+5. ✅ ~~**Color Theme Support** - Fix color scheme application in GTK4~~ DONE
+6. ✅ ~~**Widget Layout** - Address sizing/spacing issues~~ DONE
+7. ~~**GTK3 Regression Test**~~ - Deprioritized; GTK4 is the primary target going forward
 
 ### Future Work
 1. **Plugin Menu System** - Redesign for GAction/GMenu
