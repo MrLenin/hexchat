@@ -873,45 +873,212 @@ chanlist_copytopic (GtkWidget *item, server *serv)
  * GTK4: Uses GtkGestureClick and GtkPopoverMenu
  */
 #if HC_GTK4
+
+/* Store server pointer and channel for GTK4 menu actions */
+static server *chanlist_menu_serv = NULL;
+static gchar *chanlist_menu_chan = NULL;
+
+/*
+ * Helper to find position at coordinates in GtkColumnView
+ * Returns the position or GTK_INVALID_LIST_POSITION if not found.
+ * Uses gtk_widget_pick to find the widget at coordinates, then
+ * retrieves the HcChannelItem stored on the label widget.
+ */
+static guint
+chanlist_get_position_at_coords (GtkColumnView *view, double x, double y)
+{
+	GtkWidget *child;
+	GtkWidget *widget;
+	GtkSelectionModel *sel_model;
+	GListModel *model;
+	guint n_items;
+
+	/* Pick the widget at the given coordinates */
+	child = gtk_widget_pick (GTK_WIDGET (view), x, y, GTK_PICK_DEFAULT);
+	if (!child)
+		return GTK_INVALID_LIST_POSITION;
+
+	/* Walk up to find a widget with our channel item data */
+	widget = child;
+	while (widget != NULL && widget != GTK_WIDGET (view))
+	{
+		HcChannelItem *item = g_object_get_data (G_OBJECT (widget), "hc-channel-item");
+		if (item)
+		{
+			/* Found the item - now find its position in the selection model */
+			sel_model = gtk_column_view_get_model (view);
+			model = G_LIST_MODEL (sel_model);
+			n_items = g_list_model_get_n_items (model);
+
+			for (guint i = 0; i < n_items; i++)
+			{
+				HcChannelItem *model_item = g_list_model_get_item (model, i);
+				if (model_item == item)
+				{
+					g_object_unref (model_item);
+					return i;
+				}
+				if (model_item)
+					g_object_unref (model_item);
+			}
+		}
+		widget = gtk_widget_get_parent (widget);
+	}
+
+	return GTK_INVALID_LIST_POSITION;
+}
+
+static void
+chanlist_action_join (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (chanlist_menu_serv)
+		chanlist_join (NULL, chanlist_menu_serv);
+}
+
+static void
+chanlist_action_copy_channel (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GtkWidget *widget = GTK_WIDGET (user_data);
+	(void)action; (void)parameter;
+	if (chanlist_menu_serv)
+		chanlist_copychannel (widget, chanlist_menu_serv);
+}
+
+static void
+chanlist_action_copy_topic (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	GtkWidget *widget = GTK_WIDGET (user_data);
+	(void)action; (void)parameter;
+	if (chanlist_menu_serv)
+		chanlist_copytopic (widget, chanlist_menu_serv);
+}
+
+static void
+chanlist_action_autojoin (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)action; (void)parameter; (void)user_data;
+	if (chanlist_menu_serv && chanlist_menu_serv->network && chanlist_menu_chan)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		servlist_autojoinedit (chanlist_menu_serv->network, chanlist_menu_chan, new_state);
+		g_variant_unref (state);
+	}
+}
+
+static gboolean
+chanlist_popover_cleanup_idle (gpointer user_data)
+{
+	GSimpleActionGroup *action_group = G_SIMPLE_ACTION_GROUP (user_data);
+
+	/* Clean up action group */
+	if (action_group)
+		g_object_unref (action_group);
+
+	/* Free the stored channel name */
+	g_free (chanlist_menu_chan);
+	chanlist_menu_chan = NULL;
+	chanlist_menu_serv = NULL;
+
+	return G_SOURCE_REMOVE;
+}
+
+static void
+chanlist_popover_closed_cb (GtkPopover *popover, gpointer user_data)
+{
+	(void)popover;
+
+	/* Defer cleanup so action callbacks can run first */
+	g_idle_add (chanlist_popover_cleanup_idle, user_data);
+}
+
 static void
 chanlist_button_cb (GtkGestureClick *gesture, int n_press, double x, double y, server *serv)
 {
 	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
-	GtkTreeView *tree = GTK_TREE_VIEW (widget);
-	GtkTreeSelection *sel;
-	GtkTreePath *path;
+	GtkColumnView *view = GTK_COLUMN_VIEW (widget);
+	GtkSelectionModel *sel_model;
 	GtkWidget *popover;
 	GMenu *gmenu;
-	GMenuItem *item;
+	GSimpleActionGroup *action_group;
+	GSimpleAction *action;
+	guint position;
 	int button;
 
+	(void)n_press;
 	button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
 
 	if (button != 3)
 		return;
 
-	if (!gtk_tree_view_get_path_at_pos (tree, (int)x, (int)y, &path, 0, 0, 0))
+	/* Find the position at click coordinates and select it */
+	position = chanlist_get_position_at_coords (view, x, y);
+	if (position == GTK_INVALID_LIST_POSITION)
 		return;
 
-	/* select what they right-clicked on */
-	sel = gtk_tree_view_get_selection (tree);
-	gtk_tree_selection_unselect_all (sel);
-	gtk_tree_selection_select_path (sel, path);
-	gtk_tree_path_free (path);
+	/* Select the clicked row */
+	sel_model = gtk_column_view_get_model (view);
+	gtk_selection_model_select_item (sel_model, position, TRUE);
+
+	/* Store server and get channel for action callbacks */
+	chanlist_menu_serv = serv;
+	g_free (chanlist_menu_chan);
+	chanlist_menu_chan = chanlist_get_selected (serv, FALSE);
+
+	/* Don't show menu if nothing is selected (shouldn't happen now) */
+	if (chanlist_menu_chan == NULL)
+		return;
+
+	/* Create action group for menu actions */
+	action_group = g_simple_action_group_new ();
+
+	action = g_simple_action_new ("join", NULL);
+	g_signal_connect (action, "activate", G_CALLBACK (chanlist_action_join), NULL);
+	g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+	g_object_unref (action);
+
+	action = g_simple_action_new ("copy-channel", NULL);
+	g_signal_connect (action, "activate", G_CALLBACK (chanlist_action_copy_channel), widget);
+	g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+	g_object_unref (action);
+
+	action = g_simple_action_new ("copy-topic", NULL);
+	g_signal_connect (action, "activate", G_CALLBACK (chanlist_action_copy_topic), widget);
+	g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+	g_object_unref (action);
 
 	/* GTK4: Use GMenu and GtkPopoverMenu for context menus */
 	gmenu = g_menu_new ();
 	g_menu_append (gmenu, _("_Join Channel"), "chanlist.join");
 	g_menu_append (gmenu, _("_Copy Channel Name"), "chanlist.copy-channel");
 	g_menu_append (gmenu, _("Copy _Topic Text"), "chanlist.copy-topic");
-	/* TODO: menu_addfavoritemenu integration for GTK4 */
 
+	/* Add Autojoin toggle if we have a network */
+	if (serv->network && chanlist_menu_chan)
+	{
+		gboolean is_autojoin = joinlist_is_in_list (serv, chanlist_menu_chan);
+		action = g_simple_action_new_stateful ("autojoin", NULL,
+			g_variant_new_boolean (is_autojoin));
+		g_signal_connect (action, "activate", G_CALLBACK (chanlist_action_autojoin), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+		g_menu_append (gmenu, _("_Autojoin Channel"), "chanlist.autojoin");
+	}
+
+	/* Create and configure the popover */
 	popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+	gtk_widget_insert_action_group (popover, "chanlist", G_ACTION_GROUP (action_group));
 	gtk_widget_set_parent (popover, widget);
 	gtk_popover_set_pointing_to (GTK_POPOVER (popover),
 		&(GdkRectangle){ (int)x, (int)y, 1, 1 });
-	gtk_popover_popup (GTK_POPOVER (popover));
+	gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
 
+	/* Clean up action group when popover is closed (deferred to allow actions to run) */
+	g_signal_connect (popover, "closed", G_CALLBACK (chanlist_popover_closed_cb), action_group);
+
+	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
 }
 #else /* GTK3 */
@@ -1086,6 +1253,8 @@ chanlist_channel_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpoint
 	GtkWidget *label = gtk_list_item_get_child (item);
 	HcChannelItem *channel_item = gtk_list_item_get_item (item);
 	gtk_label_set_text (GTK_LABEL (label), channel_item->channel);
+	/* Store reference for position lookup during right-click */
+	g_object_set_data (G_OBJECT (label), "hc-channel-item", channel_item);
 }
 
 /* Users column setup */
@@ -1105,6 +1274,8 @@ chanlist_users_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer
 	char buf[32];
 	g_snprintf (buf, sizeof buf, "%u", channel_item->users);
 	gtk_label_set_text (GTK_LABEL (label), buf);
+	/* Store reference for position lookup during right-click */
+	g_object_set_data (G_OBJECT (label), "hc-channel-item", channel_item);
 }
 
 /* Topic column setup */
@@ -1123,6 +1294,8 @@ chanlist_topic_bind_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer
 	GtkWidget *label = gtk_list_item_get_child (item);
 	HcChannelItem *channel_item = gtk_list_item_get_item (item);
 	gtk_label_set_text (GTK_LABEL (label), channel_item->topic ? channel_item->topic : "");
+	/* Store reference for position lookup during right-click */
+	g_object_set_data (G_OBJECT (label), "hc-channel-item", channel_item);
 }
 
 /*
