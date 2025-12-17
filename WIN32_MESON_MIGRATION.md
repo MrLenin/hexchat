@@ -296,6 +296,39 @@ gettext
 luajit (for Lua plugin)
 ```
 
+### Building libenchant (Spell Checking)
+
+libenchant is not currently included in gvsbuild. It must be built separately using meson with MSVC to be compatible with the gvsbuild toolchain.
+
+**Repository:** https://github.com/rrthomas/enchant
+
+**Dependencies:** GLib (already provided by gvsbuild)
+
+**Build Steps:**
+```bash
+# Clone enchant
+git clone https://github.com/rrthomas/enchant.git
+cd enchant
+
+# Configure with meson targeting MSVC (use same toolchain as gvsbuild)
+meson setup build --backend=vs2022 \
+  --prefix=c:/gtk-build/gtk4/x64/release \
+  -Dpkg_config_path=c:/gtk-build/gtk4/x64/release/lib/pkgconfig
+
+# Build and install
+meson compile -C build
+meson install -C build
+```
+
+**Windows Spell Check Provider:**
+For using Windows 8+ built-in spell checking, also build the Windows provider:
+- Repository: https://github.com/bstreiff/enchant-windows-provider
+- This provides `enchant_windows.dll` which uses the Windows Spell Check API
+- Place in `lib/enchant/` directory alongside libenchant
+
+**Runtime Loading:**
+HexChat loads enchant dynamically at runtime via `g_module_open()`. If `libenchant.dll` is not found, spell checking is simply disabled - the application still works.
+
 ### Windows SDK Libraries
 
 ```
@@ -384,4 +417,4 @@ Both can coexist without conflict.
 ---
 
 *Document created: 2024-12-14*
-*Last updated: 2024-12-15*
+*Last updated: 2025-12-17*

@@ -151,6 +151,39 @@ static guint signals[LAST_SIGNAL] = {0};
 
 static PangoAttrList *empty_attrs_list = NULL;
 
+#if HC_GTK4
+/*
+ * GTK4: GtkEntry no longer exposes its PangoLayout via gtk_entry_get_layout().
+ * Instead, GtkEntry contains a GtkText child widget, and we can apply
+ * PangoAttrList attributes to it via gtk_text_set_attributes().
+ *
+ * This function finds the GtkText child and applies the spell-check attributes.
+ */
+static GtkText *
+sexy_spell_entry_get_text_widget (SexySpellEntry *entry)
+{
+	GtkWidget *child;
+
+	/* GtkEntry contains GtkText as its first child for text editing */
+	for (child = gtk_widget_get_first_child (GTK_WIDGET (entry));
+	     child != NULL;
+	     child = gtk_widget_get_next_sibling (child))
+	{
+		if (GTK_IS_TEXT (child))
+			return GTK_TEXT (child);
+	}
+	return NULL;
+}
+
+static void
+sexy_spell_entry_apply_attributes (SexySpellEntry *entry, PangoAttrList *attrs)
+{
+	GtkText *text_widget = sexy_spell_entry_get_text_widget (entry);
+	if (text_widget != NULL)
+		gtk_text_set_attributes (text_widget, attrs);
+}
+#endif /* HC_GTK4 */
+
 static gboolean
 spell_accumulator(GSignalInvocationHint *hint, GValue *return_accu, const GValue *handler_return, gpointer data)
 {
@@ -1175,15 +1208,18 @@ sexy_spell_entry_recheck_all(SexySpellEntry *entry)
 		}
 	}
 
+#if HC_GTK4
+	/* GTK4: Apply attributes to the GtkText child widget */
+	sexy_spell_entry_apply_attributes (entry, entry->priv->attr_list);
+#else
 	layout = gtk_entry_get_layout(GTK_ENTRY(entry));
-	/* GTK4: gtk_entry_get_layout returns NULL - skip attribute setting */
 	if (layout != NULL)
 		pango_layout_set_attributes(layout, entry->priv->attr_list);
+#endif
 
 	if (gtk_widget_get_realized (GTK_WIDGET(entry)))
 	{
 #if HC_GTK4
-		/* GTK4: Use gtk_widget_queue_draw instead of gdk_window_invalidate_rect */
 		gtk_widget_queue_draw (widget);
 #else
 		gtk_widget_get_allocation (GTK_WIDGET(entry), &allocation);
@@ -1201,29 +1237,18 @@ static void
 sexy_spell_entry_snapshot(GtkWidget *widget, GtkSnapshot *snapshot)
 {
 	SexySpellEntry *entry = SEXY_SPELL_ENTRY(widget);
-	GtkEntry *gtk_entry = GTK_ENTRY(widget);
-	PangoLayout *layout;
-	gint preedit_length;
 
-	layout = gtk_entry_get_layout(gtk_entry);
+	/* GTK4: Attributes are applied to the GtkText child via gtk_text_set_attributes()
+	 * in sexy_spell_entry_recheck_all(). The GtkText widget handles rendering
+	 * the underlines automatically, so we just need to chain up to parent. */
 
-	/* GTK4: gtk_entry_get_layout returns NULL - spell underlining disabled
-	 * Just chain up to parent class to draw the entry normally */
-	if (layout == NULL)
+	/* During preedit (IME input), temporarily clear attributes to avoid
+	 * underlining uncommitted text */
+	if (gtk_entry_get_text_length (GTK_ENTRY (widget)) !=
+	    (guint16) g_utf8_strlen (hc_entry_get_text (widget), -1))
 	{
-		GTK_WIDGET_CLASS(parent_class)->snapshot (widget, snapshot);
-		return;
-	}
-
-	preedit_length = sexy_spell_entry_get_preedit_length (gtk_entry);
-
-	if (preedit_length == 0)
-	{
-		pango_layout_set_attributes(layout, entry->priv->attr_list);
-	}
-	else
-	{
-		pango_layout_set_attributes(layout, empty_attrs_list);
+		/* Preedit in progress - use empty attributes */
+		sexy_spell_entry_apply_attributes (entry, empty_attrs_list);
 	}
 
 	GTK_WIDGET_CLASS(parent_class)->snapshot (widget, snapshot);
@@ -1491,15 +1516,17 @@ sexy_spell_entry_popup_menu(GtkWidget *widget, SexySpellEntry *entry)
 static void
 entry_strsplit_utf8(GtkEntry *entry, gchar ***set, gint **starts, gint **ends)
 {
-	PangoLayout   *layout;
-	const PangoLogAttr  *log_attrs;
 	const gchar   *text;
 	gint           n_attrs, n_strings, i, j;
-	PangoLogAttr a;
+	PangoLogAttr   a;
+#if HC_GTK4
+	PangoLogAttr  *log_attrs;
+	gint           text_len;
+#else
+	PangoLayout   *layout;
+	const PangoLogAttr  *log_attrs;
 
 	layout = gtk_entry_get_layout(GTK_ENTRY(entry));
-
-	/* GTK4: gtk_entry_get_layout returns NULL - return empty word list */
 	if (layout == NULL)
 	{
 		*set = g_new0(gchar *, 1);
@@ -1507,9 +1534,31 @@ entry_strsplit_utf8(GtkEntry *entry, gchar ***set, gint **starts, gint **ends)
 		*ends = g_new0(gint, 1);
 		return;
 	}
+#endif
 
 	text = hc_entry_get_text(GTK_WIDGET(entry));
+
+#if HC_GTK4
+	/* GTK4: Use pango_get_log_attrs() directly instead of going through a layout.
+	 * This computes word boundaries from the text and language. */
+	text_len = g_utf8_strlen (text, -1);
+	n_attrs = text_len + 1;  /* One attr per character plus one for end */
+
+	if (text_len == 0)
+	{
+		*set = g_new0(gchar *, 1);
+		*starts = g_new0(gint, 1);
+		*ends = g_new0(gint, 1);
+		return;
+	}
+
+	log_attrs = g_new0 (PangoLogAttr, n_attrs);
+	pango_get_log_attrs (text, strlen (text), -1,
+	                     pango_language_get_default (),
+	                     log_attrs, n_attrs);
+#else
 	log_attrs = pango_layout_get_log_attrs_readonly (layout, &n_attrs);
+#endif
 
 	/* Find how many words we have */
 	for (i = 0, n_strings = 0; i < n_attrs; i++)
@@ -1552,6 +1601,10 @@ entry_strsplit_utf8(GtkEntry *entry, gchar ***set, gint **starts, gint **ends)
 			j++;
 		}
 	}
+
+#if HC_GTK4
+	g_free (log_attrs);
+#endif
 }
 
 static void
