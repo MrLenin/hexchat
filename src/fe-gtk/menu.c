@@ -69,8 +69,10 @@
 static GSList *submenu_list;
 
 #if HC_GTK4
-/* Forward declaration for popover closed callback */
+/* Forward declarations for GTK4 */
 static void menu_popover_closed_cb (GtkPopover *popover, gpointer user_data);
+static GMenu *menu_build_gmenu (int away, int toplevel);
+static GSimpleActionGroup *menu_create_action_group (int away, int toplevel);
 #endif
 
 enum
@@ -1609,6 +1611,38 @@ menu_middlemenu (session *sess, GtkWidget *parent, double x, double y)
 	xtext = GTK_XTEXT (xtext_widget);
 	middle_menu_sess = sess;
 
+	/* When the menubar is hidden, show the full main menu as a popup instead
+	 * of the simplified middle-click menu. This gives users full access to
+	 * all menu functions when the menubar is not visible. */
+	if (prefs.hex_gui_hide_menu)
+	{
+		is_away = sess->server ? sess->server->is_away : FALSE;
+
+		/* Build the full main menu */
+		gmenu = menu_build_gmenu (is_away, !sess->gui->is_tab);
+		action_group = menu_create_action_group (is_away, !sess->gui->is_tab);
+
+		/* Create popover from the main menu model */
+		popover = gtk_popover_menu_new_from_model (G_MENU_MODEL (gmenu));
+		gtk_widget_insert_action_group (popover, "menu", G_ACTION_GROUP (action_group));
+		gtk_widget_set_parent (popover, xtext_widget);
+		gtk_popover_set_pointing_to (GTK_POPOVER (popover),
+									 &(GdkRectangle){ xtext->last_click_x, xtext->last_click_y, 1, 1 });
+		gtk_popover_set_has_arrow (GTK_POPOVER (popover), FALSE);
+
+		/* Store action group on popover for cleanup */
+		g_object_set_data (G_OBJECT (popover), "action-group", action_group);
+
+		/* Clean up when popover is closed - deferred to allow actions to complete */
+		g_signal_connect (popover, "closed", G_CALLBACK (menu_popover_closed_cb), NULL);
+
+		gtk_popover_popup (GTK_POPOVER (popover));
+		g_object_unref (gmenu);
+		return;
+	}
+
+	/* Simplified middle-click menu when menubar is visible */
+
 	/* Create action group for this menu */
 	action_group = g_simple_action_group_new ();
 
@@ -1662,12 +1696,9 @@ menu_middlemenu (session *sess, GtkWidget *parent, double x, double y)
 	g_menu_append_section (gmenu, NULL, G_MENU_MODEL (section));
 	g_object_unref (section);
 
-	/* View options section */
+	/* View options section - only show Hide Menubar since menubar is visible */
 	section = g_menu_new ();
-	if (prefs.hex_gui_hide_menu)
-		g_menu_append (section, _("Show Menubar"), "middle.menubar-toggle");
-	else
-		g_menu_append (section, _("Hide Menubar"), "middle.menubar-toggle");
+	g_menu_append (section, _("Hide Menubar"), "middle.menubar-toggle");
 	g_menu_append (section, _("Preferences"), "middle.settings");
 	g_menu_append_section (gmenu, NULL, G_MENU_MODEL (section));
 	g_object_unref (section);
