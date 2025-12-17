@@ -36,6 +36,7 @@
 #include "../common/text.h"
 #include "../common/chanopt.h"
 #include "../common/cfgfiles.h"
+#include "../common/servlist.h"
 
 #include "fe-gtk.h"
 #include "banlist.h"
@@ -1886,6 +1887,173 @@ tab_action_close (GSimpleAction *action, GVariant *parameter, gpointer user_data
 						   chan_get_userdata (tab_menu_ch));
 }
 
+/* Alert toggle actions - use stateful actions with boolean state */
+static void
+tab_action_alert_balloon (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->alert_balloon = new_state ? SET_ON : SET_OFF;
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+static void
+tab_action_alert_beep (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->alert_beep = new_state ? SET_ON : SET_OFF;
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+static void
+tab_action_alert_tray (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->alert_tray = new_state ? SET_ON : SET_OFF;
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+static void
+tab_action_alert_taskbar (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->alert_taskbar = new_state ? SET_ON : SET_OFF;
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+/* Settings toggle actions */
+static void
+tab_action_logging (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		guint8 old_logging = tab_menu_sess->text_logging;
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->text_logging = new_state ? SET_ON : SET_OFF;
+		if (old_logging != tab_menu_sess->text_logging)
+			log_open_or_close (tab_menu_sess);
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+static void
+tab_action_scrollback (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->text_scrollback = new_state ? SET_ON : SET_OFF;
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+static void
+tab_action_strip_colors (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->text_strip = new_state ? SET_ON : SET_OFF;
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+static void
+tab_action_hide_joinpart (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		tab_menu_sess->text_hidejoinpart = new_state ? SET_ON : SET_OFF;
+		chanopt_save (tab_menu_sess);
+		chanopt_save_all (FALSE);
+		g_variant_unref (state);
+	}
+}
+
+/* Autojoin toggle action */
+static void
+tab_action_autojoin (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess && tab_menu_sess->server && tab_menu_sess->server->network)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		servlist_autojoinedit (tab_menu_sess->server->network, tab_menu_sess->channel, new_state);
+		g_variant_unref (state);
+	}
+}
+
+/* Auto-connect toggle action (for server tabs) */
+static void
+tab_action_autoconnect (GSimpleAction *action, GVariant *parameter, gpointer user_data)
+{
+	(void)parameter; (void)user_data;
+	if (tab_menu_sess && tab_menu_sess->server && tab_menu_sess->server->network)
+	{
+		GVariant *state = g_action_get_state (G_ACTION (action));
+		gboolean new_state = !g_variant_get_boolean (state);
+		g_simple_action_set_state (action, g_variant_new_boolean (new_state));
+		if (new_state)
+			((ircnet*)tab_menu_sess->server->network)->flags |= FLAG_AUTO_CONNECT;
+		else
+			((ircnet*)tab_menu_sess->server->network)->flags &= ~FLAG_AUTO_CONNECT;
+		servlist_save ();
+		g_variant_unref (state);
+	}
+}
+
 static void
 tab_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 {
@@ -1895,13 +2063,25 @@ tab_menu_popover_closed_cb (GtkPopover *popover, gpointer user_data)
 		g_object_unref (action_group);
 }
 
+/* Helper to get the effective boolean state for per-channel settings */
+static gboolean
+tab_get_setting_state (guint8 setting, guint global_default)
+{
+	if (setting == SET_DEFAULT)
+		return global_default ? TRUE : FALSE;
+	return (setting == SET_ON);
+}
+
 static void
 mg_create_tabmenu (session *sess, chan *ch, GtkWidget *parent, double x, double y)
 {
 	GMenu *gmenu;
+	GMenu *alerts_submenu;
+	GMenu *settings_submenu;
 	GtkWidget *popover;
 	GtkWidget *parent_widget;
 	GSimpleActionGroup *action_group;
+	GSimpleAction *action;
 	char buf[256];
 
 	tab_menu_sess = sess;
@@ -1922,12 +2102,17 @@ mg_create_tabmenu (session *sess, chan *ch, GtkWidget *parent, double x, double 
 
 	/* Create action group */
 	action_group = g_simple_action_group_new ();
-	static const GActionEntry tab_actions[] = {
-		{ "detach", tab_action_detach, NULL, NULL, NULL },
-		{ "close", tab_action_close, NULL, NULL, NULL },
-	};
-	g_action_map_add_action_entries (G_ACTION_MAP (action_group), tab_actions,
-									 G_N_ELEMENTS (tab_actions), NULL);
+
+	/* Basic actions */
+	action = g_simple_action_new ("detach", NULL);
+	g_signal_connect (action, "activate", G_CALLBACK (tab_action_detach), NULL);
+	g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+	g_object_unref (action);
+
+	action = g_simple_action_new ("close", NULL);
+	g_signal_connect (action, "activate", G_CALLBACK (tab_action_close), NULL);
+	g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+	g_object_unref (action);
 
 	gmenu = g_menu_new ();
 
@@ -1938,6 +2123,116 @@ mg_create_tabmenu (session *sess, chan *ch, GtkWidget *parent, double x, double 
 		g_snprintf (buf, sizeof (buf), "%s", name);
 		g_free (name);
 		g_menu_append (gmenu, buf, NULL);  /* Header item (no action) */
+
+		/* Get default values based on session type */
+		int hex_balloon, hex_beep, hex_tray, hex_flash;
+		switch (sess->type) {
+			case SESS_DIALOG:
+				hex_balloon = prefs.hex_input_balloon_priv;
+				hex_beep = prefs.hex_input_beep_priv;
+				hex_tray = prefs.hex_input_tray_priv;
+				hex_flash = prefs.hex_input_flash_priv;
+				break;
+			default:
+				hex_balloon = prefs.hex_input_balloon_chans;
+				hex_beep = prefs.hex_input_beep_chans;
+				hex_tray = prefs.hex_input_tray_chans;
+				hex_flash = prefs.hex_input_flash_chans;
+		}
+
+		/* Extra Alerts submenu */
+		alerts_submenu = g_menu_new ();
+
+		action = g_simple_action_new_stateful ("alert_balloon", NULL,
+			g_variant_new_boolean (tab_get_setting_state (sess->alert_balloon, hex_balloon)));
+		g_signal_connect (action, "activate", G_CALLBACK (tab_action_alert_balloon), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+		g_menu_append (alerts_submenu, _("Show Notifications"), "tab.alert_balloon");
+
+		action = g_simple_action_new_stateful ("alert_beep", NULL,
+			g_variant_new_boolean (tab_get_setting_state (sess->alert_beep, hex_beep)));
+		g_signal_connect (action, "activate", G_CALLBACK (tab_action_alert_beep), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+		g_menu_append (alerts_submenu, _("Beep on _Message"), "tab.alert_beep");
+
+		action = g_simple_action_new_stateful ("alert_tray", NULL,
+			g_variant_new_boolean (tab_get_setting_state (sess->alert_tray, hex_tray)));
+		g_signal_connect (action, "activate", G_CALLBACK (tab_action_alert_tray), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+		g_menu_append (alerts_submenu, _("Blink Tray _Icon"), "tab.alert_tray");
+
+		action = g_simple_action_new_stateful ("alert_taskbar", NULL,
+			g_variant_new_boolean (tab_get_setting_state (sess->alert_taskbar, hex_flash)));
+		g_signal_connect (action, "activate", G_CALLBACK (tab_action_alert_taskbar), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+		g_menu_append (alerts_submenu, _("Blink Task _Bar"), "tab.alert_taskbar");
+
+		g_menu_append_submenu (gmenu, _("_Extra Alerts"), G_MENU_MODEL (alerts_submenu));
+		g_object_unref (alerts_submenu);
+
+		/* Per-channel Settings submenu */
+		settings_submenu = g_menu_new ();
+
+		action = g_simple_action_new_stateful ("logging", NULL,
+			g_variant_new_boolean (tab_get_setting_state (sess->text_logging, prefs.hex_irc_logging)));
+		g_signal_connect (action, "activate", G_CALLBACK (tab_action_logging), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+		g_menu_append (settings_submenu, _("_Log to Disk"), "tab.logging");
+
+		action = g_simple_action_new_stateful ("scrollback", NULL,
+			g_variant_new_boolean (tab_get_setting_state (sess->text_scrollback, prefs.hex_text_replay)));
+		g_signal_connect (action, "activate", G_CALLBACK (tab_action_scrollback), NULL);
+		g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+		g_object_unref (action);
+		g_menu_append (settings_submenu, _("_Reload Scrollback"), "tab.scrollback");
+
+		if (sess->type == SESS_CHANNEL)
+		{
+			action = g_simple_action_new_stateful ("strip_colors", NULL,
+				g_variant_new_boolean (tab_get_setting_state (sess->text_strip, prefs.hex_text_stripcolor_msg)));
+			g_signal_connect (action, "activate", G_CALLBACK (tab_action_strip_colors), NULL);
+			g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+			g_object_unref (action);
+			g_menu_append (settings_submenu, _("Strip _Colors"), "tab.strip_colors");
+
+			action = g_simple_action_new_stateful ("hide_joinpart", NULL,
+				g_variant_new_boolean (tab_get_setting_state (sess->text_hidejoinpart, prefs.hex_irc_conf_mode)));
+			g_signal_connect (action, "activate", G_CALLBACK (tab_action_hide_joinpart), NULL);
+			g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+			g_object_unref (action);
+			g_menu_append (settings_submenu, _("_Hide Join/Part Messages"), "tab.hide_joinpart");
+		}
+
+		g_menu_append_submenu (gmenu, _("_Settings"), G_MENU_MODEL (settings_submenu));
+		g_object_unref (settings_submenu);
+
+		/* Autojoin for channels */
+		if (sess->type == SESS_CHANNEL && sess->server && sess->server->network)
+		{
+			gboolean is_autojoin = joinlist_is_in_list (sess->server, sess->channel);
+			action = g_simple_action_new_stateful ("autojoin", NULL,
+				g_variant_new_boolean (is_autojoin));
+			g_signal_connect (action, "activate", G_CALLBACK (tab_action_autojoin), NULL);
+			g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+			g_object_unref (action);
+			g_menu_append (gmenu, _("_Autojoin"), "tab.autojoin");
+		}
+		/* Auto-connect for server tabs */
+		else if (sess->type == SESS_SERVER && sess->server && sess->server->network)
+		{
+			gboolean is_autoconnect = (((ircnet*)sess->server->network)->flags & FLAG_AUTO_CONNECT) != 0;
+			action = g_simple_action_new_stateful ("autoconnect", NULL,
+				g_variant_new_boolean (is_autoconnect));
+			g_signal_connect (action, "activate", G_CALLBACK (tab_action_autoconnect), NULL);
+			g_action_map_add_action (G_ACTION_MAP (action_group), G_ACTION (action));
+			g_object_unref (action);
+			g_menu_append (gmenu, _("_Auto-Connect"), "tab.autoconnect");
+		}
 	}
 
 	/* Main actions */

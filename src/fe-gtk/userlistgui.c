@@ -1089,6 +1089,9 @@ userlist_bind_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer u
 	if (!user_item)
 		return;
 
+	/* Store reference to item on the hbox for position lookup during click handling */
+	g_object_set_data (G_OBJECT (hbox), "hc-user-item", user_item);
+
 	/* Find the child widgets by name */
 	for (child = gtk_widget_get_first_child (hbox); child; child = gtk_widget_get_next_sibling (child))
 	{
@@ -1229,16 +1232,120 @@ userlist_selection_list_gtk4 (GtkListView *view, int *num_ret)
 	return nicks;
 }
 
+/*
+ * Helper to find position at coordinates in GtkListView
+ * Returns the position or GTK_INVALID_LIST_POSITION if not found.
+ * Uses gtk_widget_pick to find the widget at coordinates.
+ */
+static guint
+userlist_get_position_at_coords (GtkListView *view, double x, double y)
+{
+	GtkWidget *child;
+	GtkWidget *widget;
+	GtkSelectionModel *sel_model;
+	GListModel *model;
+	guint n_items;
+
+	/* Pick the widget at the given coordinates */
+	child = gtk_widget_pick (GTK_WIDGET (view), x, y, GTK_PICK_DEFAULT);
+	if (!child)
+		return GTK_INVALID_LIST_POSITION;
+
+	/* Walk up from picked widget to find the GtkListItem's row container.
+	 * Each row in GtkListView has a child managed by the factory.
+	 * We need to find which position this corresponds to. */
+	widget = child;
+	while (widget != NULL && widget != GTK_WIDGET (view))
+	{
+		/* Check if this widget's parent is directly the view's internal container.
+		 * The GtkListItem widgets are direct children of the listview's internal layout. */
+		GtkWidget *parent = gtk_widget_get_parent (widget);
+		if (parent != NULL)
+		{
+			GtkWidget *grandparent = gtk_widget_get_parent (parent);
+			if (grandparent == GTK_WIDGET (view) || grandparent == NULL)
+			{
+				/* 'widget' or 'parent' is a row - try to find its index by position comparison */
+				break;
+			}
+		}
+		widget = parent;
+	}
+
+	/* Fallback: Use the allocation/position approach.
+	 * Get the model and iterate to find which row contains the y coordinate. */
+	sel_model = gtk_list_view_get_model (view);
+	if (!sel_model)
+		return GTK_INVALID_LIST_POSITION;
+
+	model = gtk_selection_model_get_model (sel_model);
+	n_items = g_list_model_get_n_items (model);
+
+	/* For a simple list view, we can estimate position based on row height.
+	 * However, this is inexact. A more reliable approach is to use the
+	 * scrolled window adjustment and row height estimation.
+	 *
+	 * For now, use a heuristic: walk through visible items and check bounds.
+	 * Since this is called in response to a click, the clicked item should be visible.
+	 */
+
+	/* Use gtk_widget_pick more aggressively - the child we picked should be
+	 * part of a GtkListItem. Walk up to find data we can use. */
+	child = gtk_widget_pick (GTK_WIDGET (view), x, y, GTK_PICK_DEFAULT);
+	widget = child;
+
+	/* Look for the GtkListItem by checking CSS name */
+	while (widget != NULL && widget != GTK_WIDGET (view))
+	{
+		const char *name = gtk_widget_get_name (widget);
+		/* GtkListView uses an internal row structure. We need to find the position
+		 * by checking the model's items against what's rendered at this position.
+		 * Since GtkListView doesn't expose position directly, use the approach of
+		 * extracting data from the widget and matching it. */
+
+		/* Try getting the user data from the widget's first child (our row box) */
+		GtkWidget *check = widget;
+		while (check && !GTK_IS_BOX (check))
+			check = gtk_widget_get_first_child (check);
+
+		if (GTK_IS_BOX (check))
+		{
+			/* Found our row box - the user data is attached via factory bind */
+			HcUserItem *item = g_object_get_data (G_OBJECT (check), "hc-user-item");
+			if (item && item->user)
+			{
+				/* Found the item - now find its position in the model */
+				for (guint i = 0; i < n_items; i++)
+				{
+					HcUserItem *model_item = g_list_model_get_item (model, i);
+					if (model_item == item)
+					{
+						g_object_unref (model_item);
+						return i;
+					}
+					if (model_item)
+						g_object_unref (model_item);
+				}
+			}
+		}
+		widget = gtk_widget_get_parent (widget);
+	}
+
+	return GTK_INVALID_LIST_POSITION;
+}
+
+/*
+ * Left-click handler for userlist (released signal).
+ * Handles double-click command execution.
+ */
 static void
-userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gpointer userdata)
+userlist_left_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gpointer userdata)
 {
 	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
 	GtkListView *view = GTK_LIST_VIEW (widget);
-	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
+	GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
 	char **nicks;
 	int i;
-	int button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
-	GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
 
 	if (!(state & GDK_CONTROL_MASK) &&
 		n_press == 2 && prefs.hex_gui_ulist_doubleclick[0])
@@ -1255,33 +1362,28 @@ userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gp
 			}
 			g_free (nicks);
 		}
-		return;
 	}
+}
 
-	if (button == 3)
+/*
+ * Right-click handler for userlist.
+ * Selects the clicked item (if clicking on one), then shows context menu.
+ */
+static void
+userlist_right_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gpointer userdata)
+{
+	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+	GtkListView *view = GTK_LIST_VIEW (widget);
+	GtkSelectionModel *sel_model = gtk_list_view_get_model (view);
+	GdkModifierType state = gtk_event_controller_get_current_event_state (GTK_EVENT_CONTROLLER (gesture));
+	char **nicks;
+	int i;
+	guint clicked_pos;
+
+	/* Check for multi-selection (Ctrl held) */
+	if (state & GDK_CONTROL_MASK)
 	{
-		/* do we have a multi-selection? */
-		nicks = userlist_selection_list_gtk4 (view, &i);
-		if (nicks && i > 1)
-		{
-			menu_nickmenu (current_sess, widget, x, y, nicks[0], i);
-			while (i)
-			{
-				i--;
-				g_free (nicks[i]);
-			}
-			g_free (nicks);
-			return;
-		}
-		if (nicks)
-		{
-			g_free (nicks[0]);
-			g_free (nicks);
-		}
-
-		/* For right-click on unselected item, we'd need to figure out which row
-		 * was clicked. GtkListView doesn't have get_path_at_pos like GtkTreeView.
-		 * For now, just show menu for current selection or do nothing. */
+		/* With Ctrl held, add to selection rather than replacing */
 		nicks = userlist_selection_list_gtk4 (view, &i);
 		if (nicks && i > 0)
 		{
@@ -1293,11 +1395,34 @@ userlist_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, gp
 			}
 			g_free (nicks);
 		}
-		else
+		return;
+	}
+
+	/* Find which row was clicked */
+	clicked_pos = userlist_get_position_at_coords (view, x, y);
+
+	if (clicked_pos != GTK_INVALID_LIST_POSITION)
+	{
+		/* Select the clicked item (standard behavior: right-click selects) */
+		gtk_selection_model_select_item (sel_model, clicked_pos, TRUE);
+	}
+
+	/* Now get the selection and show menu */
+	nicks = userlist_selection_list_gtk4 (view, &i);
+	if (nicks && i > 0)
+	{
+		menu_nickmenu (current_sess, widget, x, y, nicks[0], i);
+		while (i)
 		{
-			/* Clear selection if clicking on empty area */
-			gtk_selection_model_unselect_all (sel_model);
+			i--;
+			g_free (nicks[i]);
 		}
+		g_free (nicks);
+	}
+	else if (clicked_pos == GTK_INVALID_LIST_POSITION)
+	{
+		/* Clicked on empty area - clear selection */
+		gtk_selection_model_unselect_all (sel_model);
 	}
 }
 #else /* GTK3 */
@@ -1468,7 +1593,20 @@ userlist_create (GtkWidget *box)
 	mg_setup_userlist_drag_source (view);
 
 	/* Event controllers for click and key events */
-	hc_add_click_gesture (view, G_CALLBACK (userlist_click_cb), NULL, NULL);
+	/* Left-click gesture for double-click handling (use "released" for reliable detection) */
+	{
+		GtkGesture *gesture = gtk_gesture_click_new ();
+		gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 1); /* Left-click only */
+		g_signal_connect (gesture, "released", G_CALLBACK (userlist_left_click_cb), NULL);
+		gtk_widget_add_controller (view, GTK_EVENT_CONTROLLER (gesture));
+	}
+	/* Right-click gesture for context menu (use "pressed" for immediate response) */
+	{
+		GtkGesture *gesture = gtk_gesture_click_new ();
+		gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (gesture), 3); /* Right-click only */
+		g_signal_connect (gesture, "pressed", G_CALLBACK (userlist_right_click_cb), NULL);
+		gtk_widget_add_controller (view, GTK_EVENT_CONTROLLER (gesture));
+	}
 	hc_add_key_controller (view, G_CALLBACK (userlist_key_cb), NULL, NULL);
 
 	hc_scrolled_window_set_child (sw, view);

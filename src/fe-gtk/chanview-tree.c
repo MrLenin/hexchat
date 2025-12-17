@@ -298,7 +298,7 @@ cv_tree_left_click_cb (GtkGestureClick *gesture, int n_press, double x, double y
 }
 
 /*
- * Right-click handler - show context menu for selected item
+ * Right-click handler - select clicked item, then show context menu
  */
 static void
 cv_tree_right_click_cb (GtkGestureClick *gesture, int n_press, double x, double y, chanview *cv)
@@ -306,24 +306,21 @@ cv_tree_right_click_cb (GtkGestureClick *gesture, int n_press, double x, double 
 	GtkWidget *widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
 	GtkListView *view = GTK_LIST_VIEW (widget);
 	GtkSelectionModel *sel_model;
-	GtkBitset *selection;
-	guint selected_pos;
+	guint clicked_pos;
 	GtkTreeListRow *row;
 	HcChanItem *item;
 
 	sel_model = gtk_list_view_get_model (view);
-	selection = gtk_selection_model_get_selection (sel_model);
 
-	if (gtk_bitset_is_empty (selection))
-	{
-		gtk_bitset_unref (selection);
+	/* Find which row was clicked */
+	clicked_pos = cv_tree_get_position_at_coords (view, x, y);
+	if (clicked_pos == GTK_INVALID_LIST_POSITION)
 		return;
-	}
 
-	selected_pos = gtk_bitset_get_nth (selection, 0);
-	gtk_bitset_unref (selection);
+	/* Select the clicked item (standard behavior: right-click selects) */
+	gtk_selection_model_select_item (sel_model, clicked_pos, TRUE);
 
-	row = g_list_model_get_item (G_LIST_MODEL (sel_model), selected_pos);
+	row = g_list_model_get_item (G_LIST_MODEL (sel_model), clicked_pos);
 	if (!row)
 		return;
 
