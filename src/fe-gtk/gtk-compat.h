@@ -1299,19 +1299,42 @@ hc_misc_set_alignment(GtkWidget *widget, float xalign, float yalign)
 
 /*
  * In GTK4, GtkCheckButton no longer inherits from GtkToggleButton.
- * GtkToggleButton still exists as a separate widget, but HexChat's code
- * uses GtkCheckButton widgets with gtk_toggle_button_* API calls.
- * We remap these calls to the GtkCheckButton equivalents.
+ * GtkToggleButton still exists as a separate widget with its own API.
  *
- * Note: The actual GtkToggleButton type still exists in GTK4, so we can't
- * typedef it. Instead, callbacks that take GtkToggleButton* parameters
- * will receive GtkCheckButton* which is compatible at the GtkWidget level.
+ * HexChat uses both:
+ * - GtkToggleButton for tab buttons (chanview-tabs.c) - use native GTK4 API
+ * - GtkCheckButton for checkboxes - needs gtk_check_button_* API in GTK4
+ *
+ * Problem: GTK3 code uses gtk_toggle_button_* on GtkCheckButton (since it
+ * inherits from GtkToggleButton in GTK3). In GTK4, we need to dispatch to
+ * the correct API based on the actual widget type.
+ *
+ * These macros check the widget type at runtime and call the appropriate API.
  */
+static inline gboolean
+hc_toggle_button_get_active_impl (GtkWidget *widget)
+{
+	if (GTK_IS_TOGGLE_BUTTON (widget))
+		return gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (widget));
+	else if (GTK_IS_CHECK_BUTTON (widget))
+		return gtk_check_button_get_active (GTK_CHECK_BUTTON (widget));
+	return FALSE;
+}
+
+static inline void
+hc_toggle_button_set_active_impl (GtkWidget *widget, gboolean active)
+{
+	if (GTK_IS_TOGGLE_BUTTON (widget))
+		gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (widget), active);
+	else if (GTK_IS_CHECK_BUTTON (widget))
+		gtk_check_button_set_active (GTK_CHECK_BUTTON (widget), active);
+}
+
 #define gtk_toggle_button_get_active(button) \
-	gtk_check_button_get_active(GTK_CHECK_BUTTON(button))
+	hc_toggle_button_get_active_impl (GTK_WIDGET (button))
 
 #define gtk_toggle_button_set_active(button, active) \
-	gtk_check_button_set_active(GTK_CHECK_BUTTON(button), active)
+	hc_toggle_button_set_active_impl (GTK_WIDGET (button), (active))
 
 #else /* GTK3 */
 

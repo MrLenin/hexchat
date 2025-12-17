@@ -25,6 +25,9 @@ typedef struct
 	GtkWidget *inner;	/* inner box */
 	GtkWidget *b1;		/* button1 */
 	GtkWidget *b2;		/* button2 */
+#if HC_GTK4
+	guint overflow_check_id;	/* pending idle callback for overflow check */
+#endif
 } tabview;
 
 static void chanview_populate (chanview *cv);
@@ -59,42 +62,60 @@ cv_tabs_sizerequest (GtkWidget *viewport, GtkRequisition *requisition, chanview 
 		requisition->height = 1;
 }
 
+/*
+ * Core logic to check overflow and show/hide scroll buttons.
+ * Called from both size-allocate callback and adjustment changed callback.
+ */
 static void
-cv_tabs_sizealloc (GtkWidget *widget, GtkAllocation *allocation, chanview *cv)
+cv_tabs_check_overflow (chanview *cv)
 {
-	GtkAdjustment *adj;
 	GtkWidget *inner;
 	GtkWidget *viewport;
 	gint viewport_size;
+	gint content_size;
 
 	inner = ((tabview *)cv)->inner;
 	viewport = gtk_widget_get_parent (inner);
 
 	if (cv->vertical)
 	{
-		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
 #if HC_GTK4
-		viewport_size = gtk_widget_get_height (viewport);
+		/* In GTK4, use the viewport's adjustment which tracks content vs visible size.
+		 * upper = total content size, page_size = visible area size */
+		{
+			GtkAdjustment *adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
+			viewport_size = (gint)gtk_adjustment_get_page_size (adj);
+			content_size = (gint)gtk_adjustment_get_upper (adj);
+		}
 #else
 		{
+			GtkAdjustment *adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
 			GdkWindow *parent_win = gtk_widget_get_window (viewport);
 			gdk_window_get_geometry (parent_win, NULL, NULL, NULL, &viewport_size);
+			content_size = (gint)gtk_adjustment_get_upper (adj);
 		}
 #endif
 	} else
 	{
-		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
 #if HC_GTK4
-		viewport_size = gtk_widget_get_width (viewport);
+		/* In GTK4, use the viewport's adjustment which tracks content vs visible size.
+		 * upper = total content size, page_size = visible area size */
+		{
+			GtkAdjustment *adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
+			viewport_size = (gint)gtk_adjustment_get_page_size (adj);
+			content_size = (gint)gtk_adjustment_get_upper (adj);
+		}
 #else
 		{
+			GtkAdjustment *adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
 			GdkWindow *parent_win = gtk_widget_get_window (viewport);
 			gdk_window_get_geometry (parent_win, NULL, NULL, &viewport_size, NULL);
+			content_size = (gint)gtk_adjustment_get_upper (adj);
 		}
 #endif
 	}
 
-	if (gtk_adjustment_get_upper (adj) <= viewport_size)
+	if (content_size <= viewport_size)
 	{
 		hc_widget_hide (((tabview *)cv)->b1);
 		hc_widget_hide (((tabview *)cv)->b2);
@@ -104,6 +125,67 @@ cv_tabs_sizealloc (GtkWidget *widget, GtkAllocation *allocation, chanview *cv)
 		hc_widget_show (((tabview *)cv)->b2);
 	}
 }
+
+#if HC_GTK4
+/*
+ * Idle callback to check overflow after layout has settled.
+ * Returns G_SOURCE_REMOVE to run only once.
+ */
+static gboolean
+cv_tabs_check_overflow_idle (gpointer data)
+{
+	chanview *cv = data;
+	((tabview *)cv)->overflow_check_id = 0;
+	cv_tabs_check_overflow (cv);
+	return G_SOURCE_REMOVE;
+}
+
+/*
+ * Schedule an overflow check to run after the current layout pass.
+ * Multiple calls before the check runs will be coalesced into one.
+ */
+static void
+cv_tabs_schedule_overflow_check (chanview *cv)
+{
+	if (((tabview *)cv)->overflow_check_id == 0)
+	{
+		((tabview *)cv)->overflow_check_id =
+			g_idle_add (cv_tabs_check_overflow_idle, cv);
+	}
+}
+
+/*
+ * Adjustment "changed" callback - fires when content size changes.
+ * Used to detect when tabs are added/removed.
+ */
+static void
+cv_tabs_adj_changed (GtkAdjustment *adj, chanview *cv)
+{
+	(void)adj;
+	cv_tabs_schedule_overflow_check (cv);
+}
+#endif
+
+/*
+ * size-allocate callback to show/hide scroll buttons based on overflow.
+ * GTK3: void callback(GtkWidget*, GtkAllocation*, gpointer)
+ * GTK4: void callback(GtkWidget*, int width, int height, int baseline, gpointer)
+ */
+#if HC_GTK4
+static void
+cv_tabs_sizealloc (GtkWidget *widget, int width, int height, int baseline, chanview *cv)
+{
+	(void)widget; (void)width; (void)height; (void)baseline;
+	cv_tabs_schedule_overflow_check (cv);
+}
+#else
+static void
+cv_tabs_sizealloc (GtkWidget *widget, GtkAllocation *allocation, chanview *cv)
+{
+	(void)widget; (void)allocation;
+	cv_tabs_check_overflow (cv);
+}
+#endif
 
 static gint
 tab_search_offset (GtkWidget *inner, gint start_offset,
@@ -165,7 +247,8 @@ tab_scroll_left_up_clicked (GtkWidget *widget, chanview *cv)
 	{
 		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
 #if HC_GTK4
-		viewport_size = gtk_widget_get_height (viewport);
+		/* In GTK4, use adjustment page_size for visible size */
+		viewport_size = (gint)gtk_adjustment_get_page_size (adj);
 #else
 		{
 			GdkWindow *parent_win = gtk_widget_get_window (viewport);
@@ -176,7 +259,8 @@ tab_scroll_left_up_clicked (GtkWidget *widget, chanview *cv)
 	{
 		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
 #if HC_GTK4
-		viewport_size = gtk_widget_get_width (viewport);
+		/* In GTK4, use adjustment page_size for visible size */
+		viewport_size = (gint)gtk_adjustment_get_page_size (adj);
 #else
 		{
 			GdkWindow *parent_win = gtk_widget_get_window (viewport);
@@ -228,7 +312,8 @@ tab_scroll_right_down_clicked (GtkWidget *widget, chanview *cv)
 	{
 		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
 #if HC_GTK4
-		viewport_size = gtk_widget_get_height (viewport);
+		/* In GTK4, use adjustment page_size for visible size */
+		viewport_size = (gint)gtk_adjustment_get_page_size (adj);
 #else
 		{
 			GdkWindow *parent_win = gtk_widget_get_window (viewport);
@@ -239,7 +324,8 @@ tab_scroll_right_down_clicked (GtkWidget *widget, chanview *cv)
 	{
 		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
 #if HC_GTK4
-		viewport_size = gtk_widget_get_width (viewport);
+		/* In GTK4, use adjustment page_size for visible size */
+		viewport_size = (gint)gtk_adjustment_get_page_size (adj);
 #else
 		{
 			GdkWindow *parent_win = gtk_widget_get_window (viewport);
@@ -397,16 +483,49 @@ cv_tabs_init (chanview *cv)
 	else
 		outer = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
 	((tabview *)cv)->outer = outer;
+#if !HC_GTK4
+	/* GTK3: Connect size_allocate to outer box.
+	 * GTK4: We connect to the scrolledwindow instead (see below). */
 	g_signal_connect (G_OBJECT (outer), "size_allocate",
 							G_CALLBACK (cv_tabs_sizealloc), cv);
+#endif
 /*	hc_container_set_border_width (outer, 2);*/
 	hc_widget_show (outer);
 
 #if HC_GTK4
-	viewport = gtk_viewport_new (NULL, NULL);
-	/* GTK4: No shadow_type for viewport, use CSS */
-	/* GTK4: size_request signal doesn't exist - handled differently */
-	hc_add_scroll_controller (viewport, G_CALLBACK (tab_scroll_cb), cv);
+	{
+		/* GTK4: Wrap viewport in a GtkScrolledWindow with EXTERNAL scroll policy.
+		 * This allows the viewport to be smaller than its child content without
+		 * forcing the window to expand. We use our own scroll buttons, not scrollbars.
+		 *
+		 * In GTK3 this was done via the size_request signal callback (cv_tabs_sizerequest)
+		 * which forced minimal size requests. GTK4 doesn't have that signal. */
+		GtkWidget *scrollw = gtk_scrolled_window_new ();
+		GtkAdjustment *adj;
+
+		gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrollw),
+			cv->vertical ? GTK_POLICY_NEVER : GTK_POLICY_EXTERNAL,
+			cv->vertical ? GTK_POLICY_EXTERNAL : GTK_POLICY_NEVER);
+		/* Disable overlay scrolling since we use external scroll buttons */
+		gtk_scrolled_window_set_overlay_scrolling (GTK_SCROLLED_WINDOW (scrollw), FALSE);
+
+		viewport = gtk_viewport_new (NULL, NULL);
+		gtk_viewport_set_scroll_to_focus (GTK_VIEWPORT (viewport), FALSE);
+		hc_scrolled_window_set_child (scrollw, viewport);
+		hc_add_scroll_controller (scrollw, G_CALLBACK (tab_scroll_cb), cv);
+
+		/* Connect to adjustment "changed" signal to detect when content size changes.
+		 * This fires when tabs are added/removed and the adjustment bounds update. */
+		adj = cv->vertical ?
+			gtk_scrollable_get_vadjustment (GTK_SCROLLABLE (viewport)) :
+			gtk_scrollable_get_hadjustment (GTK_SCROLLABLE (viewport));
+		g_signal_connect (G_OBJECT (adj), "changed",
+								G_CALLBACK (cv_tabs_adj_changed), cv);
+
+		hc_box_pack_start (outer, scrollw, TRUE, TRUE, 0);
+		hc_widget_show (scrollw);
+		hc_widget_show (viewport);
+	}
 #else /* GTK3 */
 	viewport = gtk_viewport_new (0, 0);
 	gtk_viewport_set_shadow_type (GTK_VIEWPORT (viewport), GTK_SHADOW_NONE);
@@ -414,9 +533,9 @@ cv_tabs_init (chanview *cv)
 							G_CALLBACK (cv_tabs_sizerequest), cv);
 	g_signal_connect (G_OBJECT (viewport), "scroll_event",
 							G_CALLBACK (tab_scroll_cb), cv);
-#endif
 	hc_box_pack_start (outer, viewport, TRUE, TRUE, 0);
 	hc_widget_show (viewport);
+#endif
 
 	if (cv->vertical)
 		box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
@@ -425,6 +544,10 @@ cv_tabs_init (chanview *cv)
 	((tabview *)cv)->inner = box;
 #if HC_GTK4
 	gtk_viewport_set_child (GTK_VIEWPORT (viewport), box);
+	/* Connect to inner box size_allocate to detect when tabs are added/removed.
+	 * The adjustment "changed" signal may not fire immediately when content changes. */
+	g_signal_connect (G_OBJECT (box), "size_allocate",
+							G_CALLBACK (cv_tabs_sizealloc), cv);
 #else
 	gtk_container_add (GTK_CONTAINER (viewport), box);
 #endif
@@ -459,6 +582,11 @@ cv_tabs_init (chanview *cv)
 		hc_box_pack_start (outer, ((tabview *)cv)->b1, FALSE, FALSE, 0);
 	}
 
+	/* Start with scroll buttons hidden - cv_tabs_sizealloc will show them if needed.
+	 * In GTK4 widgets are visible by default, so we must explicitly hide them. */
+	hc_widget_hide (((tabview *)cv)->b1);
+	hc_widget_hide (((tabview *)cv)->b2);
+
 	button = gtkutil_button (outer, "window-close", NULL, cv_tabs_xclick_cb,
 									 cv, 0);
 #if HC_GTK4
@@ -479,7 +607,7 @@ cv_tabs_postinit (chanview *cv)
 static void
 tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 {
-	GList *list;
+	GList *list, *head;
 	GtkWidget *child;
 	int i = 0;
 	void *b;
@@ -497,7 +625,7 @@ tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 	/* userdata, passed to mg_tabs_compare() */
 	b = ch->userdata;
 
-	list = hc_container_get_children (box);
+	head = list = hc_container_get_children (box);
 	while (list)
 	{
 		child = list->data;
@@ -507,9 +635,12 @@ tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 
 			if (ch->tag == 0 && cv->cb_compare (a, b) > 0)
 			{
+				/* Insert before this child (at position i).
+				 * The new tab should come before the existing tab. */
 				hc_box_pack_start (box, tab, 0, 0, 0);
-				gtk_box_reorder_child (GTK_BOX (box), tab, ++i);
+				gtk_box_reorder_child (GTK_BOX (box), tab, i);
 				gtk_widget_show (tab);
+				g_list_free (head);
 				return;
 			}
 		}
@@ -517,9 +648,11 @@ tab_add_sorted (chanview *cv, GtkWidget *box, GtkWidget *tab, chan *ch)
 		list = list->next;
 	}
 
-	/* append */
+	g_list_free (head);
+
+	/* append at end */
 	hc_box_pack_start (box, tab, 0, 0, 0);
-	gtk_box_reorder_child (GTK_BOX (box), tab, i);
+	/* No reorder needed - pack_start appends to end */
 	gtk_widget_show (tab);
 }
 
@@ -666,15 +799,33 @@ tab_pressed_cb (GtkToggleButton *tab, chan *ch)
 		cv->cb_focus (cv, ch, ch->tag, ch->userdata);
 }
 
-/* called for keyboard tab toggles only */
+/* called when tab toggle state changes */
 static void
 tab_toggled_cb (GtkToggleButton *tab, chan *ch)
 {
 	if (ignore_toggle)
 		return;
 
-	/* activated a tab via keyboard */
+#if HC_GTK4
+	/* In GTK4, toggle buttons automatically toggle on click.
+	 * We handle all focus logic here instead of in "pressed" signal.
+	 * Only act when the button becomes active (user clicked to select it). */
+	if (gtk_toggle_button_get_active (tab))
+	{
+		tab_pressed_cb (tab, ch);
+	}
+	else
+	{
+		/* User clicked on already-focused tab, trying to deselect it.
+		 * Don't allow - re-activate it to keep it selected. */
+		ignore_toggle = TRUE;
+		gtk_toggle_button_set_active (tab, TRUE);
+		ignore_toggle = FALSE;
+	}
+#else
+	/* GTK3: activated a tab via keyboard */
 	tab_pressed_cb (tab, ch);
+#endif
 }
 
 /*
@@ -735,11 +886,19 @@ cv_tabs_add (chanview *cv, chan *ch, char *name, GtkTreeIter *parent)
 						 	G_CALLBACK (tab_ignore_cb), NULL);
 #endif
 
+#if HC_GTK4
+	/* GTK4: Only connect to "toggled" signal. The toggle button automatically
+	 * toggles on click, and the toggled callback handles all focus logic.
+	 * Connecting to "pressed" would cause double-handling. */
+	g_signal_connect (G_OBJECT (but), "toggled",
+						 	G_CALLBACK (tab_toggled_cb), ch);
+#else
 	g_signal_connect (G_OBJECT (but), "pressed",
 							G_CALLBACK (tab_pressed_cb), ch);
 	/* for keyboard */
 	g_signal_connect (G_OBJECT (but), "toggled",
 						 	G_CALLBACK (tab_toggled_cb), ch);
+#endif
 	g_object_set_data (G_OBJECT (but), "u", ch->userdata);
 
 	tab_add_real (cv, but, ch);
@@ -820,12 +979,257 @@ tab_group_get_cur_page (chanview *cv)
 	return tab_group_for_each_tab (cv, tab_check_focus_cb, 0);
 }
 
+/*
+ * Scroll the viewport to make the specified tab visible.
+ * If the tab is already fully visible, does nothing.
+ */
+static void
+cv_tabs_scroll_to_tab_impl (chanview *cv, GtkWidget *tab)
+{
+	GtkWidget *inner;
+	GtkWidget *viewport;
+	GtkAdjustment *adj;
+	gdouble adj_value, page_size, upper;
+	gdouble tab_start, tab_end;
+#if HC_GTK4
+	graphene_point_t tab_origin;
+	gboolean transform_ok;
+#else
+	GtkAllocation allocation;
+#endif
+
+	if (!tab || !cv)
+		return;
+
+	inner = ((tabview *)cv)->inner;
+	viewport = gtk_widget_get_parent (inner);
+
+	if (!viewport || !GTK_IS_VIEWPORT (viewport))
+		return;
+
+#if HC_GTK4
+	/* In GTK4, use gtk_widget_compute_point to get position relative to inner box.
+	 * gtk_widget_get_allocation returns position relative to parent (family box),
+	 * not relative to the scrollable content area. */
+	transform_ok = gtk_widget_compute_point (tab, inner,
+		&GRAPHENE_POINT_INIT (0, 0), &tab_origin);
+
+	if (!transform_ok)
+		return;
+
+	if (cv->vertical)
+	{
+		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
+		tab_start = tab_origin.y;
+		tab_end = tab_origin.y + gtk_widget_get_height (tab);
+	}
+	else
+	{
+		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
+		tab_start = tab_origin.x;
+		tab_end = tab_origin.x + gtk_widget_get_width (tab);
+	}
+#else
+	/* Get the tab's allocation (position relative to inner box) */
+	gtk_widget_get_allocation (tab, &allocation);
+
+	/* If allocation is not yet valid (width/height is 0), skip */
+	if (allocation.width == 0 || allocation.height == 0)
+		return;
+
+	if (cv->vertical)
+	{
+		adj = gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport));
+		tab_start = allocation.y;
+		tab_end = allocation.y + allocation.height;
+	}
+	else
+	{
+		adj = gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
+		tab_start = allocation.x;
+		tab_end = allocation.x + allocation.width;
+	}
+#endif
+
+	adj_value = gtk_adjustment_get_value (adj);
+	page_size = gtk_adjustment_get_page_size (adj);
+	upper = gtk_adjustment_get_upper (adj);
+
+	/* Calculate target scroll position to center the tab */
+	{
+		gdouble tab_center = (tab_start + tab_end) / 2.0;
+		gdouble viewport_center = adj_value + (page_size / 2.0);
+		gdouble new_value = tab_center - (page_size / 2.0);
+
+		/* Check if tab is already reasonably centered (within 1/4 of viewport from center).
+		 * This allows some tolerance so we don't scroll for minor position differences,
+		 * but will scroll if the tab is too far from center even if fully visible. */
+		{
+			gdouble tolerance = page_size / 4.0;
+			gdouble offset_from_center = tab_center - viewport_center;
+			if (offset_from_center < 0)
+				offset_from_center = -offset_from_center;
+
+			/* If tab is fully visible AND reasonably centered, don't scroll */
+			if (tab_start >= adj_value && tab_end <= adj_value + page_size &&
+			    offset_from_center <= tolerance)
+				return;
+		}
+
+		/* Clamp to valid range */
+		if (new_value < 0)
+			new_value = 0;
+		if (new_value > upper - page_size)
+			new_value = upper - page_size;
+
+		gtk_adjustment_set_value (adj, new_value);
+	}
+}
+
+#if HC_GTK4
+/*
+ * Data structure for deferred scroll-to-tab operation.
+ * We need to defer the scroll until after the tab has been laid out
+ * AND the viewport adjustment has been updated to include the new tab.
+ */
+typedef struct {
+	chanview *cv;
+	GtkWidget *tab;
+	int retry_count;
+} ScrollToTabData;
+
+static gboolean cv_tabs_scroll_to_tab_timeout (gpointer user_data);
+
+static gboolean
+cv_tabs_scroll_to_tab_try (gpointer user_data)
+{
+	ScrollToTabData *data = user_data;
+	GtkWidget *inner;
+	GtkWidget *viewport;
+	GtkAdjustment *adj;
+	gdouble upper;
+	gdouble tab_end;
+	graphene_point_t tab_origin;
+	gboolean transform_ok;
+	gint tab_width, tab_height;
+
+	/* Verify the tab widget is still valid and mapped */
+	if (!data->tab || !GTK_IS_WIDGET (data->tab) ||
+	    gtk_widget_get_parent (data->tab) == NULL)
+	{
+		g_free (data);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Check if tab has valid size yet */
+	tab_width = gtk_widget_get_width (data->tab);
+	tab_height = gtk_widget_get_height (data->tab);
+	if (tab_width == 0 || tab_height == 0)
+	{
+		/* Still not laid out - schedule retry with timeout to allow layout */
+		data->retry_count++;
+		if (data->retry_count < 20)
+		{
+			g_timeout_add (10, cv_tabs_scroll_to_tab_timeout, data);
+			return G_SOURCE_REMOVE;  /* Remove this idle, timeout will retry */
+		}
+
+		/* Give up after too many retries */
+		g_free (data);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Get tab position relative to inner box using coordinate transform */
+	inner = ((tabview *)data->cv)->inner;
+	transform_ok = gtk_widget_compute_point (data->tab, inner,
+		&GRAPHENE_POINT_INIT (0, 0), &tab_origin);
+
+	if (!transform_ok)
+	{
+		/* Transform failed - schedule retry */
+		data->retry_count++;
+		if (data->retry_count < 20)
+		{
+			g_timeout_add (10, cv_tabs_scroll_to_tab_timeout, data);
+			return G_SOURCE_REMOVE;
+		}
+
+		g_free (data);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Check that the adjustment's upper bound includes this tab.
+	 * The adjustment may not have updated yet even if the tab has a size. */
+	viewport = gtk_widget_get_parent (inner);
+	if (viewport && GTK_IS_VIEWPORT (viewport))
+	{
+		adj = data->cv->vertical ?
+			gtk_viewport_get_vadjustment (GTK_VIEWPORT (viewport)) :
+			gtk_viewport_get_hadjustment (GTK_VIEWPORT (viewport));
+		upper = gtk_adjustment_get_upper (adj);
+		tab_end = data->cv->vertical ?
+			(tab_origin.y + tab_height) :
+			(tab_origin.x + tab_width);
+
+		if (tab_end > upper)
+		{
+			/* Adjustment hasn't updated yet - schedule retry */
+			data->retry_count++;
+			if (data->retry_count < 20)
+			{
+				g_timeout_add (10, cv_tabs_scroll_to_tab_timeout, data);
+				return G_SOURCE_REMOVE;
+			}
+
+			/* Give up after too many retries */
+			g_free (data);
+			return G_SOURCE_REMOVE;
+		}
+	}
+
+	cv_tabs_scroll_to_tab_impl (data->cv, data->tab);
+	g_free (data);
+	return G_SOURCE_REMOVE;
+}
+
+/* Timeout callback - just calls the try function */
+static gboolean
+cv_tabs_scroll_to_tab_timeout (gpointer user_data)
+{
+	return cv_tabs_scroll_to_tab_try (user_data);
+}
+#endif
+
+static void
+cv_tabs_scroll_to_tab (chanview *cv, GtkWidget *tab)
+{
+#if HC_GTK4
+	/* In GTK4, defer the scroll until the tab has been laid out.
+	 * New tabs don't have valid allocations until after the layout pass,
+	 * and the viewport adjustment needs to update to include the new tab. */
+	ScrollToTabData *data;
+
+	data = g_new0 (ScrollToTabData, 1);
+	data->cv = cv;
+	data->tab = tab;
+	data->retry_count = 0;
+
+	g_idle_add (cv_tabs_scroll_to_tab_try, data);
+#else
+	cv_tabs_scroll_to_tab_impl (cv, tab);
+#endif
+}
+
 static void
 cv_tabs_focus (chan *ch)
 {
 	if (ch->impl)
-	/* focus the new one (tab_pressed_cb defocuses the old one) */
+	{
+		/* focus the new one (tab_pressed_cb defocuses the old one) */
 		tab_pressed_cb (GTK_TOGGLE_BUTTON (ch->impl), ch);
+		/* scroll to make the focused tab visible */
+		cv_tabs_scroll_to_tab (ch->cv, ch->impl);
+	}
 }
 
 static int
@@ -942,6 +1346,14 @@ cv_tabs_move_family (chan *ch, int delta)
 static void
 cv_tabs_cleanup (chanview *cv)
 {
+#if HC_GTK4
+	/* Cancel any pending overflow check */
+	if (((tabview *)cv)->overflow_check_id != 0)
+	{
+		g_source_remove (((tabview *)cv)->overflow_check_id);
+		((tabview *)cv)->overflow_check_id = 0;
+	}
+#endif
 	if (cv->box)
 		hc_widget_destroy (((tabview *)cv)->outer);
 }

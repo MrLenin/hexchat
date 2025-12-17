@@ -613,7 +613,6 @@ gboolean
 chan_remove (chan *ch, gboolean force)
 {
 	chan *new_ch;
-	int i, num;
 	extern int hexchat_is_quitting;
 
 	if (hexchat_is_quitting)	/* avoid lots of looping on exit */
@@ -631,28 +630,49 @@ chan_remove (chan *ch, gboolean force)
 	/* is it the focused one? */
 	if (ch->cv->focused == ch)
 	{
-		ch->cv->focused = NULL;
+		GtkTreeIter sibling;
+		GtkTreeModel *model = GTK_TREE_MODEL (ch->cv->store);
 
-		/* try to move the focus to some other valid channel */
-		num = cv_find_number_of_chan (ch->cv, ch);
-		/* move to the one left of the closing tab */
-		new_ch = cv_find_chan_by_number (ch->cv, num - 1);
-		if (new_ch && new_ch != ch)
+		new_ch = NULL;
+
+		/* Use iterator-based sibling lookup for reliable results when
+		 * closing tabs rapidly. Position-based lookup can race with
+		 * pending store updates. */
+
+		/* First try the previous sibling (tab to the left) */
+		sibling = ch->iter;
+		if (gtk_tree_model_iter_previous (model, &sibling))
 		{
-			chan_focus (new_ch);	/* this'll will set ch->cv->focused for us too */
-		} else
+			gtk_tree_model_get (model, &sibling, COL_CHAN, &new_ch, -1);
+		}
+
+		/* If no previous sibling, try next sibling (tab to the right) */
+		if (!new_ch)
 		{
-			/* if it fails, try focus from tab 0 and up */
-			for (i = 0; i < ch->cv->size; i++)
+			sibling = ch->iter;
+			if (gtk_tree_model_iter_next (model, &sibling))
 			{
-				new_ch = cv_find_chan_by_number (ch->cv, i);
-				if (new_ch && new_ch != ch)
-				{
-					chan_focus (new_ch);	/* this'll will set ch->cv->focused for us too */
-					break;
-				}
+				gtk_tree_model_get (model, &sibling, COL_CHAN, &new_ch, -1);
 			}
 		}
+
+		/* If no sibling at same level, try parent (for child channels) */
+		if (!new_ch)
+		{
+			GtkTreeIter parent;
+			if (gtk_tree_model_iter_parent (model, &parent, &ch->iter))
+			{
+				gtk_tree_model_get (model, &parent, COL_CHAN, &new_ch, -1);
+			}
+		}
+
+		/* Set focused immediately to prevent race conditions when closing
+		 * tabs in quick succession. The async focus callback will also set
+		 * it, but we need to track the new focus synchronously here. */
+		ch->cv->focused = new_ch;
+
+		if (new_ch)
+			chan_focus (new_ch);
 	}
 
 	ch->cv->size--;
