@@ -54,6 +54,9 @@ The GTK4 build is fully functional with feature parity to GTK3:
 | Toggle Button Dispatch | gtk-compat.h | Runtime type checking for GtkToggleButton vs GtkCheckButton |
 | Tab Close Handling | chanview.c | Iterator-based sibling lookup for reliable rapid close |
 | Channel List Menu | chanlist.c | Join, copy, autojoin actions with deferred cleanup |
+| Window Minimum Width | maingui.c | Dynamic sizing based on topic bar buttons and panes |
+| Keyboard Shortcuts | menu.c, fkeys.c | Menu accelerators via GtkShortcutController |
+| Spell Check Underlines | sexy-spell-entry.c | GtkText attributes for misspelled word highlighting |
 
 #### Context Menu Details
 
@@ -209,9 +212,9 @@ The following have been fixed during the migration:
 12. **Toggle button types** - Runtime dispatch between GtkToggleButton and GtkCheckButton
 13. **Tab close handling** - Iterator-based sibling lookup prevents race conditions
 14. **Popover menu callbacks** - Action callbacks and detach behavior fixed
-
-### Spell Checking
-`gtk_entry_get_layout()` returns NULL in GTK4, so spell-check underline positioning may not work correctly. The spell check popup menu itself works.
+15. **Window minimum width** - Dynamic calculation based on topic bar buttons and visible panes
+16. **Keyboard shortcuts** - Menu accelerators working via GtkShortcutController
+17. **Spell check underlines** - Implemented via GtkText attributes (PangoAttrUnderlineColor)
 
 ---
 
@@ -263,12 +266,14 @@ The following have been fixed during the migration:
 12. ✅ **Toggle Button Types** - Runtime dispatch for GtkToggleButton vs GtkCheckButton
 13. ✅ **Tab Close Handling** - Reliable focus transfer when rapidly closing tabs
 14. ✅ **Channel List Menu** - Context menu with join, copy, autojoin actions
+15. ✅ **Window Minimum Width** - Dynamic sizing prevents content from being pushed off-screen
+16. ✅ **Keyboard Shortcuts** - Menu accelerators working via GtkShortcutController
+17. ✅ **Spell Check Underlines** - GtkText attributes for misspelled word highlighting
 
 ### Remaining Work (Nice-to-Have)
-1. **Spell Check Layout** - Alternative approach for underlines (spell check menu works)
-2. **DND Improvements** - File drops to channels (userlist drops work)
-3. **Performance Testing** - Compare GTK3 vs GTK4
-4. **GTK3 Regression Test** - Deprioritized; GTK4 is the primary target
+1. **DND Improvements** - File drops to channels (userlist drops work)
+2. **Performance Testing** - Compare GTK3 vs GTK4
+3. **GTK3 Regression Test** - Deprioritized; GTK4 is the primary target
 
 ---
 
