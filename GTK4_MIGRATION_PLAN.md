@@ -94,6 +94,41 @@ The GTK4 build is fully functional with feature parity to GTK3:
 |---------|---------------|---------------|--------|
 | DND - File Drops to Channel | Drag file to xtext, DCC to dialog partner | Only works for dialog sessions; channel drops do nothing | Must use userlist for channel DCC |
 | Drag Visual Feedback | Custom drag image during layout swap | Default GTK4 drag appearance | Cosmetic only |
+| Tab Bar Vertical Height | Configurable via CSS/theming | GTK4 GtkGrid enforces minimum row heights | Tabs may be slightly taller than GTK3; "Smaller text" setting works but doesn't reduce height |
+
+### ❌ NOT IMPLEMENTED (Stubbed out - no functionality)
+
+| Feature | GTK3 Behavior | GTK4 Status | Implementation Path |
+|---------|---------------|-------------|---------------------|
+| System Tray Icon | GtkStatusIcon shows tray icon with tooltip, flash on activity, context menu | Completely stubbed - all functions are no-ops | Requires platform-specific implementation: libayatana-appindicator on Linux, Windows Shell_NotifyIcon API, or third-party library |
+
+#### System Tray Details
+
+The system tray functionality (`plugin-tray.c`) is completely disabled. `GtkStatusIcon` was deprecated in GTK 3.14 and removed in GTK4.
+
+**Stubbed functions:**
+- `fe_tray_set_tooltip()` - Set tray icon tooltip text
+- `fe_tray_set_flash()` - Flash between two icons on activity
+- `fe_tray_set_icon()` - Set tray icon (normal, message, highlight, file offer)
+- `fe_tray_set_file()` - Set custom tray icon from file
+- `tray_toggle_visibility()` - Show/hide main window from tray
+- `tray_apply_setup()` - Apply tray preferences
+
+**Related settings (currently non-functional):**
+- `gui_tray` - Enable system tray icon
+- `gui_tray_away` - Blink on away status
+- `gui_tray_blink` - Blink on events
+- `gui_tray_close` - Close to tray instead of quit
+- `gui_tray_minimize` - Minimize to tray
+- `gui_tray_quiet` - Don't flash on channel messages
+- `input_tray_hilight` - Flash on highlight
+- `input_tray_priv` - Flash on private message
+
+**Implementation options:**
+1. **libayatana-appindicator** (Linux) - Modern replacement for GtkStatusIcon, supports Ubuntu/GNOME/KDE
+2. **GtkApplication status** - Limited, may work with some desktop environments
+3. **Platform-native APIs** - Windows: Shell_NotifyIcon; macOS: NSStatusItem
+4. **Third-party library** - libappindicator, StatusNotifier D-Bus protocol
 
 ---
 
@@ -271,9 +306,11 @@ The following have been fixed during the migration:
 17. ✅ **Spell Check Underlines** - GtkText attributes for misspelled word highlighting
 
 ### Remaining Work (Nice-to-Have)
-1. **DND Improvements** - File drops to channels (userlist drops work)
-2. **Performance Testing** - Compare GTK3 vs GTK4
-3. **GTK3 Regression Test** - Deprioritized; GTK4 is the primary target
+1. **System Tray Icon** - Implement using platform-native APIs (see "NOT IMPLEMENTED" section above)
+2. **Tab Bar Height** - Investigate GTK4 GtkGrid minimum height constraints
+3. **DND Improvements** - File drops to channels (userlist drops work)
+4. **Performance Testing** - Compare GTK3 vs GTK4
+5. **GTK3 Regression Test** - Deprioritized; GTK4 is the primary target
 
 ---
 
