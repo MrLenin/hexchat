@@ -2684,7 +2684,10 @@ mg_create_flagbutton (char *tip, GtkWidget *box, char *face)
 	gtk_label_set_markup (GTK_LABEL(lbl), label_markup);
 
 	btn = gtk_toggle_button_new ();
-#if !HC_GTK4
+#if HC_GTK4
+	/* GTK4: Add CSS class for compact styling */
+	gtk_widget_add_css_class (btn, "hexchat-modebutton");
+#else
 	/* GTK3: Allow shrinking below natural height */
 	gtk_widget_set_size_request (btn, -1, 0);
 #endif
@@ -2760,7 +2763,13 @@ mg_create_chanmodebuttons (session_gui *gui, GtkWidget *box)
 	gui->key_entry = gtk_entry_new ();
 	gtk_widget_set_name (gui->key_entry, "hexchat-inputbox");
 	gtk_entry_set_max_length (GTK_ENTRY (gui->key_entry), 23);
-	gtk_widget_set_size_request (gui->key_entry, 115, -1);
+#if HC_GTK4
+	gtk_editable_set_width_chars (GTK_EDITABLE (gui->key_entry), 8);
+	gtk_editable_set_max_width_chars (GTK_EDITABLE (gui->key_entry), 12);
+	gtk_widget_set_hexpand (gui->key_entry, FALSE);
+#else
+	gtk_widget_set_size_request (gui->key_entry, 90, -1);
+#endif
 	hc_box_pack_start (box, gui->key_entry, 0, 0, 0);
 	g_signal_connect (G_OBJECT (gui->key_entry), "activate",
 							G_CALLBACK (mg_key_entry_cb), NULL);
@@ -2773,7 +2782,13 @@ mg_create_chanmodebuttons (session_gui *gui, GtkWidget *box)
 	gui->limit_entry = gtk_entry_new ();
 	gtk_widget_set_name (gui->limit_entry, "hexchat-inputbox");
 	gtk_entry_set_max_length (GTK_ENTRY (gui->limit_entry), 10);
-	gtk_widget_set_size_request (gui->limit_entry, 30, -1);
+#if HC_GTK4
+	gtk_editable_set_width_chars (GTK_EDITABLE (gui->limit_entry), 4);
+	gtk_editable_set_max_width_chars (GTK_EDITABLE (gui->limit_entry), 5);
+	gtk_widget_set_hexpand (gui->limit_entry, FALSE);
+#else
+	gtk_widget_set_size_request (gui->limit_entry, 40, -1);
+#endif
 	hc_box_pack_start (box, gui->limit_entry, 0, 0, 0);
 	g_signal_connect (G_OBJECT (gui->limit_entry), "activate",
 							G_CALLBACK (mg_limit_entry_cb), NULL);

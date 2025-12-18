@@ -549,7 +549,12 @@ fe_init (void)
 				/* Ensure paned handles don't take excess space */
 				"paned > separator { min-width: 1px; min-height: 1px; } "
 				/* GtkStack (used as page container) styling */
-				"stack { padding: 0; margin: 0; }");
+				"stack { padding: 0; margin: 0; } "
+				/* Mode buttons in topic bar - reduce horizontal padding */
+				".hexchat-modebutton { "
+				"  padding-left: 4px; "
+				"  padding-right: 4px; "
+				"}");
 			gtk_style_context_add_provider_for_display (
 				gdk_display_get_default (),
 				GTK_STYLE_PROVIDER (layout_css),
