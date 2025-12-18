@@ -356,6 +356,12 @@ gtkutil_str_enter (GtkWidget *entry, GtkWidget *dialog)
 	gtk_dialog_response (GTK_DIALOG (dialog), GTK_RESPONSE_ACCEPT);
 }
 
+static void
+gtkutil_str_cancel (GtkWidget *button, GtkWidget *dialog)
+{
+	gtk_dialog_response (GTK_DIALOG (dialog), GTK_RESPONSE_REJECT);
+}
+
 void
 fe_get_str (char *msg, char *def, void *callback, void *userdata)
 {
@@ -363,15 +369,24 @@ fe_get_str (char *msg, char *def, void *callback, void *userdata)
 	GtkWidget *entry;
 	GtkWidget *hbox;
 	GtkWidget *label;
+	GtkWidget *content_area;
+	GtkWidget *button_box;
+	GtkWidget *button;
 	extern GtkWidget *parent_window;
 
-	dialog = gtk_dialog_new_with_buttons (msg, NULL, 0,
-										_("_Cancel"), GTK_RESPONSE_REJECT,
-										_("_OK"), GTK_RESPONSE_ACCEPT,
-										NULL);
-
+	dialog = gtk_dialog_new ();
+	gtk_window_set_title (GTK_WINDOW (dialog), msg);
 	gtk_window_set_transient_for (GTK_WINDOW (dialog), GTK_WINDOW (parent_window));
-	gtk_box_set_homogeneous (GTK_BOX (gtk_dialog_get_content_area (GTK_DIALOG (dialog))), TRUE);
+	gtk_window_set_modal (GTK_WINDOW (dialog), FALSE);
+
+	content_area = gtk_dialog_get_content_area (GTK_DIALOG (dialog));
+	gtk_box_set_spacing (GTK_BOX (content_area), 12);
+
+	/* Add margins to the content area */
+	gtk_widget_set_margin_start (content_area, 12);
+	gtk_widget_set_margin_end (content_area, 12);
+	gtk_widget_set_margin_top (content_area, 12);
+	gtk_widget_set_margin_bottom (content_area, 12);
 
 	if (userdata == (void *)1)	/* nick box is usually on the very bottom, make it centered */
 	{
@@ -382,24 +397,41 @@ fe_get_str (char *msg, char *def, void *callback, void *userdata)
 		hc_window_set_position (dialog, GTK_WIN_POS_MOUSE);
 	}
 
-	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	/* Input row: label + entry */
+	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
 
 	g_object_set_data (G_OBJECT (dialog), "cb", callback);
 	g_object_set_data (G_OBJECT (dialog), "ud", userdata);
 
+	label = gtk_label_new (msg);
+	hc_box_pack_start (hbox, label, 0, 0, 0);
+
 	entry = gtk_entry_new ();
+	gtk_widget_set_hexpand (entry, TRUE);
 	g_signal_connect (G_OBJECT (entry), "activate",
 						 	G_CALLBACK (gtkutil_str_enter), dialog);
 	hc_entry_set_text (entry, def);
-	hc_box_pack_end (hbox, entry, 0, 0, 0);
+	hc_box_pack_start (hbox, entry, 0, 0, 0);
 
-	label = gtk_label_new (msg);
-	hc_box_pack_end (hbox, label, 0, 0, 0);
+	hc_box_add (content_area, hbox);
 
+	/* Button row */
+	button_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+	gtk_widget_set_halign (button_box, GTK_ALIGN_END);
+
+	button = gtk_button_new_with_mnemonic (_("_Cancel"));
+	g_signal_connect (G_OBJECT (button), "clicked",
+					  G_CALLBACK (gtkutil_str_cancel), dialog);
+	hc_box_pack_start (button_box, button, 0, 0, 0);
+
+	button = gtk_button_new_with_mnemonic (_("_OK"));
+	g_signal_connect (G_OBJECT (button), "clicked",
+					  G_CALLBACK (gtkutil_str_enter), dialog);
+	hc_box_pack_start (button_box, button, 0, 0, 0);
+
+	hc_box_add (content_area, button_box);
 	g_signal_connect (G_OBJECT (dialog), "response",
 						   G_CALLBACK (gtkutil_get_str_response), entry);
-
-	hc_box_add (gtk_dialog_get_content_area (GTK_DIALOG (dialog)), hbox);
 
 	hc_widget_show_all (dialog);
 }
