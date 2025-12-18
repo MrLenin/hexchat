@@ -1,8 +1,8 @@
 project('hexchat', 'c',
   version: '2.16.2',
-  meson_version: '>= 0.47.0',
+  meson_version: '>= 0.56.0',
   default_options: [
-    'c_std=gnu89',
+    'c_std=gnu11',
     'buildtype=debugoptimized',
     'warning_level=1',
   ]
@@ -24,7 +24,7 @@ global_deps = []
 if cc.get_id() == 'msvc'
   libssl_dep = cc.find_library('libssl')
 else
-  libssl_dep = dependency('openssl', version: '>= 0.9.8',
+  libssl_dep = dependency('openssl', version: '>= 3.0.0',
                           required: get_option('tls'))
 endif
 
@@ -67,15 +67,6 @@ if libssl_dep.found()
   )
   config_h.set('HAVE_SSL_CTX_GET_SSL_METHOD',
     cc.has_function('SSL_CTX_get_ssl_method', dependencies: libssl_dep)
-  )
-  config_h.set('HAVE_DH_SET0_PQG',
-    cc.has_function('DH_set0_pqg', dependencies: libssl_dep)
-  )
-  config_h.set('HAVE_DH_GET0_KEY',
-    cc.has_function('DH_get0_key', dependencies: libssl_dep)
-  )
-  config_h.set('HAVE_DH_SET0_KEY',
-    cc.has_function('DH_set0_key', dependencies: libssl_dep)
   )
   config_h.set('HAVE_ERR_REMOVE_THREAD_STATE',
     cc.has_function('ERR_remove_thread_state', dependencies: libssl_dep)

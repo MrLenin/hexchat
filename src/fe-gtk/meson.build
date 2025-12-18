@@ -69,7 +69,7 @@ endif
 iso_codes = dependency('iso-codes', required: false)
 if iso_codes.found()
   hexchat_gtk_sources += 'sexy-iso-codes.c'
-  iso_codes_prefix = iso_codes.get_pkgconfig_variable('prefix')
+  iso_codes_prefix = iso_codes.get_variable(pkgconfig: 'prefix')
   hexchat_gtk_cflags += '-DISO_CODES_PREFIX="@0@"'.format(iso_codes_prefix)
   hexchat_gtk_cflags += '-DISO_CODES_LOCALEDIR="@0@"'.format(
                         join_paths(iso_codes_prefix, 'share/locale'))
@@ -98,5 +98,5 @@ executable('hexchat',
   link_args: hexchat_gtk_ldflags,
   pie: true,
   install: true,
-  gui_app: true,
+  win_subsystem: 'windows',
 )
