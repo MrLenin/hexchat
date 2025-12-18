@@ -1420,10 +1420,11 @@ setup_color_button_set_color (GtkWidget *button, GdkRGBA *col)
 {
 	GtkCssProvider *provider;
 	GtkStyleContext *context;
-	char css[128];
+	char css[192];
 
 	g_snprintf (css, sizeof (css),
-		"button { background-color: rgba(%d, %d, %d, %g); background-image: none; }",
+		"button { background-color: rgba(%d, %d, %d, %g); background-image: none; "
+		"min-width: 0; min-height: 0; padding: 4px 6px; }",
 		(int)(col->red * 255), (int)(col->green * 255), (int)(col->blue * 255), col->alpha);
 
 	provider = gtk_css_provider_new ();
