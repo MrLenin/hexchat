@@ -248,8 +248,14 @@ fe_set_tab_color (struct session *sess, tabcolor col)
 static void
 mg_set_myself_away (session_gui *gui, gboolean away)
 {
+#if HC_GTK4
+	GtkWidget *label = gtk_button_get_child (GTK_BUTTON (gui->nick_label));
+	if (label && GTK_IS_LABEL (label))
+		gtk_label_set_attributes (GTK_LABEL (label), away ? away_list : NULL);
+#else
 	gtk_label_set_attributes (GTK_LABEL (gtk_bin_get_child (GTK_BIN (gui->nick_label))),
 									  away ? away_list : NULL);
+#endif
 }
 
 /* change the little icon to the left of your nickname */

@@ -1363,7 +1363,13 @@ cv_tabs_cleanup (chanview *cv)
 static void
 cv_tabs_set_color (chan *ch, PangoAttrList *list)
 {
+#if HC_GTK4
+	GtkWidget *child = gtk_button_get_child (GTK_BUTTON (ch->impl));
+	if (child && GTK_IS_LABEL (child))
+		gtk_label_set_attributes (GTK_LABEL (child), list);
+#else
 	gtk_label_set_attributes (GTK_LABEL (gtk_bin_get_child (GTK_BIN (ch->impl))), list);
+#endif
 }
 
 static void
@@ -1371,8 +1377,15 @@ cv_tabs_rename (chan *ch, char *name)
 {
 	PangoAttrList *attr;
 	GtkWidget *tab = ch->impl;
+	GtkWidget *label;
 
-	attr = gtk_label_get_attributes (GTK_LABEL (gtk_bin_get_child (GTK_BIN (tab))));
+#if HC_GTK4
+	label = gtk_button_get_child (GTK_BUTTON (tab));
+#else
+	label = gtk_bin_get_child (GTK_BIN (tab));
+#endif
+
+	attr = (label && GTK_IS_LABEL (label)) ? gtk_label_get_attributes (GTK_LABEL (label)) : NULL;
 	if (attr)
 		pango_attr_list_ref (attr);
 
@@ -1381,7 +1394,13 @@ cv_tabs_rename (chan *ch, char *name)
 
 	if (attr)
 	{
+#if HC_GTK4
+		label = gtk_button_get_child (GTK_BUTTON (tab));
+		if (label && GTK_IS_LABEL (label))
+			gtk_label_set_attributes (GTK_LABEL (label), attr);
+#else
 		gtk_label_set_attributes (GTK_LABEL (gtk_bin_get_child (GTK_BIN (tab))), attr);
+#endif
 		pango_attr_list_unref (attr);
 	}
 }

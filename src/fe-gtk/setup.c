@@ -1497,7 +1497,15 @@ setup_create_color_button (GtkWidget *table, int num, int row, int col)
 						/* 12345678901 23456789 01  23456789 */
 		sprintf (buf, "<span size=\"x-small\">%d</span>", num);
 	but = gtk_button_new_with_label (" ");
+#if HC_GTK4
+	{
+		GtkWidget *label = gtk_button_get_child (GTK_BUTTON (but));
+		if (label && GTK_IS_LABEL (label))
+			gtk_label_set_markup (GTK_LABEL (label), buf);
+	}
+#else
 	gtk_label_set_markup (GTK_LABEL (gtk_bin_get_child (GTK_BIN (but))), buf);
+#endif
 	/* win32 build uses this to turn off themeing */
 	g_object_set_data (G_OBJECT (but), "hexchat-color", (gpointer)1);
 	gtk_grid_attach (GTK_GRID (table), but, col, row, 1, 1);
