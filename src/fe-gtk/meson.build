@@ -52,9 +52,9 @@ tray_inc = []
 if host_machine.system() == 'windows'
   hexchat_gtk_sources += 'notifications/notification-windows.c'
 
-  # System tray support using dmikushin/tray library
-  hexchat_gtk_sources += '../../external/tray/tray_windows.c'
-  tray_inc = include_directories('../../external/tray')
+  # System tray support using LizardByte/tray library
+  hexchat_gtk_sources += '../../external/tray/src/tray_windows.c'
+  tray_inc = include_directories('../../external/tray/src')
 
   # TODO: mingw doesn't have these headers or libs
   # add_languages('cpp')

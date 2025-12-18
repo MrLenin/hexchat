@@ -16,7 +16,7 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-/* System tray support for GTK4 using dmikushin/tray library
+/* System tray support for GTK4 using LizardByte/tray library
  * Windows implementation - Linux and macOS to be added later
  */
 
@@ -102,7 +102,7 @@ static int was_maximized = 0;
 static int was_fullscreen = 0;
 
 /* Menu items */
-static struct tray_menu_item menu_items[10];
+static struct tray_menu menu_items[10];
 
 static hexchat_plugin *ph;
 
@@ -217,7 +217,7 @@ tray_stop_flash (void)
 
 	if (tray_initialized)
 	{
-		tray_instance.icon_filepath = icon_path_normal;
+		tray_instance.icon = icon_path_normal;
 		tray_update (&tray_instance);
 
 		nets = tray_count_networks ();
@@ -261,18 +261,18 @@ tray_flash_timeout (gpointer data)
 	if (custom_icon1_path)
 	{
 		if (flash_state)
-			tray_instance.icon_filepath = custom_icon1_path;
+			tray_instance.icon = custom_icon1_path;
 		else if (custom_icon2_path)
-			tray_instance.icon_filepath = custom_icon2_path;
+			tray_instance.icon = custom_icon2_path;
 		else
-			tray_instance.icon_filepath = icon_path_normal;
+			tray_instance.icon = icon_path_normal;
 	}
 	else
 	{
 		if (flash_state && current_flash_icon)
-			tray_instance.icon_filepath = current_flash_icon;
+			tray_instance.icon = current_flash_icon;
 		else
-			tray_instance.icon_filepath = icon_path_normal;
+			tray_instance.icon = icon_path_normal;
 	}
 
 	tray_update (&tray_instance);
@@ -297,7 +297,7 @@ tray_set_flash (const char *icon_path)
 	tray_stop_flash ();
 
 	current_flash_icon = icon_path;
-	tray_instance.icon_filepath = icon_path;
+	tray_instance.icon = icon_path;
 	tray_update (&tray_instance);
 
 	if (prefs.hex_gui_tray_blink)
@@ -321,7 +321,7 @@ fe_tray_set_flash (const char *filename1, const char *filename2, int tout)
 	if (filename2)
 		custom_icon2_path = g_strdup (filename2);
 
-	tray_instance.icon_filepath = custom_icon1_path;
+	tray_instance.icon = custom_icon1_path;
 	tray_update (&tray_instance);
 
 	flash_tag = g_timeout_add (tout, tray_flash_timeout, NULL);
@@ -366,7 +366,7 @@ fe_tray_set_file (const char *filename)
 	if (filename)
 	{
 		custom_icon1_path = g_strdup (filename);
-		tray_instance.icon_filepath = custom_icon1_path;
+		tray_instance.icon = custom_icon1_path;
 		tray_update (&tray_instance);
 		tray_status = TS_CUSTOM;
 	}
@@ -402,13 +402,13 @@ tray_find_away_status (void)
 
 /* Menu callbacks */
 static void
-tray_menu_restore_cb (struct tray_menu_item *item)
+tray_menu_restore_cb (struct tray_menu *item)
 {
 	tray_toggle_visibility (FALSE);
 }
 
 static void
-tray_menu_away_cb (struct tray_menu_item *item)
+tray_menu_away_cb (struct tray_menu *item)
 {
 	GSList *list;
 	server *serv;
@@ -422,7 +422,7 @@ tray_menu_away_cb (struct tray_menu_item *item)
 }
 
 static void
-tray_menu_back_cb (struct tray_menu_item *item)
+tray_menu_back_cb (struct tray_menu *item)
 {
 	GSList *list;
 	server *serv;
@@ -436,23 +436,16 @@ tray_menu_back_cb (struct tray_menu_item *item)
 }
 
 static void
-tray_menu_prefs_cb (struct tray_menu_item *item)
+tray_menu_prefs_cb (struct tray_menu *item)
 {
 	extern void setup_open (void);
 	setup_open ();
 }
 
 static void
-tray_menu_quit_cb (struct tray_menu_item *item)
+tray_menu_quit_cb (struct tray_menu *item)
 {
 	mg_open_quit_dialog (FALSE);
-}
-
-/* Left-click callback */
-static void
-tray_click_cb (struct tray *tray)
-{
-	tray_toggle_visibility (FALSE);
 }
 
 static void
@@ -586,11 +579,14 @@ tray_init_impl (void)
 	/* Build menu */
 	tray_build_menu ();
 
-	/* Initialize tray instance */
+	/* Initialize tray instance
+	 * Note: Both left and right clicks show the context menu.
+	 * The "Restore/Hide Window" menu item provides toggle functionality.
+	 * This is consistent with Linux AppIndicator behavior.
+	 */
 	memset (&tray_instance, 0, sizeof (tray_instance));
-	tray_instance.icon_filepath = icon_path_normal;
+	tray_instance.icon = icon_path_normal;
 	tray_instance.tooltip = DISPLAY_NAME;
-	tray_instance.cb = tray_click_cb;
 	tray_instance.menu = menu_items;
 
 	if (tray_init (&tray_instance) < 0)

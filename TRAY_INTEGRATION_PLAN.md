@@ -1,7 +1,7 @@
-# System Tray Integration Plan: dmikushin/tray Library
+# System Tray Integration Plan: LizardByte/tray Library
 
 ## Overview
-Restore system tray functionality to HexChat GTK4 by integrating the [dmikushin/tray](https://github.com/dmikushin/tray) library. This replaces the deprecated GtkStatusIcon that was removed in GTK4.
+Restore system tray functionality to HexChat GTK4 by integrating the [LizardByte/tray](https://github.com/LizardByte/tray) library. This replaces the deprecated GtkStatusIcon that was removed in GTK4.
 
 **Current Status:** ✅ Windows implementation complete
 **Integration Method:** Git submodule
@@ -11,11 +11,35 @@ Restore system tray functionality to HexChat GTK4 by integrating the [dmikushin/
 
 ---
 
+## Library Choice: LizardByte/tray vs dmikushin/tray
+
+Initially we used [dmikushin/tray](https://github.com/dmikushin/tray), but switched to [LizardByte/tray](https://github.com/LizardByte/tray) for better cross-platform support:
+
+| Feature | dmikushin/tray | LizardByte/tray |
+|---------|----------------|-----------------|
+| Windows backend | Shell_NotifyIconW | Shell_NotifyIconW (same) |
+| Linux backend | Qt6 (C++) | libayatana-appindicator (C) |
+| macOS backend | Cocoa/AppKit | Cocoa/AppKit (same) |
+| Language | C with C++ on Linux | C99 compatible |
+| GTK compatibility | Qt6 conflicts with GTK | Native GTK integration |
+
+LizardByte/tray is a fork that replaces the Qt6 Linux backend with libayatana-appindicator, making it more suitable for GTK applications. LizardByte hopes to eventually merge their changes back into dmikushin/tray.
+
+### API Differences
+- Source files are in `src/` subdirectory
+- Uses `struct tray_menu` instead of `struct tray_menu_item`
+- Uses `icon` field instead of `icon_filepath`
+- Icons loaded on demand with caching
+- Both left and right clicks show the context menu (no separate click callback)
+- This menu-only behavior is consistent with Linux AppIndicator limitations
+
+---
+
 ## Implementation Status
 
 ### ✅ Phase 1: Add Library as Git Submodule - COMPLETE
 
-- Added `external/tray` submodule pointing to https://github.com/dmikushin/tray.git
+- Added `external/tray` submodule pointing to https://github.com/LizardByte/tray.git
 - Created `.gitmodules` entry
 
 ### ✅ Phase 2: Create Windows .ico Icon Files - COMPLETE
@@ -35,13 +59,14 @@ Icon specifications:
 
 #### Visual Studio Project (`src/fe-gtk/fe-gtk.vcxproj`)
 - Added `TRAY_EXPORTS` to preprocessor definitions
-- Added `..\..\external\tray` to include directories
-- Added `tray_windows.c` to ClCompile items
-- Added `tray.h` to ClInclude items
+- Added `..\..\external\tray\src` to include directories
+- Added `src/tray_windows.c` to ClCompile items
+- Added `src/tray.h` to ClInclude items
 
 #### Meson Build (`src/fe-gtk/meson.build`)
 - Added conditional Windows tray source compilation
 - Added tray include directory for Windows builds
+- Source path: `../../external/tray/src/tray_windows.c`
 
 #### Copy Project (`win32/copy/copy.vcxproj`)
 - Added TrayIcons item group for ICO files
@@ -61,8 +86,7 @@ Rewrote `src/fe-gtk/plugin-tray.c` with full Windows implementation:
 
 #### Features Implemented
 - Tray icon initialization and cleanup
-- Left-click to toggle window visibility
-- Right-click context menu (Restore/Hide, Away, Back, Preferences, Quit)
+- Context menu on click (Restore/Hide, Away, Back, Preferences, Quit)
 - Icon flashing on notifications (private messages, highlights, DCC offers)
 - Flash stops when window is focused
 - Message count tracking for tooltip
@@ -92,8 +116,7 @@ Added GTK4-compatible minimize-to-tray in `src/fe-gtk/maingui.c`:
 ## Testing Checklist
 
 - [x] Tray icon appears on startup (when `hex_gui_tray` enabled)
-- [x] Left-click toggles window visibility
-- [x] Right-click shows context menu
+- [x] Click shows context menu with Restore/Hide option
 - [x] Icon flashes on private message (when `hex_input_tray_priv` enabled)
 - [x] Icon flashes on highlight (when `hex_input_tray_hilight` enabled)
 - [x] Icon flashes on DCC offer
@@ -113,7 +136,7 @@ Added GTK4-compatible minimize-to-tray in `src/fe-gtk/maingui.c`:
 | File | Action |
 |------|--------|
 | `.gitmodules` | Created - tray submodule |
-| `external/tray/` | Added - git submodule |
+| `external/tray/` | Added - git submodule (LizardByte/tray) |
 | `data/icons/tray_*.ico` | Created - 4 Windows icon files |
 | `src/fe-gtk/plugin-tray.c` | Rewritten - full Windows implementation |
 | `src/fe-gtk/plugin-tray.h` | Modified - added function declarations |
@@ -130,14 +153,14 @@ Added GTK4-compatible minimize-to-tray in `src/fe-gtk/maingui.c`:
 ## Future Work: Linux and macOS Support
 
 ### Linux Implementation (Future Phase)
-The dmikushin/tray library uses Qt6 on Linux, which introduces a C++ dependency that may conflict with GTK4. Options to consider:
+The LizardByte/tray library uses libayatana-appindicator on Linux, which provides native GTK integration:
 
-1. **Use dmikushin/tray Qt6 implementation** - Requires linking Qt6 alongside GTK4
-2. **Use libayatana-appindicator** - GTK-native approach, better integration
-3. **Direct DBus StatusNotifierItem** - No additional dependencies but more complex
+1. **Dependencies:** libayatana-appindicator3-dev (or libappindicator3-dev)
+2. **Source file:** `external/tray/src/tray_linux.c`
+3. **Build integration:** Add to meson.build with Linux detection
 
 ### macOS Implementation (Future Phase)
-The dmikushin/tray library uses Cocoa/AppKit via Objective-C (`tray_darwin.m`). This requires:
+The LizardByte/tray library uses Cocoa/AppKit via Objective-C (`tray_darwin.m`). This requires:
 
 1. Adding Objective-C compilation support to the build system
 2. Linking Cocoa framework
@@ -146,7 +169,7 @@ The dmikushin/tray library uses Cocoa/AppKit via Objective-C (`tray_darwin.m`). 
 ### Implementation Order
 1. ~~Windows support~~ ✅ COMPLETE
 2. ~~Verify Windows implementation works correctly~~ ✅ COMPLETE
-3. Linux support (evaluate Qt6 vs libayatana-appindicator)
+3. Linux support (libayatana-appindicator backend)
 4. macOS support (Objective-C integration)
 
 ---
@@ -160,11 +183,13 @@ GTK4 doesn't expose a `notify::minimized` property on GtkWindow. To detect windo
 3. Connect to the GdkToplevel's `notify::state` signal
 4. Check for `GDK_TOPLEVEL_STATE_MINIMIZED` in the state callback
 
-### dmikushin/tray Library Integration
+### LizardByte/tray Library Integration
 - Uses `Shell_NotifyIconW` on Windows
 - Requires `TRAY_EXPORTS` preprocessor define for proper DLL linkage
 - Icon paths must be absolute paths to .ico files
-- Menu items use `struct tray_menu_item` with text, disabled flag, checked flag, and callback
+- Menu items use `struct tray_menu` with text, disabled, checked, checkbox, cb, context, and submenu fields
+- Both left and right clicks show the context menu (consistent with Linux AppIndicator)
+- Icons are cached and loaded on demand
 
 ### Reference: Original GTK2 Implementation
 Key patterns from commit `b544ac3350e85d4cc41fe3414cbdb82d75ce5d7a`:
