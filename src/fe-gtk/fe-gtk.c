@@ -554,6 +554,10 @@ fe_init (void)
 				".hexchat-modebutton { "
 				"  padding-left: 4px; "
 				"  padding-right: 4px; "
+				"} "
+				/* Channel tabs - reduce horizontal padding for compact appearance */
+				"#hexchat-tab { "
+				"  padding: 2px 4px; "
 				"}");
 			gtk_style_context_add_provider_for_display (
 				gdk_display_get_default (),
