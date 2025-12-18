@@ -2114,6 +2114,30 @@ likely be */
 	gtk_widget_grab_focus (sess->gui->input_box);
 }
 
+/* Handle special keys in topic entry - Down/Escape return focus to input box */
+static gboolean
+mg_topic_key_press (GtkEventControllerKey *controller, guint keyval,
+                    guint keycode, GdkModifierType state, gpointer userdata)
+{
+	session *sess = current_sess;
+
+	(void)controller;
+	(void)keycode;
+	(void)state;
+	(void)userdata;
+
+	if (keyval == GDK_KEY_Down || keyval == GDK_KEY_Escape)
+	{
+		if (sess && sess->gui && sess->gui->input_box)
+		{
+			gtk_widget_grab_focus (sess->gui->input_box);
+			return TRUE;
+		}
+	}
+
+	return FALSE;
+}
+
 static void
 mg_tabwindow_kill_cb (GtkWidget *win, gpointer userdata)
 {
@@ -2329,6 +2353,10 @@ mg_flagbutton_cb (GtkWidget *but, char *flag)
 	default:
 		mg_change_flag (but, sess, mode);
 	}
+
+	/* Return focus to main input box after clicking mode button */
+	if (sess && sess->gui && sess->gui->input_box)
+		gtk_widget_grab_focus (sess->gui->input_box);
 }
 
 static GtkWidget *
@@ -2362,6 +2390,8 @@ mg_key_entry_cb (GtkWidget * igad, gpointer userdata)
 	session *sess = current_sess;
 	server *serv = sess->server;
 
+	(void)userdata;
+
 	if (serv->connected && sess->channel[0])
 	{
 		g_snprintf (modes, sizeof (modes), "+k %s",
@@ -2369,6 +2399,10 @@ mg_key_entry_cb (GtkWidget * igad, gpointer userdata)
 		serv->p_mode (serv, sess->channel, modes);
 		serv->p_join_info (serv, sess->channel);
 	}
+
+	/* Return focus to main input box */
+	if (sess->gui && sess->gui->input_box)
+		gtk_widget_grab_focus (sess->gui->input_box);
 }
 
 static void
@@ -2378,6 +2412,8 @@ mg_limit_entry_cb (GtkWidget * igad, gpointer userdata)
 	session *sess = current_sess;
 	server *serv = sess->server;
 
+	(void)userdata;
+
 	if (serv->connected && sess->channel[0])
 	{
 		if (check_is_number ((char *)hc_entry_get_text (igad)) == FALSE)
@@ -2385,6 +2421,9 @@ mg_limit_entry_cb (GtkWidget * igad, gpointer userdata)
 			hc_entry_set_text (igad, "");
 			fe_message (_("User limit must be a number!\n"), FE_MSG_ERROR);
 			gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (sess->gui->flag_l), FALSE);
+			/* Return focus to main input box */
+			if (sess->gui && sess->gui->input_box)
+				gtk_widget_grab_focus (sess->gui->input_box);
 			return;
 		}
 		g_snprintf (modes, sizeof(modes), "+l %d",
@@ -2392,6 +2431,10 @@ mg_limit_entry_cb (GtkWidget * igad, gpointer userdata)
 		serv->p_mode (serv, sess->channel, modes);
 		serv->p_join_info (serv, sess->channel);
 	}
+
+	/* Return focus to main input box */
+	if (sess->gui && sess->gui->input_box)
+		gtk_widget_grab_focus (sess->gui->input_box);
 }
 
 static void
@@ -2422,6 +2465,13 @@ mg_create_chanmodebuttons (session_gui *gui, GtkWidget *box)
 	hc_box_pack_start (box, gui->key_entry, 0, 0, 0);
 	g_signal_connect (G_OBJECT (gui->key_entry), "activate",
 							G_CALLBACK (mg_key_entry_cb), NULL);
+	/* Return focus to main input box on Down/Escape key */
+	{
+		GtkEventController *key_controller = gtk_event_controller_key_new ();
+		g_signal_connect (key_controller, "key-pressed",
+								G_CALLBACK (mg_topic_key_press), NULL);
+		gtk_widget_add_controller (gui->key_entry, key_controller);
+	}
 	gtk_widget_show (gui->key_entry);
 
 	if (prefs.hex_gui_input_style)
@@ -2437,6 +2487,13 @@ mg_create_chanmodebuttons (session_gui *gui, GtkWidget *box)
 	hc_box_pack_start (box, gui->limit_entry, 0, 0, 0);
 	g_signal_connect (G_OBJECT (gui->limit_entry), "activate",
 							G_CALLBACK (mg_limit_entry_cb), NULL);
+	/* Return focus to main input box on Down/Escape key */
+	{
+		GtkEventController *key_controller = gtk_event_controller_key_new ();
+		g_signal_connect (key_controller, "key-pressed",
+								G_CALLBACK (mg_topic_key_press), NULL);
+		gtk_widget_add_controller (gui->limit_entry, key_controller);
+	}
 	gtk_widget_show (gui->limit_entry);
 
 	if (prefs.hex_gui_input_style)
@@ -2528,6 +2585,14 @@ mg_create_topicbar (session *sess, GtkWidget *box)
 	g_signal_connect (G_OBJECT (topic), "activate",
 							G_CALLBACK (mg_topic_cb), 0);
 
+	/* Return focus to main input box on Down/Escape key */
+	{
+		GtkEventController *key_controller = gtk_event_controller_key_new ();
+		g_signal_connect (key_controller, "key-pressed",
+								G_CALLBACK (mg_topic_key_press), NULL);
+		gtk_widget_add_controller (topic, key_controller);
+	}
+
 	if (prefs.hex_gui_input_style)
 		mg_apply_entry_style (topic);
 
@@ -2599,6 +2664,8 @@ mg_word_clicked (GtkWidget *xtext_widget, char *word, gpointer event_unused)
 				fe_open_url (word + start);
 			}
 		}
+		/* Always return focus to input box after clicking in text area */
+		mg_focus (sess);
 		return;
 	}
 
