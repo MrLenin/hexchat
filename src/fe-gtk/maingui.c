@@ -80,6 +80,9 @@ enum
 static void mg_create_entry (session *sess, GtkWidget *box);
 static void mg_create_search (session *sess, GtkWidget *box);
 static void mg_link_irctab (session *sess, int focus);
+#if HC_GTK4
+void mg_update_window_minimum (session_gui *gui);
+#endif
 
 static session_gui static_mg_gui;
 static session_gui *mg_gui = NULL;	/* the shared irc tab */
@@ -803,9 +806,7 @@ static void
 mg_userlist_showhide (session *sess, int show)
 {
 	session_gui *gui = sess->gui;
-	int handle_size;
 	int right_size;
-	GtkAllocation allocation;
 
 	right_size = MAX (prefs.hex_gui_pane_right_size, prefs.hex_gui_pane_right_size_min);
 
@@ -814,9 +815,22 @@ mg_userlist_showhide (session *sess, int show)
 		gtk_widget_show (gui->user_box);
 		gui->ul_hidden = 0;
 
-		gtk_widget_get_allocation (gui->hpane_right, &allocation);
-		gtk_widget_style_get (GTK_WIDGET (gui->hpane_right), "handle-size", &handle_size, NULL);
-		gtk_paned_set_position (GTK_PANED (gui->hpane_right), allocation.width - (right_size + handle_size));
+#if HC_GTK4
+		/* GTK4: Use gtk_widget_get_width() - no handle size needed in GTK4 */
+		{
+			int pane_width = gtk_widget_get_width (gui->hpane_right);
+			if (pane_width > 0)
+				gtk_paned_set_position (GTK_PANED (gui->hpane_right), pane_width - right_size);
+		}
+#else
+		{
+			int handle_size;
+			GtkAllocation allocation;
+			gtk_widget_get_allocation (gui->hpane_right, &allocation);
+			gtk_widget_style_get (GTK_WIDGET (gui->hpane_right), "handle-size", &handle_size, NULL);
+			gtk_paned_set_position (GTK_PANED (gui->hpane_right), allocation.width - (right_size + handle_size));
+		}
+#endif
 	}
 	else
 	{
@@ -825,6 +839,9 @@ mg_userlist_showhide (session *sess, int show)
 	}
 
 	mg_hide_empty_boxes (gui);
+#if HC_GTK4
+	mg_update_window_minimum (gui);
+#endif
 }
 
 static gboolean
@@ -3102,17 +3119,23 @@ mg_create_textarea (session *sess, GtkWidget *box)
 #endif
 
 	vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
-	/* Set small minimum sizes to allow shrinking in paned */
+#if !HC_GTK4
+	/* GTK3: Set small minimum sizes to allow shrinking in paned */
 	gtk_widget_set_size_request (vbox, 1, -1);
+#endif
 	hc_box_pack_start (box, vbox, TRUE, TRUE, 0);
 	inbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2);
+#if !HC_GTK4
 	gtk_widget_set_size_request (inbox, 1, -1);
+#endif
 	hc_box_pack_start (vbox, inbox, TRUE, TRUE, 0);
 
 	frame = gtk_frame_new (NULL);
 	gtk_frame_set_shadow_type (GTK_FRAME (frame), GTK_SHADOW_IN);
-	/* Set small minimum size to allow shrinking in paned */
+#if !HC_GTK4
+	/* GTK3: Set small minimum size to allow shrinking in paned */
 	gtk_widget_set_size_request (frame, 1, -1);
+#endif
 	/* GTK3: Ensure frame fills and is anchored at origin */
 	gtk_widget_set_halign (frame, GTK_ALIGN_FILL);
 	gtk_widget_set_valign (frame, GTK_ALIGN_FILL);
@@ -3276,21 +3299,199 @@ mg_create_userlist (session_gui *gui, GtkWidget *box)
 	gui->button_box = mg_create_userlistbuttons (vbox);
 }
 
+#if HC_GTK4
+/* Helper to validate pane size preference - returns 0 if invalid/corrupted */
+static int
+mg_validate_pane_size (int size)
+{
+	/* Reasonable range for pane sizes: 50-1000 pixels */
+	if (size > 0 && size < 1000)
+		return size;
+	return 0;
+}
+
+/* Update the window's minimum size based on visible elements.
+ * This prevents content from being pushed off-screen when resizing.
+ * The minimum accounts for: topic bar buttons + chanview (if on left/right) + userlist (if visible)
+ */
+void
+mg_update_window_minimum (session_gui *gui)
+{
+	int min_width = 0;
+	int topicbar_min = 0;
+	GtkWidget *win;
+	int tab_pos;
+	gboolean chanview_on_left = FALSE;
+	gboolean chanview_on_right = FALSE;
+
+	if (!gui || !gui->window)
+		return;
+
+	win = gui->window;
+	tab_pos = prefs.hex_gui_tab_pos;
+
+	/* Get the minimum width of the topic bar buttons (mode buttons, etc.)
+	 * This is the primary constraint that can't shrink */
+	if (gui->topicbutton_box && gtk_widget_get_visible (gui->topicbutton_box))
+	{
+		GtkRequisition min_req;
+		gtk_widget_get_preferred_size (gui->topicbutton_box, &min_req, NULL);
+		topicbar_min = min_req.width;
+	}
+
+	/* Also check dialog buttons if visible */
+	if (gui->dialogbutton_box && gtk_widget_get_visible (gui->dialogbutton_box))
+	{
+		GtkRequisition min_req;
+		gtk_widget_get_preferred_size (gui->dialogbutton_box, &min_req, NULL);
+		if (min_req.width > topicbar_min)
+			topicbar_min = min_req.width;
+	}
+
+	/* Base minimum: topic buttons + some space for topic entry + padding */
+	min_width = topicbar_min + 100 + 30;
+
+	/* Determine chanview position */
+	if (gui->chanview && tab_pos != POS_HIDDEN)
+	{
+		if (tab_pos == POS_TOPLEFT || tab_pos == POS_BOTTOMLEFT)
+			chanview_on_left = TRUE;
+		else if (tab_pos == POS_TOPRIGHT || tab_pos == POS_BOTTOMRIGHT)
+			chanview_on_right = TRUE;
+		/* POS_TOP, POS_BOTTOM don't add horizontal width */
+	}
+
+	/* Add left pane width (chanview on left) */
+	if (chanview_on_left)
+	{
+		int left_size = mg_validate_pane_size (prefs.hex_gui_pane_left_size);
+		if (left_size > 0)
+			min_width += left_size;
+		else
+			min_width += 100;  /* Default chanview width */
+	}
+
+	/* Add right pane width (userlist and/or chanview on right) */
+	if (!gui->ul_hidden || chanview_on_right)
+	{
+		int right_size = mg_validate_pane_size (
+			MAX (prefs.hex_gui_pane_right_size, prefs.hex_gui_pane_right_size_min));
+		if (right_size > 0)
+			min_width += right_size;
+		else
+			min_width += 100;  /* Default right pane width */
+	}
+
+	hc_debug_log ("mg_update_window_minimum: min_width=%d (topicbar=%d, left=%d, right=%d, ul_hidden=%d)",
+	              min_width, topicbar_min,
+	              chanview_on_left ? prefs.hex_gui_pane_left_size : 0,
+	              (!gui->ul_hidden || chanview_on_right) ? prefs.hex_gui_pane_right_size : 0,
+	              gui->ul_hidden);
+
+	gtk_widget_set_size_request (win, min_width, 200);
+}
+#endif
+
 static void
 mg_vpane_cb (GtkPaned *pane, GParamSpec *param, session_gui *gui)
 {
 	prefs.hex_gui_pane_divider_position = gtk_paned_get_position (pane);
 }
 
+#if HC_GTK4
+/* Data structure for deferred pane size calculation */
+typedef struct {
+	GtkPaned *pane;
+	session_gui *gui;
+	gboolean is_left_pane;
+} PaneUpdateData;
+
+static gboolean
+mg_pane_idle_cb (gpointer user_data)
+{
+	PaneUpdateData *data = (PaneUpdateData *)user_data;
+	session_gui *gui = data->gui;
+
+	/* Now that layout is complete, update the window minimum */
+	hc_debug_log ("mg_pane_idle_cb: is_left=%d, calling mg_update_window_minimum",
+	              data->is_left_pane);
+	mg_update_window_minimum (gui);
+
+	g_free (data);
+	return G_SOURCE_REMOVE;
+}
+#endif
+
 static void
 mg_leftpane_cb (GtkPaned *pane, GParamSpec *param, session_gui *gui)
 {
 	prefs.hex_gui_pane_left_size = gtk_paned_get_position (pane);
+#if HC_GTK4
+	hc_debug_log ("mg_leftpane_cb: position=%d -> left_size=%d",
+	              gtk_paned_get_position (pane), prefs.hex_gui_pane_left_size);
+	/* Defer window minimum update to avoid layout issues */
+	{
+		PaneUpdateData *data = g_new (PaneUpdateData, 1);
+		data->pane = pane;
+		data->gui = gui;
+		data->is_left_pane = TRUE;
+		g_idle_add (mg_pane_idle_cb, data);
+	}
+#endif
 }
+
+#if HC_GTK4
+/* Data structure for deferred right pane size calculation */
+typedef struct {
+	GtkPaned *pane;
+	session_gui *gui;
+} RightPaneData;
+
+static gboolean
+mg_rightpane_idle_cb (gpointer user_data)
+{
+	RightPaneData *data = (RightPaneData *)user_data;
+	GtkPaned *pane = data->pane;
+	session_gui *gui = data->gui;
+	int pane_width, position, right_size;
+
+	/* Get dimensions after layout is complete */
+	pane_width = gtk_widget_get_width (GTK_WIDGET (pane));
+	position = gtk_paned_get_position (pane);
+
+	/* GTK4 panes typically have no visible handle, so we don't subtract handle size */
+	right_size = pane_width - position;
+
+	hc_debug_log ("mg_rightpane_idle_cb: pane_width=%d position=%d -> right_size=%d",
+	              pane_width, position, right_size);
+
+	/* Only update if we got valid values */
+	if (pane_width > 0 && right_size > 0 && right_size < 2000)
+	{
+		prefs.hex_gui_pane_right_size = right_size;
+		mg_update_window_minimum (gui);
+	}
+	else
+	{
+		hc_debug_log ("  SKIPPED: invalid values (pane_width=%d, right_size=%d)", pane_width, right_size);
+	}
+
+	g_free (data);
+	return G_SOURCE_REMOVE;
+}
+#endif
 
 static void
 mg_rightpane_cb (GtkPaned *pane, GParamSpec *param, session_gui *gui)
 {
+#if HC_GTK4
+	/* GTK4: Defer the size calculation to an idle callback because
+	 * gtk_widget_get_width() returns invalid values during notify::position */
+	RightPaneData *data = g_new (RightPaneData, 1);
+	data->pane = pane;
+	data->gui = gui;
+	g_idle_add (mg_rightpane_idle_cb, data);
+#else
 	int handle_size;
 	GtkAllocation allocation;
 
@@ -3298,6 +3499,7 @@ mg_rightpane_cb (GtkPaned *pane, GParamSpec *param, session_gui *gui)
 	/* record the position from the RIGHT side */
 	gtk_widget_get_allocation (GTK_WIDGET(pane), &allocation);
 	prefs.hex_gui_pane_right_size = allocation.width - gtk_paned_get_position (pane) - handle_size;
+#endif
 }
 
 static gboolean
@@ -3361,14 +3563,16 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 	hc_box_add (box, gui->hpane_left);
 
 	gui->note_book = book = hc_page_container_new ();
-	/* Set a small minimum size to allow shrinking below child minimum sizes */
-	gtk_widget_set_size_request (book, 1, -1);
 #if HC_GTK4
-	/* GTK4: Ensure page container fills its container and content is anchored at top */
+	/* GTK4: Ensure page container fills its container and content is anchored at top.
+	 * Let child minimum sizes propagate naturally (no size_request override). */
 	gtk_widget_set_halign (book, GTK_ALIGN_FILL);
 	gtk_widget_set_valign (book, GTK_ALIGN_FILL);
 	gtk_widget_set_hexpand (book, TRUE);
 	gtk_widget_set_vexpand (book, TRUE);
+#else
+	/* GTK3: Set a small minimum size to allow shrinking below child minimum sizes */
+	gtk_widget_set_size_request (book, 1, -1);
 #endif
 	gtk_paned_pack1 (GTK_PANED (gui->hpane_right), book, TRUE, TRUE);
 
@@ -3555,6 +3759,9 @@ mg_place_userlist_and_chanview_real (session_gui *gui, GtkWidget *userlist, GtkW
 		g_object_unref (userlist);
 
 	mg_hide_empty_boxes (gui);
+#if HC_GTK4
+	mg_update_window_minimum (gui);
+#endif
 }
 
 static void
