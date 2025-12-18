@@ -156,6 +156,7 @@ struct _GtkXText
 	gint io_tag;					  /* for delayed refresh events */
 	gint add_io_tag;				  /* "" when adding new text */
 	gint scroll_tag;				  /* marking-scroll timeout */
+	gint resize_tag;				  /* deferred line recalculation on resize */
 	gulong vc_signal_tag;        /* signal handler for "value_changed" adj */
 
 	int select_start_adj;		  /* the adj->value when the selection started */

@@ -327,6 +327,17 @@ backend_font_open (GtkXText *xtext, char *name)
 	pango_font_metrics_unref (metrics);
 }
 
+/* Fast path for single ASCII character width using the font cache.
+ * This avoids expensive Pango layout operations in tight loops like find_next_wrap.
+ * For multi-character strings, use backend_get_text_width_emph instead. */
+static inline int
+backend_get_char_width (guchar c, int emphasis)
+{
+	if (c < 128)
+		return fontwidths[emphasis][c];
+	return -1;  /* Signal caller to use Pango for non-ASCII */
+}
+
 static int
 backend_get_text_width_emph (GtkXText *xtext, guchar *str, int len, int emphasis)
 {
@@ -338,6 +349,10 @@ backend_get_text_width_emph (GtkXText *xtext, guchar *str, int len, int emphasis
 	if ((emphasis & EMPH_HIDDEN))
 		return 0;
 	emphasis &= (EMPH_ITAL | EMPH_BOLD);
+
+	/* Fast path: single ASCII character - use cached width */
+	if (len == 1 && *str < 128)
+		return fontwidths[emphasis][*str];
 
 	/* Use Pango's full-string width calculation to match actual rendering.
 	 * Previously we summed individual character widths, but this accumulated
@@ -428,6 +443,7 @@ gtk_xtext_init (GtkXText * xtext)
 	xtext->io_tag = 0;
 	xtext->add_io_tag = 0;
 	xtext->scroll_tag = 0;
+	xtext->resize_tag = 0;
 	xtext->max_lines = 0;
 	xtext->col_back = XTEXT_BG;
 	xtext->col_fore = XTEXT_FG;
@@ -626,6 +642,12 @@ gtk_xtext_dispose (GObject * object)
 	{
 		g_source_remove (xtext->scroll_tag);
 		xtext->scroll_tag = 0;
+	}
+
+	if (xtext->resize_tag)
+	{
+		g_source_remove (xtext->resize_tag);
+		xtext->resize_tag = 0;
 	}
 
 	if (xtext->io_tag)
@@ -857,6 +879,22 @@ gtk_xtext_get_preferred_height (GtkWidget *widget, gint *minimum, gint *natural)
 
 #endif /* GTK3 */
 
+/* Timeout for deferred line recalculation during window resize.
+ * This throttles expensive recalculations when the user is actively resizing. */
+#define RESIZE_TIMEOUT 50
+
+static gboolean
+gtk_xtext_resize_cb (gpointer data)
+{
+	GtkXText *xtext = data;
+
+	xtext->resize_tag = 0;
+	gtk_xtext_calc_lines (xtext->buffer, FALSE);
+	gtk_widget_queue_draw (GTK_WIDGET (xtext));
+
+	return G_SOURCE_REMOVE;
+}
+
 #if HC_GTK4
 /* GTK4: size_allocate has different signature - width, height, baseline */
 static void
@@ -873,7 +911,13 @@ gtk_xtext_size_allocate (GtkWidget * widget, int width, int height, int baseline
 
 	dontscroll (xtext->buffer);	/* force scrolling off */
 	if (!height_only)
-		gtk_xtext_calc_lines (xtext->buffer, FALSE);
+	{
+		/* Throttle expensive line recalculation during rapid resize.
+		 * Cancel any pending recalc and schedule a new one. */
+		if (xtext->resize_tag)
+			g_source_remove (xtext->resize_tag);
+		xtext->resize_tag = g_timeout_add (RESIZE_TIMEOUT, gtk_xtext_resize_cb, xtext);
+	}
 	else
 	{
 		xtext->buffer->pagetop_ent = NULL;
@@ -906,7 +950,13 @@ gtk_xtext_size_allocate (GtkWidget * widget, GtkAllocation * allocation)
 										allocation->width, allocation->height);
 		dontscroll (xtext->buffer);	/* force scrolling off */
 		if (!height_only)
-			gtk_xtext_calc_lines (xtext->buffer, FALSE);
+		{
+			/* Throttle expensive line recalculation during rapid resize.
+			 * Cancel any pending recalc and schedule a new one. */
+			if (xtext->resize_tag)
+				g_source_remove (xtext->resize_tag);
+			xtext->resize_tag = g_timeout_add (RESIZE_TIMEOUT, gtk_xtext_resize_cb, xtext);
+		}
 		else
 		{
 			xtext->buffer->pagetop_ent = NULL;
