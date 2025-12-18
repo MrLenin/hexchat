@@ -767,6 +767,15 @@ gtk_xtext_resize_cb (gpointer data)
 
 	xtext->resize_tag = 0;
 	gtk_xtext_calc_lines (xtext->buffer, FALSE);
+
+	/* After reflow, restore scroll position to bottom if it was there before */
+	if (xtext->buffer->scrollbar_down)
+	{
+		gtk_adjustment_set_value (xtext->adj,
+			gtk_adjustment_get_upper (xtext->adj) -
+			gtk_adjustment_get_page_size (xtext->adj));
+	}
+
 	gtk_widget_queue_draw (GTK_WIDGET (xtext));
 
 	return G_SOURCE_REMOVE;
