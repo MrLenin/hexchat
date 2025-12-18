@@ -57,6 +57,7 @@ The GTK4 build is fully functional with feature parity to GTK3:
 | Window Minimum Width | maingui.c | Dynamic sizing based on topic bar buttons and panes |
 | Keyboard Shortcuts | menu.c, fkeys.c | Menu accelerators via GtkShortcutController |
 | Spell Check Underlines | sexy-spell-entry.c | GtkText attributes for misspelled word highlighting |
+| Text Width Calculation | xtext.c | Fixed by using Pango full-string width instead of summing individual character widths |
 
 #### Context Menu Details
 
@@ -250,6 +251,7 @@ The following have been fixed during the migration:
 15. **Window minimum width** - Dynamic calculation based on topic bar buttons and visible panes
 16. **Keyboard shortcuts** - Menu accelerators working via GtkShortcutController
 17. **Spell check underlines** - Implemented via GtkText attributes (PangoAttrUnderlineColor)
+18. **Text width calculation** - URL/nick underlines and highlights now match rendered text width; fixed by using Pango full-string width instead of summing individual character widths (which accumulated ~0.65px rounding error per character)
 
 ---
 

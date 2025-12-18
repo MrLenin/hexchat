@@ -331,8 +331,6 @@ static int
 backend_get_text_width_emph (GtkXText *xtext, guchar *str, int len, int emphasis)
 {
 	int width;
-	int deltaw;
-	int mbl;
 
 	if (*str == 0)
 		return 0;
@@ -341,22 +339,13 @@ backend_get_text_width_emph (GtkXText *xtext, guchar *str, int len, int emphasis
 		return 0;
 	emphasis &= (EMPH_ITAL | EMPH_BOLD);
 
-	width = 0;
+	/* Use Pango's full-string width calculation to match actual rendering.
+	 * Previously we summed individual character widths, but this accumulated
+	 * rounding errors (~0.65 pixels per character) causing URL underlines
+	 * and highlights to extend beyond the actual rendered text. */
 	pango_layout_set_attributes (xtext->layout, attr_lists[emphasis]);
-	while (len > 0)
-	{
-		mbl = charlen(str);
-		if (*str < 128)
-			deltaw = fontwidths[emphasis][*str];
-		else
-		{
-			pango_layout_set_text (xtext->layout, str, mbl);
-			pango_layout_get_pixel_size (xtext->layout, &deltaw, NULL);
-		}
-		width += deltaw;
-		str += mbl;
-		len -= mbl;
-	}
+	pango_layout_set_text (xtext->layout, (char *)str, len);
+	pango_layout_get_pixel_size (xtext->layout, &width, NULL);
 
 	return width;
 }
