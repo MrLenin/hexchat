@@ -1403,16 +1403,42 @@ static void
 middle_action_reset_marker (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
 	(void)action; (void)parameter; (void)user_data;
-	if (middle_menu_sess)
-		handle_command (middle_menu_sess, "RESETMARKER", FALSE);
+	if (middle_menu_sess && middle_menu_sess->gui && middle_menu_sess->gui->xtext)
+		gtk_xtext_reset_marker_pos (GTK_XTEXT (middle_menu_sess->gui->xtext));
 }
 
 static void
 middle_action_move_to_marker (GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
+	marker_reset_reason reason;
+	char *str;
+
 	(void)action; (void)parameter; (void)user_data;
-	if (middle_menu_sess)
-		handle_command (middle_menu_sess, "MOVETOMARKER", FALSE);
+	if (!middle_menu_sess || !middle_menu_sess->gui || !middle_menu_sess->gui->xtext)
+		return;
+
+	if (!prefs.hex_text_show_marker)
+		PrintText (middle_menu_sess, _("Marker line disabled."));
+	else
+	{
+		reason = gtk_xtext_moveto_marker_pos (GTK_XTEXT (middle_menu_sess->gui->xtext));
+		switch (reason) {
+		case MARKER_WAS_NEVER_SET:
+			str = _("Marker line never set."); break;
+		case MARKER_IS_SET:
+			str = ""; break;
+		case MARKER_RESET_MANUALLY:
+			str = _("Marker line reset manually."); break;
+		case MARKER_RESET_BY_KILL:
+			str = _("Marker line reset because exceeded scrollback limit."); break;
+		case MARKER_RESET_BY_CLEAR:
+			str = _("Marker line reset by CLEAR command."); break;
+		default:
+			str = _("Marker line state unknown."); break;
+		}
+		if (str[0])
+			PrintText (middle_menu_sess, str);
+	}
 }
 
 static void
