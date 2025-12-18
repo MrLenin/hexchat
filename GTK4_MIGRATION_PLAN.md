@@ -311,8 +311,18 @@ The following have been fixed during the migration:
 1. **System Tray Icon** - Implement using platform-native APIs (see "NOT IMPLEMENTED" section above)
 2. **Tab Bar Height** - Investigate GTK4 GtkGrid minimum height constraints
 3. **DND Improvements** - File drops to channels (userlist drops work)
-4. **Performance Testing** - Compare GTK3 vs GTK4
+4. **Further Performance Optimization** - Additional resize/rendering improvements possible (see below)
 5. **GTK3 Regression Test** - Deprioritized; GTK4 is the primary target
+
+### Performance Optimizations (Implemented)
+1. ✅ **Resize throttling** - xtext line recalculation deferred with 50ms debounce during rapid window resize
+2. ✅ **Font cache for ASCII** - Single ASCII character width lookups use pre-computed fontwidths[] cache instead of Pango layout operations
+
+**Potential future optimizations:**
+- Lazy/incremental line recalculation (only visible lines + buffer)
+- GTK4 partial redraw optimization (currently always full widget redraws)
+- chanview-tabs overflow check coalescing improvements
+- Tree view rebind optimization for color/rename changes
 
 ---
 
