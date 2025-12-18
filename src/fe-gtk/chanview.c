@@ -666,11 +666,6 @@ chan_remove (chan *ch, gboolean force)
 			}
 		}
 
-		/* Set focused immediately to prevent race conditions when closing
-		 * tabs in quick succession. The async focus callback will also set
-		 * it, but we need to track the new focus synchronously here. */
-		ch->cv->focused = new_ch;
-
 		if (new_ch)
 			chan_focus (new_ch);
 	}
