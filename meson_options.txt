@@ -8,10 +8,6 @@ option('text-frontend', type: 'boolean', value: false,
 option('theme-manager', type: 'boolean', value: false,
   description: 'Utility to help manage themes, requires mono/.net'
 )
-option('gtk4', type: 'boolean', value: false,
-  description: 'Build with GTK4 instead of GTK3 (experimental)'
-)
-
 # Features
 option('tls', type: 'feature', value: 'enabled',
   description: 'Support for TLS connections, requires openssl'

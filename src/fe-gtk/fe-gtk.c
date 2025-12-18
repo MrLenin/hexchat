@@ -23,11 +23,7 @@
 #include "fe-gtk.h"
 
 #ifdef WIN32
-#if HC_GTK4
 #include <gdk/win32/gdkwin32.h>
-#else
-#include <gdk/gdkwin32.h>
-#endif
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -64,10 +60,8 @@
 
 cairo_surface_t *channelwin_pix;
 
-#if HC_GTK4
 /* GTK4 doesn't have gtk_main/gtk_main_quit, so we use a GMainLoop */
 static GMainLoop *gtk4_main_loop = NULL;
-#endif
 
 #ifdef USE_LIBCANBERRA
 static ca_context *ca_con;
@@ -104,7 +98,6 @@ static const GOptionEntry gopt_entries[] =
 };
 
 #ifdef WIN32
-#if HC_GTK4
 /* GTK4: gtk_dialog_run() is removed, must use async response handling.
  * For startup dialogs, we run a mini event loop to wait for the response. */
 static void
@@ -134,19 +127,6 @@ create_msg_dialog (gchar *title, gchar *message)
 	while (!done)
 		g_main_context_iteration (NULL, TRUE);
 }
-#else /* GTK3 */
-static void
-create_msg_dialog (gchar *title, gchar *message)
-{
-	GtkWidget *dialog;
-
-	dialog = gtk_message_dialog_new (NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_CLOSE, "%s", message);
-	gtk_window_set_title (GTK_WINDOW (dialog), title);
-
-	gtk_dialog_run (GTK_DIALOG (dialog));
-	hc_window_destroy (dialog);
-}
-#endif /* HC_GTK4 */
 #endif /* WIN32 */
 
 int
@@ -178,11 +158,7 @@ fe_args (int argc, char *argv[])
 			if (strstr (error->message, "--help-all") != NULL)
 			{
 				buffer = g_option_context_get_help (context, FALSE, NULL);
-#if HC_GTK4
 				gtk_init ();
-#else
-				gtk_init (&argc, &argv);
-#endif
 				create_msg_dialog ("Long Help", buffer);
 				g_free (buffer);
 				return 0;
@@ -190,11 +166,7 @@ fe_args (int argc, char *argv[])
 			else if (strstr (error->message, "--help") != NULL || strstr (error->message, "-?") != NULL)
 			{
 				buffer = g_option_context_get_help (context, TRUE, NULL);
-#if HC_GTK4
 				gtk_init ();
-#else
-				gtk_init (&argc, &argv);
-#endif
 				create_msg_dialog ("Help", buffer);
 				g_free (buffer);
 				return 0;
@@ -202,11 +174,7 @@ fe_args (int argc, char *argv[])
 			else
 			{
 				buffer = g_strdup_printf ("%s\n", error->message);
-#if HC_GTK4
 				gtk_init ();
-#else
-				gtk_init (&argc, &argv);
-#endif
 				create_msg_dialog ("Error", buffer);
 				g_free (buffer);
 				return 1;
@@ -228,11 +196,7 @@ fe_args (int argc, char *argv[])
 	{
 		buffer = g_strdup_printf ("%s %s", PACKAGE_NAME, PACKAGE_VERSION);
 #ifdef WIN32
-#if HC_GTK4
 		gtk_init ();
-#else
-		gtk_init (&argc, &argv);
-#endif
 		create_msg_dialog ("Version Information", buffer);
 #else
 		puts (buffer);
@@ -246,11 +210,7 @@ fe_args (int argc, char *argv[])
 	{
 		buffer = g_strdup_printf ("%s%caddons%c", get_xdir(), G_DIR_SEPARATOR, G_DIR_SEPARATOR);
 #ifdef WIN32
-#if HC_GTK4
 		gtk_init ();
-#else
-		gtk_init (&argc, &argv);
-#endif
 		create_msg_dialog ("Plugin/Script Auto-load Directory", buffer);
 #else
 		puts (buffer);
@@ -264,11 +224,7 @@ fe_args (int argc, char *argv[])
 	{
 		buffer = g_strdup_printf ("%s%c", get_xdir(), G_DIR_SEPARATOR);
 #ifdef WIN32
-#if HC_GTK4
 		gtk_init ();
-#else
-		gtk_init (&argc, &argv);
-#endif
 		create_msg_dialog ("User Config Directory", buffer);
 #else
 		puts (buffer);
@@ -297,11 +253,7 @@ fe_args (int argc, char *argv[])
 	}
 #endif
 
-#if HC_GTK4
 	gtk_init ();
-#else
-	gtk_init (&argc, &argv);
-#endif
 
 #ifdef HAVE_GTK_MAC
 	osx_app = g_object_new(GTKOSX_TYPE_APPLICATION, NULL);
@@ -372,11 +324,7 @@ create_input_style (InputStyle *style)
 			(int)(colors[COL_FG].green * 255),
 			(int)(colors[COL_FG].blue * 255));
 
-#if HC_GTK4
 		gtk_css_provider_load_from_data (input_css_provider, css_buf, -1);
-#else
-		gtk_css_provider_load_from_data (input_css_provider, css_buf, -1, NULL);
-#endif
 	}
 
 	return style;
@@ -403,9 +351,7 @@ apply_tree_css (void)
 	font_size = pango_font_description_get_size (input_style->font_desc) / PANGO_SCALE;
 
 	/* Apply theme colors and font to chanview tree and userlist.
-	 * GTK3 tree views use treeview:selected CSS.
 	 * GTK4 list views use listview > row:selected, columnview > row:selected CSS. */
-#if HC_GTK4
 	g_snprintf (css_buf, sizeof (css_buf),
 		/* Chanview tree styling - GTK4 GtkListView */
 		"#hexchat-tree { "
@@ -470,58 +416,8 @@ apply_tree_css (void)
 		(int)(colors[COL_MARK_FG].red * 255),
 		(int)(colors[COL_MARK_FG].green * 255),
 		(int)(colors[COL_MARK_FG].blue * 255));
-#else
-	g_snprintf (css_buf, sizeof (css_buf),
-		/* Chanview tree styling - GTK3 GtkTreeView */
-		"#hexchat-tree { "
-		"  background-color: rgb(%d, %d, %d); "
-		"  color: rgb(%d, %d, %d); "
-		"  font-family: \"%s\"; "
-		"  font-size: %dpt; "
-		"} "
-		"#hexchat-tree:selected { "
-		"  background-color: rgb(%d, %d, %d); "
-		"  color: rgb(%d, %d, %d); "
-		"} "
-		/* Userlist styling - background and foreground colors */
-		"#hexchat-userlist { "
-		"  background-color: rgb(%d, %d, %d); "
-		"  color: rgb(%d, %d, %d); "
-		"}",
-		/* #hexchat-tree background */
-		(int)(colors[COL_BG].red * 255),
-		(int)(colors[COL_BG].green * 255),
-		(int)(colors[COL_BG].blue * 255),
-		/* #hexchat-tree color (foreground) */
-		(int)(colors[COL_FG].red * 255),
-		(int)(colors[COL_FG].green * 255),
-		(int)(colors[COL_FG].blue * 255),
-		/* #hexchat-tree font */
-		font_family ? font_family : "sans",
-		font_size > 0 ? font_size : 11,
-		/* #hexchat-tree:selected background (mark background) */
-		(int)(colors[COL_MARK_BG].red * 255),
-		(int)(colors[COL_MARK_BG].green * 255),
-		(int)(colors[COL_MARK_BG].blue * 255),
-		/* #hexchat-tree:selected color (mark foreground) */
-		(int)(colors[COL_MARK_FG].red * 255),
-		(int)(colors[COL_MARK_FG].green * 255),
-		(int)(colors[COL_MARK_FG].blue * 255),
-		/* #hexchat-userlist background */
-		(int)(colors[COL_BG].red * 255),
-		(int)(colors[COL_BG].green * 255),
-		(int)(colors[COL_BG].blue * 255),
-		/* #hexchat-userlist color (foreground) */
-		(int)(colors[COL_FG].red * 255),
-		(int)(colors[COL_FG].green * 255),
-		(int)(colors[COL_FG].blue * 255));
-#endif
 
-#if HC_GTK4
 	gtk_css_provider_load_from_data (tree_css_provider, css_buf, -1);
-#else
-	gtk_css_provider_load_from_data (tree_css_provider, css_buf, -1, NULL);
-#endif
 }
 
 void
@@ -538,7 +434,6 @@ fe_init (void)
 	input_style = create_input_style (NULL);
 	apply_tree_css ();
 
-#if HC_GTK4
 	/* GTK4: Apply CSS for various UI adjustments */
 	{
 		static GtkCssProvider *layout_css = NULL;
@@ -565,7 +460,6 @@ fe_init (void)
 				GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 		}
 	}
-#endif
 }
 
 #ifdef HAVE_GTK_MAC
@@ -588,15 +482,11 @@ fe_main (void)
 	GtkSettings* settings = gtk_settings_get_default();
 	g_object_set(settings, "gtk-theme-name", "Default", NULL);
 
-#if HC_GTK4
 	/* GTK4: Use GMainLoop since gtk_main() was removed */
 	gtk4_main_loop = g_main_loop_new (NULL, FALSE);
 	g_main_loop_run (gtk4_main_loop);
 	g_main_loop_unref (gtk4_main_loop);
 	gtk4_main_loop = NULL;
-#else
-	gtk_main ();
-#endif
 
 	/* sleep for 2 seconds so any QUIT messages are not lost. The  */
 	/* GUI is closed at this point, so the user doesn't even know! */
@@ -616,12 +506,8 @@ fe_cleanup (void)
 void
 fe_exit (void)
 {
-#if HC_GTK4
 	if (gtk4_main_loop && g_main_loop_is_running (gtk4_main_loop))
 		g_main_loop_quit (gtk4_main_loop);
-#else
-	gtk_main_quit ();
-#endif
 }
 
 int
@@ -721,7 +607,6 @@ fe_new_server (struct server *serv)
 	serv->gui = g_new0 (struct server_gui, 1);
 }
 
-#if HC_GTK4
 /* GTK4: gtk_dialog_run() removed, gtk_window_set_position() removed */
 static void
 fe_message_response_cb (GtkDialog *dialog, gint response_id, gpointer user_data)
@@ -768,32 +653,6 @@ fe_message (char *msg, int flags)
 		gtk_window_present (GTK_WINDOW (dialog));
 	}
 }
-#else /* GTK3 */
-void
-fe_message (char *msg, int flags)
-{
-	GtkWidget *dialog;
-	int type = GTK_MESSAGE_WARNING;
-
-	if (flags & FE_MSG_ERROR)
-		type = GTK_MESSAGE_ERROR;
-	if (flags & FE_MSG_INFO)
-		type = GTK_MESSAGE_INFO;
-
-	dialog = gtk_message_dialog_new (GTK_WINDOW (parent_window), 0, type,
-												GTK_BUTTONS_OK, "%s", msg);
-	if (flags & FE_MSG_MARKUP)
-		gtk_message_dialog_set_markup (GTK_MESSAGE_DIALOG (dialog), msg);
-	g_signal_connect (G_OBJECT (dialog), "response",
-							G_CALLBACK (gtk_widget_destroy), 0);
-	gtk_window_set_resizable (GTK_WINDOW (dialog), FALSE);
-	hc_window_set_position (dialog, GTK_WIN_POS_MOUSE);
-	gtk_widget_show (dialog);
-
-	if (flags & FE_MSG_WAIT)
-		gtk_dialog_run (GTK_DIALOG (dialog));
-}
-#endif /* HC_GTK4 */
 
 void
 fe_idle_add (void *func, void *data)
@@ -1246,16 +1105,12 @@ fe_gui_info_ptr (session *sess, int info_type)
 	{
 	case 0:	/* native window pointer (for plugins) */
 #ifdef WIN32
-#if HC_GTK4
 		{
 			GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (sess->gui->window));
 			if (surface)
 				return gdk_win32_surface_get_handle (surface);
 			return NULL;
 		}
-#else
-		return gdk_win32_window_get_impl_hwnd (gtk_widget_get_window (sess->gui->window));
-#endif
 #else
 		return sess->gui->window;
 #endif

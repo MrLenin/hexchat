@@ -2,15 +2,15 @@
 
 ## Executive Summary
 
-This document tracks the GTK4 migration status for HexChat. The migration uses conditional compilation (`#if HC_GTK4`) to support both GTK3 and GTK4 builds from a single codebase.
+HexChat has been fully migrated to GTK4. **GTK3 is no longer supported.**
 
-**Build Status (2025-12-17):**
-- ✅ **GTK4 Compilation**: SUCCESSFUL (Visual Studio on Windows)
-- ✅ **GTK4 Runtime**: FULLY FUNCTIONAL (Windows)
-- ✅ **GTK3 Compilation**: Working (legacy support)
+**Build Status (2025-12-18):**
+- ✅ **GTK4 Compilation**: SUCCESSFUL (Visual Studio on Windows, Meson on Linux)
+- ✅ **GTK4 Runtime**: FULLY FUNCTIONAL
+- ❌ **GTK3**: No longer supported (removed 2025-12-18)
 
 **Runtime Status:**
-The GTK4 build is fully functional with feature parity to GTK3:
+The GTK4 build is fully functional:
 - Main window displays and is interactive
 - Server list dialog works
 - Connecting to IRC servers works
@@ -21,11 +21,10 @@ The GTK4 build is fully functional with feature parity to GTK3:
 - Plugin menu system integrated
 - Tab management (close, detach, sorting, scrolling) working reliably
 
-**Statistics:**
-- 291 `#if HC_GTK4` conditional blocks
-- 56 `#if !HC_GTK4` blocks (GTK3-only code)
-- 36 files modified
-- 1,750+ lines in `gtk-compat.h` compatibility layer
+**Codebase:**
+- GTK4-only (no conditional compilation)
+- ~1,700 lines in `gtk-compat.h` (GTK4 helper utilities only)
+- GTK3 code preserved in git history for reference
 
 ---
 

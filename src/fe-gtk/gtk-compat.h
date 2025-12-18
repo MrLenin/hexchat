@@ -18,10 +18,10 @@
  */
 
 /*
- * GTK3/GTK4 Compatibility Layer for HexChat
+ * GTK4 Utility Layer for HexChat
  *
- * This header provides macros and inline functions to abstract differences
- * between GTK3 and GTK4, allowing gradual migration with minimal code churn.
+ * This header provides helper macros and inline functions for GTK4 APIs.
+ * GTK3 support has been removed - this is GTK4-only.
  */
 
 #ifndef HEXCHAT_GTK_COMPAT_H
@@ -31,37 +31,15 @@
 #include <gtk/gtk.h>
 
 /*
- * Version detection
- * HC_GTK4 can be defined on the command line (e.g., from hexchat.props or meson)
- * or via USE_GTK4 from config.h
- */
-#if !defined(HC_GTK4)
-#  ifdef USE_GTK4
-#    define HC_GTK4 1
-#  else
-#    define HC_GTK4 0
-#  endif
-#endif
-
-#if HC_GTK4
-#  define HC_GTK3 0
-#else
-#  define HC_GTK3 1
-#endif
-
-/*
  * =============================================================================
- * Box/Container Packing Macros
+ * Box/Container Packing Helpers
  * =============================================================================
- * GTK3: gtk_box_pack_start(box, child, expand, fill, padding)
- * GTK4: gtk_box_append(box, child) - no expand/fill/padding params
- *
- * In GTK4, use widget properties (hexpand, vexpand, halign, valign) instead.
+ * GTK4 uses gtk_box_append() with widget properties (hexpand, vexpand, halign, valign).
+ * These helpers translate the old GTK3-style pack calls to GTK4 equivalents.
  */
 
-#if HC_GTK4
-
 /*
+ * hc_box_pack_start_impl:
  * In GTK4, box packing uses expand properties on the child widget.
  * We need to set the correct expand property based on box orientation:
  * - Horizontal box: set hexpand
@@ -125,28 +103,12 @@ hc_box_pack_end_impl (GtkBox *box, GtkWidget *child, gboolean expand)
 #define hc_box_remove(box, child) \
 	gtk_box_remove(GTK_BOX(box), child)
 
-#else /* GTK3 */
-
-#define hc_box_pack_start(box, child, expand, fill, padding) \
-	gtk_box_pack_start(GTK_BOX(box), child, expand, fill, padding)
-
-#define hc_box_pack_end(box, child, expand, fill, padding) \
-	gtk_box_pack_end(GTK_BOX(box), child, expand, fill, padding)
-
-#define hc_box_remove(box, child) \
-	gtk_container_remove(GTK_CONTAINER(box), child)
-
-#endif
-
 /*
  * =============================================================================
  * Container Add/Remove Macros
  * =============================================================================
- * GTK3: gtk_container_add(container, widget)
- * GTK4: Use specific container methods (gtk_box_append, gtk_window_set_child, etc.)
+ * GTK4 uses specific container methods (gtk_box_append, gtk_window_set_child, etc.)
  */
-
-#if HC_GTK4
 
 /* For windows */
 #define hc_window_set_child(window, child) \
@@ -181,61 +143,20 @@ hc_box_pack_end_impl (GtkBox *box, GtkWidget *child, gboolean expand)
 #define hc_viewport_set_child(viewport, child) \
 	gtk_viewport_set_child(GTK_VIEWPORT(viewport), child)
 
-#else /* GTK3 */
-
-#define hc_window_set_child(window, child) \
-	gtk_container_add(GTK_CONTAINER(window), child)
-
-#define hc_scrolled_window_set_child(sw, child) \
-	gtk_container_add(GTK_CONTAINER(sw), child)
-
-#define hc_frame_set_child(frame, child) \
-	gtk_container_add(GTK_CONTAINER(frame), child)
-
-/* For buttons with custom children */
-#define hc_button_set_child(button, child) \
-	gtk_container_add(GTK_CONTAINER(button), child)
-
-/* For event boxes */
-#define hc_event_box_set_child(eventbox, child) \
-	gtk_container_add(GTK_CONTAINER(eventbox), child)
-
-#define hc_event_box_new() \
-	gtk_event_box_new()
-
-/* Generic add child to a box (no packing options) */
-#define hc_box_add(box, child) \
-	gtk_container_add(GTK_CONTAINER(box), child)
-
-/* For viewports */
-#define hc_viewport_set_child(viewport, child) \
-	gtk_container_add(GTK_CONTAINER(viewport), child)
-
-#endif
-
 /*
  * =============================================================================
  * Widget Visibility
  * =============================================================================
- * GTK3: Widgets start hidden, need gtk_widget_show()/gtk_widget_show_all()
- * GTK4: Widgets start visible, no gtk_widget_show_all()
- *
- * IMPORTANT: GTK4 removed gtk_widget_show_all(). In GTK3, this function
- * recursively showed all children. We implement a replacement that does
- * the same by iterating through children.
+ * In GTK4, widgets start visible by default. These macros provide
+ * consistent widget visibility control.
  */
-
-#if HC_GTK4
 
 #define hc_widget_show(widget) \
 	gtk_widget_set_visible(widget, TRUE)
 
 /*
- * GTK4 replacement for gtk_widget_show_all()
- * In GTK4, widgets start visible by default, so we only need to ensure
- * the widget itself is visible. Child widgets should already be visible
- * unless explicitly hidden, and forcing visibility on children can cause
- * issues (e.g., opening popovers prematurely).
+ * hc_widget_show_all - In GTK4, widgets start visible by default,
+ * so we only need to ensure the widget itself is visible.
  */
 #define hc_widget_show_all(widget) \
 	gtk_widget_set_visible(widget, TRUE)
@@ -243,30 +164,10 @@ hc_box_pack_end_impl (GtkBox *box, GtkWidget *child, gboolean expand)
 #define hc_widget_hide(widget) \
 	gtk_widget_set_visible(widget, FALSE)
 
-#else /* GTK3 */
-
-#define hc_widget_show(widget) \
-	gtk_widget_show(widget)
-
-#define hc_widget_show_all(widget) \
-	gtk_widget_show_all(widget)
-
-#define hc_widget_hide(widget) \
-	gtk_widget_hide(widget)
-
-#endif
-
 /*
  * =============================================================================
  * Widget Destruction
  * =============================================================================
- * GTK3: gtk_widget_destroy() for all widgets
- * GTK4: gtk_window_destroy() for windows, unparent for others
- */
-
-#if HC_GTK4
-
-/*
  * In GTK4, widgets must be unparented before they can be destroyed.
  * For windows, use gtk_window_destroy().
  * For other widgets, unparent first (if parented) - this will destroy
@@ -302,29 +203,17 @@ hc_widget_destroy_impl (GtkWidget *widget)
 	hc_widget_destroy_impl(GTK_WIDGET(widget))
 
 /*
- * In GTK4, gtk_window_close() allows proper cleanup and event processing
- * before destruction, which is safer than gtk_window_destroy() for windows
- * that may have pending events.
+ * hc_window_destroy - In GTK4, gtk_window_close() allows proper cleanup
+ * and event processing before destruction.
  */
 #define hc_window_destroy(window) \
 	gtk_window_close(GTK_WINDOW(window))
-
-#else /* GTK3 */
-
-#define hc_widget_destroy(widget) \
-	gtk_widget_destroy(widget)
-
-#define hc_window_destroy(window) \
-	gtk_widget_destroy(GTK_WIDGET(window))
-
-#endif
 
 /*
  * =============================================================================
  * Box Creation
  * =============================================================================
- * GTK3: gtk_box_new(orientation, spacing)
- * GTK4: Same, but default spacing is different
+ * Convenience macros for creating boxes.
  */
 
 #define hc_hbox_new(spacing) \
@@ -337,10 +226,7 @@ hc_widget_destroy_impl (GtkWidget *widget)
  * =============================================================================
  * Button Creation
  * =============================================================================
- * Minor differences in button creation API
  */
-
-#if HC_GTK4
 
 static inline GtkWidget *
 hc_button_new_with_label(const char *label)
@@ -350,45 +236,22 @@ hc_button_new_with_label(const char *label)
 	return btn;
 }
 
-#else /* GTK3 */
-
-#define hc_button_new_with_label(label) \
-	gtk_button_new_with_label(label)
-
-#endif
-
 /*
  * =============================================================================
  * Scrolled Window
  * =============================================================================
- * GTK3: gtk_scrolled_window_new(hadjustment, vadjustment)
- * GTK4: gtk_scrolled_window_new() - no adjustment params
  */
-
-#if HC_GTK4
 
 #define hc_scrolled_window_new() \
 	gtk_scrolled_window_new()
 
-#else /* GTK3 */
-
-#define hc_scrolled_window_new() \
-	gtk_scrolled_window_new(NULL, NULL)
-
-#endif
-
 /*
  * =============================================================================
- * Event Handling Compatibility
+ * Event Handling Helpers
  * =============================================================================
- * GTK3: Event signals (button-press-event, key-press-event, etc.)
- * GTK4: Event controllers (GtkGestureClick, GtkEventControllerKey, etc.)
- *
- * These are helper functions to create and attach event controllers.
- * The actual signal handlers need to be updated for GTK4's different signatures.
+ * GTK4 uses event controllers (GtkGestureClick, GtkEventControllerKey, etc.)
+ * These helper functions create and attach event controllers.
  */
-
-#if HC_GTK4
 
 /* Helper to add click gesture (replaces button-press/release-event) */
 static inline GtkGesture *
@@ -489,19 +352,12 @@ hc_add_crossing_controller(GtkWidget *widget,
 	return controller;
 }
 
-#endif /* HC_GTK4 */
-
 /*
  * =============================================================================
  * Container Children Iteration
  * =============================================================================
- * GTK3: gtk_container_get_children() returns GList*
- * GTK4: Use gtk_widget_get_first_child()/gtk_widget_get_next_sibling()
+ * Helper to get children list - caller must free with g_list_free()
  */
-
-#if HC_GTK4
-
-/* Helper to get children list in GTK4 - caller must free with g_list_free() */
 static inline GList *
 hc_container_get_children(GtkWidget *container)
 {
@@ -517,59 +373,27 @@ hc_container_get_children(GtkWidget *container)
 	return list;
 }
 
-#else /* GTK3 */
-
-#define hc_container_get_children(container) \
-	gtk_container_get_children(GTK_CONTAINER(container))
-
-#endif
-
 /*
  * =============================================================================
- * GdkDisplay/Screen Compatibility
+ * GdkDisplay Helpers
  * =============================================================================
- * GTK3: GdkScreen is primary
- * GTK4: GdkDisplay is primary, no GdkScreen
  */
-
-#if HC_GTK4
 
 #define hc_get_default_display() \
 	gdk_display_get_default()
 
-/* CSS provider uses GdkDisplay in GTK4 */
 #define hc_style_context_add_provider_for_display(provider, priority) \
 	gtk_style_context_add_provider_for_display( \
 		gdk_display_get_default(), \
 		GTK_STYLE_PROVIDER(provider), \
 		priority)
 
-#else /* GTK3 */
-
-#define hc_get_default_display() \
-	gdk_display_get_default()
-
-#define hc_style_context_add_provider_for_display(provider, priority) \
-	gtk_style_context_add_provider_for_screen( \
-		gdk_screen_get_default(), \
-		GTK_STYLE_PROVIDER(provider), \
-		priority)
-
-#endif
-
 /*
  * =============================================================================
- * Message Dialog Compatibility
+ * Message Dialog
  * =============================================================================
- * GTK3: GtkMessageDialog with gtk_dialog_run()
- * GTK4: GtkAlertDialog (async) or GtkMessageDialog without gtk_dialog_run()
+ * In GTK4, dialogs are async-only. This requires callback-based handling.
  */
-
-#if HC_GTK4
-
-/* In GTK4, dialogs are async-only. This requires callback-based handling. */
-/* For now, provide a simple wrapper that creates a similar dialog. */
-/* Actual usage will need refactoring for async patterns. */
 
 #define hc_message_dialog_new(parent, flags, type, buttons, format, ...) \
 	gtk_message_dialog_new(parent, flags, type, buttons, format, ##__VA_ARGS__)
@@ -577,49 +401,23 @@ hc_container_get_children(GtkWidget *container)
 /* GTK4 has no gtk_dialog_run - must use async response handling */
 #define HC_DIALOG_REQUIRES_ASYNC 1
 
-#else /* GTK3 */
-
-#define hc_message_dialog_new(parent, flags, type, buttons, format, ...) \
-	gtk_message_dialog_new(parent, flags, type, buttons, format, ##__VA_ARGS__)
-
-#define HC_DIALOG_REQUIRES_ASYNC 0
-
-#endif
-
 /*
  * =============================================================================
- * Entry/Text Widget Compatibility
+ * Entry/Text Widget
  * =============================================================================
  */
 
-#if HC_GTK4
-
-/* GtkEntry buffer access changes slightly */
 #define hc_entry_get_text(entry) \
 	gtk_editable_get_text(GTK_EDITABLE(entry))
 
 #define hc_entry_set_text(entry, text) \
 	gtk_editable_set_text(GTK_EDITABLE(entry), text)
 
-#else /* GTK3 */
-
-#define hc_entry_get_text(entry) \
-	gtk_entry_get_text(GTK_ENTRY(entry))
-
-#define hc_entry_set_text(entry, text) \
-	gtk_entry_set_text(GTK_ENTRY(entry), text)
-
-#endif
-
 /*
  * =============================================================================
- * Clipboard Compatibility
+ * Clipboard
  * =============================================================================
- * GTK3: gtk_clipboard_get(GDK_SELECTION_CLIPBOARD)
- * GTK4: gdk_display_get_clipboard(display)
  */
-
-#if HC_GTK4
 
 #define hc_clipboard_get_default() \
 	gdk_display_get_clipboard(gdk_display_get_default())
@@ -627,27 +425,14 @@ hc_container_get_children(GtkWidget *container)
 /* GTK4 clipboard is async-only */
 #define HC_CLIPBOARD_ASYNC 1
 
-#else /* GTK3 */
-
-#define hc_clipboard_get_default() \
-	gtk_clipboard_get(GDK_SELECTION_CLIPBOARD)
-
-#define HC_CLIPBOARD_ASYNC 0
-
-#endif
-
 /*
  * =============================================================================
- * Drag and Drop Compatibility
+ * Drag and Drop
  * =============================================================================
- * GTK3: gtk_drag_dest_set(), etc.
- * GTK4: GtkDropTarget and GtkDragSource controllers
- *
  * GTK4 uses GtkDropTarget for receiving drops and GtkDragSource for initiating drags.
  * Helper functions provided here for common drop patterns.
  */
 
-#if HC_GTK4
 #define HC_DND_NEW_API 1
 
 /*
@@ -702,18 +487,11 @@ hc_add_drag_source (GtkWidget *widget, GCallback prepare_cb, gpointer user_data)
 	return source;
 }
 
-#else
-#define HC_DND_NEW_API 0
-#endif
-
 /*
  * =============================================================================
- * Notebook/TabView Compatibility
+ * Notebook/TabView
  * =============================================================================
- * Minor API changes between versions
  */
-
-#if HC_GTK4
 
 #define hc_notebook_append_page(notebook, child, tab_label) \
 	gtk_notebook_append_page(GTK_NOTEBOOK(notebook), child, tab_label)
@@ -721,28 +499,14 @@ hc_add_drag_source (GtkWidget *widget, GCallback prepare_cb, gpointer user_data)
 #define hc_notebook_remove_page(notebook, page_num) \
 	gtk_notebook_remove_page(GTK_NOTEBOOK(notebook), page_num)
 
-#else /* GTK3 */
-
-#define hc_notebook_append_page(notebook, child, tab_label) \
-	gtk_notebook_append_page(GTK_NOTEBOOK(notebook), child, tab_label)
-
-#define hc_notebook_remove_page(notebook, page_num) \
-	gtk_notebook_remove_page(GTK_NOTEBOOK(notebook), page_num)
-
-#endif
-
 /*
  * =============================================================================
- * Paned Widget Compatibility
+ * Paned Widget
  * =============================================================================
- */
-
-#if HC_GTK4
-
-/*
  * GTK4: gtk_paned_pack1/pack2 replaced with set_start_child/set_end_child
  * plus separate resize/shrink property setters
  */
+
 static inline void
 hc_gtk4_paned_pack1 (GtkPaned *paned, GtkWidget *child, gboolean resize, gboolean shrink)
 {
@@ -764,16 +528,6 @@ hc_gtk4_paned_pack2 (GtkPaned *paned, GtkWidget *child, gboolean resize, gboolea
 
 #define hc_paned_pack2(paned, child, resize, shrink) \
 	hc_gtk4_paned_pack2(GTK_PANED(paned), child, resize, shrink)
-
-#else /* GTK3 */
-
-#define hc_paned_pack1(paned, child, resize, shrink) \
-	gtk_paned_pack1(GTK_PANED(paned), child, resize, shrink)
-
-#define hc_paned_pack2(paned, child, resize, shrink) \
-	gtk_paned_pack2(GTK_PANED(paned), child, resize, shrink)
-
-#endif
 
 /*
  * =============================================================================
@@ -802,27 +556,19 @@ hc_widget_set_margin_all(GtkWidget *widget, int margin)
 
 /*
  * =============================================================================
- * Cairo/Drawing Compatibility
+ * Cairo/Drawing
  * =============================================================================
- * GTK3: Draw signal with cairo_t
- * GTK4: Snapshot API (GtkSnapshot), but can still use cairo via gtk_snapshot_append_cairo()
+ * GTK4 uses the Snapshot API (GtkSnapshot), but can still use cairo via
+ * gtk_snapshot_append_cairo()
  */
 
-#if HC_GTK4
 #define HC_USE_SNAPSHOT_API 1
-#else
-#define HC_USE_SNAPSHOT_API 0
-#endif
 
 /*
  * =============================================================================
- * Widget Dimensions Compatibility
+ * Widget Dimensions
  * =============================================================================
- * GTK3: gdk_window_get_width/height(gtk_widget_get_window(widget))
- * GTK4: gtk_widget_get_width/height(widget)
  */
-
-#if HC_GTK4
 
 #define hc_widget_get_width(widget) \
 	gtk_widget_get_width(widget)
@@ -830,35 +576,12 @@ hc_widget_set_margin_all(GtkWidget *widget, int margin)
 #define hc_widget_get_height(widget) \
 	gtk_widget_get_height(widget)
 
-#else /* GTK3 */
-
-#define hc_widget_get_width(widget) \
-	gdk_window_get_width(gtk_widget_get_window(widget))
-
-#define hc_widget_get_height(widget) \
-	gdk_window_get_height(gtk_widget_get_window(widget))
-
-#endif
-
 /*
  * =============================================================================
- * Menu/Popup Compatibility
+ * Menu/Popup Helpers
  * =============================================================================
- * GTK3: GtkMenu with gtk_menu_popup()
- * GTK4: GtkPopoverMenu with GMenu/GMenuModel
- *
- * For context menus, GTK4 uses a completely different approach:
- * - GtkPopoverMenu displays menus from GMenuModel
- * - Actions are registered on GtkApplication or widget action groups
- *
- * Strategy: Wrap GTK3-style menu code in #if !HC_GTK4 blocks.
- * GTK4 menu implementations will be added separately.
- *
- * NOTE: Context menus (right-click menus) require complete rewrite for GTK4.
- * The menu bar can potentially use GtkMenuBar replacement approaches.
+ * GTK4 uses GtkPopoverMenu with GMenu/GMenuModel for menus.
  */
-
-#if HC_GTK4
 
 /*
  * Helper to create and show a popover menu at a given position
@@ -880,22 +603,13 @@ hc_popover_menu_popup_at (GtkWidget *parent, GMenuModel *menu_model, double x, d
 	return popover;
 }
 
-#endif
-
 /*
  * =============================================================================
- * TreeView/ListView Compatibility
+ * TreeView/ListView Helpers
  * =============================================================================
- * GTK3: GtkTreeView with GtkListStore/GtkTreeStore
- * GTK4: GtkTreeView still works but is deprecated; GtkColumnView is the replacement
- *
- * For now, we keep using GtkTreeView in GTK4 as it's still functional.
- * Full migration to GtkColumnView/GtkListView would be a major rewrite.
- *
- * These macros handle APIs that were removed or changed in GTK4.
+ * GtkTreeView still works but is deprecated; GtkColumnView is the replacement.
+ * These helpers handle APIs that were removed or changed in GTK4.
  */
-
-#if HC_GTK4
 
 /*
  * gtk_tree_view_set_rules_hint() - Removed in GTK4
@@ -915,28 +629,12 @@ hc_popover_menu_popup_at (GtkWidget *parent, GMenuModel *menu_model, double x, d
 #define hc_tree_view_get_hadjustment(treeview) \
 	gtk_scrollable_get_hadjustment(GTK_SCROLLABLE(treeview))
 
-#else /* GTK3 */
-
-#define hc_tree_view_set_rules_hint(view, setting) \
-	gtk_tree_view_set_rules_hint(GTK_TREE_VIEW(view), setting)
-
-#define hc_tree_view_get_vadjustment(treeview) \
-	gtk_tree_view_get_vadjustment(GTK_TREE_VIEW(treeview))
-
-#define hc_tree_view_get_hadjustment(treeview) \
-	gtk_tree_view_get_hadjustment(GTK_TREE_VIEW(treeview))
-
-#endif
-
 /*
  * =============================================================================
- * Container Border Width Compatibility
+ * Container Border Width
  * =============================================================================
- * GTK3: gtk_container_set_border_width(container, border)
- * GTK4: Use widget margins instead (set_margin_start/end/top/bottom)
+ * GTK4 uses widget margins instead of container border width.
  */
-
-#if HC_GTK4
 
 #define hc_container_set_border_width(container, border) \
 	do { \
@@ -946,69 +644,24 @@ hc_popover_menu_popup_at (GtkWidget *parent, GMenuModel *menu_model, double x, d
 		gtk_widget_set_margin_bottom(GTK_WIDGET(container), border); \
 	} while (0)
 
-#else /* GTK3 */
-
-#define hc_container_set_border_width(container, border) \
-	gtk_container_set_border_width(GTK_CONTAINER(container), border)
-
-#endif
-
 /*
  * =============================================================================
- * Window Position Compatibility
+ * Window Position
  * =============================================================================
- * GTK3: gtk_window_set_position(window, position)
- * GTK4: Removed - window manager handles placement. No replacement.
+ * Window positioning was removed in GTK4 - window manager handles placement.
  */
 
-#if HC_GTK4
-
-/* No-op in GTK4 - window manager handles positioning */
+/* No-op - window manager handles positioning */
 #define hc_window_set_position(window, position) ((void)0)
 
-#else /* GTK3 */
-
-#define hc_window_set_position(window, position) \
-	gtk_window_set_position(GTK_WINDOW(window), position)
-
-#endif
-
 /*
  * =============================================================================
- * Scrolled Window Creation Compatibility
+ * Icon Image
  * =============================================================================
- * GTK3: gtk_scrolled_window_new(hadjustment, vadjustment) - typically (NULL, NULL)
- * GTK4: gtk_scrolled_window_new() - no parameters
+ * Helper to create image icons with size mapping from old GTK3 sizes.
+ * GTK4 uses GTK_ICON_SIZE_NORMAL, GTK_ICON_SIZE_LARGE, GTK_ICON_SIZE_INHERIT
  */
 
-#if HC_GTK4
-
-#define hc_scrolled_window_new() \
-	gtk_scrolled_window_new()
-
-#else /* GTK3 */
-
-#define hc_scrolled_window_new() \
-	gtk_scrolled_window_new(NULL, NULL)
-
-#endif
-
-/*
- * =============================================================================
- * Icon Image Compatibility
- * =============================================================================
- * GTK3: gtk_image_new_from_icon_name(icon_name, size) - takes GtkIconSize
- * GTK4: gtk_image_new_from_icon_name(icon_name) - no size param, use set_icon_size
- */
-
-#if HC_GTK4
-
-/* In GTK4, create image and set size separately.
- * Note: GTK4 uses GTK_ICON_SIZE_NORMAL, GTK_ICON_SIZE_LARGE, GTK_ICON_SIZE_INHERIT
- * GTK3 GTK_ICON_SIZE_MENU/BUTTON/SMALL_TOOLBAR → GTK_ICON_SIZE_NORMAL
- * GTK3 GTK_ICON_SIZE_LARGE_TOOLBAR/DND → GTK_ICON_SIZE_LARGE
- * GTK3 GTK_ICON_SIZE_DIALOG → GTK_ICON_SIZE_LARGE
- */
 static inline GtkWidget *
 hc_image_new_from_icon_name(const char *icon_name, int gtk3_size)
 {
@@ -1022,28 +675,18 @@ hc_image_new_from_icon_name(const char *icon_name, int gtk3_size)
 	return image;
 }
 
-#else /* GTK3 */
-
-#define hc_image_new_from_icon_name(icon_name, size) \
-	gtk_image_new_from_icon_name(icon_name, size)
-
-#endif
-
 /*
  * =============================================================================
- * ButtonBox Compatibility
+ * ButtonBox Emulation
  * =============================================================================
- * GTK3: GtkButtonBox with gtk_button_box_set_layout()
- * GTK4: GtkButtonBox removed - use GtkBox with halign/valign instead
+ * GtkButtonBox was removed in GTK4 - use GtkBox with halign/valign instead.
  *
  * Layout mapping:
  * - GTK_BUTTONBOX_START (2) -> GTK_ALIGN_START
- * - GTK_BUTTONBOX_END (3) -> GTK_ALIGN_END (halign for horizontal, valign for vertical)
+ * - GTK_BUTTONBOX_END (3) -> GTK_ALIGN_END
  * - GTK_BUTTONBOX_CENTER (4) -> GTK_ALIGN_CENTER
  * - GTK_BUTTONBOX_SPREAD (0), GTK_BUTTONBOX_EDGE (1), GTK_BUTTONBOX_EXPAND (5) -> default fill
  */
-
-#if HC_GTK4
 
 /* In GTK4, GtkButtonBox is removed. Use a regular GtkBox.
  * GTK3's GtkButtonBox defaults to GTK_BUTTONBOX_END for horizontal boxes,
@@ -1104,41 +747,13 @@ hc_button_box_set_layout_impl (GtkWidget *bbox, int layout)
 #define hc_button_box_set_layout(bbox, layout) \
 	hc_button_box_set_layout_impl(GTK_WIDGET(bbox), layout)
 
-#else /* GTK3 */
-
-#define hc_button_box_new(orientation) \
-	gtk_button_box_new(orientation)
-
-#define hc_button_box_set_layout(bbox, layout) \
-	gtk_button_box_set_layout(GTK_BUTTON_BOX(bbox), layout)
-
-#endif
-
 /*
  * =============================================================================
- * Dialog Action Area Compatibility
+ * Shadow Type (No-ops)
  * =============================================================================
- * GTK3: gtk_dialog_get_action_area() to access button area
- * GTK4: Removed - use gtk_dialog_add_button() or add_action_widget()
+ * gtk_scrolled_window_set_shadow_type() etc. were removed in GTK4.
+ * Use CSS styling instead.
  */
-
-#if HC_GTK4
-
-/* In GTK4, action area is not directly accessible.
- * Code should use gtk_dialog_add_button() instead. */
-/* No macro - code must be rewritten to use gtk_dialog_add_button() */
-
-#endif
-
-/*
- * =============================================================================
- * Shadow Type Compatibility
- * =============================================================================
- * GTK3: gtk_scrolled_window_set_shadow_type(), gtk_viewport_set_shadow_type()
- * GTK4: Removed - use CSS styling instead
- */
-
-#if HC_GTK4
 
 #define hc_scrolled_window_set_shadow_type(sw, type) ((void)0)
 #define hc_viewport_set_shadow_type(viewport, type) ((void)0)
@@ -1207,27 +822,14 @@ hc_button_box_set_layout_impl (GtkWidget *bbox, int layout)
 #define gtk_widget_get_state(widget) GTK_STATE_NORMAL
 #define gtk_widget_set_state(widget, state) ((void)0)
 
-#else /* GTK3 */
-
-#define hc_scrolled_window_set_shadow_type(sw, type) \
-	gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(sw), type)
-
-#define hc_viewport_set_shadow_type(viewport, type) \
-	gtk_viewport_set_shadow_type(GTK_VIEWPORT(viewport), type)
-
-#endif
-
 /*
  * =============================================================================
- * Misc/Label Alignment Compatibility
+ * Misc/Label Alignment
  * =============================================================================
- * GTK3: gtk_misc_set_alignment(misc, xalign, yalign)
- * GTK4: GtkMisc removed - use gtk_widget_set_halign/valign instead
+ * GtkMisc was removed - use gtk_widget_set_halign/valign instead.
+ * Map alignment values (0.0-1.0) to GtkAlign enum.
  */
 
-#if HC_GTK4
-
-/* Map alignment values (0.0-1.0) to GtkAlign enum */
 static inline void
 hc_misc_set_alignment(GtkWidget *widget, float xalign, float yalign)
 {
@@ -1245,51 +847,13 @@ hc_misc_set_alignment(GtkWidget *widget, float xalign, float yalign)
 	gtk_widget_set_valign(widget, valign);
 }
 
-#else /* GTK3 */
-
-#define hc_misc_set_alignment(widget, xalign, yalign) \
-	gtk_misc_set_alignment(GTK_MISC(widget), xalign, yalign)
-
-#endif
-
 /*
  * =============================================================================
- * Entry Text Compatibility
+ * CheckButton/ToggleButton
  * =============================================================================
- * GTK3: gtk_entry_get_text() / gtk_entry_set_text()
- * GTK4: gtk_editable_get_text() / gtk_editable_set_text()
+ * In GTK4, GtkCheckButton no longer inherits from GtkToggleButton.
+ * These helpers dispatch to the correct API based on the actual widget type.
  */
-
-#if HC_GTK4
-
-#define hc_entry_get_text(entry) \
-	gtk_editable_get_text(GTK_EDITABLE(entry))
-
-#define hc_entry_set_text(entry, text) \
-	gtk_editable_set_text(GTK_EDITABLE(entry), text)
-
-#else /* GTK3 */
-
-#define hc_entry_get_text(entry) \
-	gtk_entry_get_text(GTK_ENTRY(entry))
-
-#define hc_entry_set_text(entry, text) \
-	gtk_entry_set_text(GTK_ENTRY(entry), text)
-
-#endif
-
-/*
- * =============================================================================
- * CheckButton/ToggleButton Compatibility
- * =============================================================================
- * GTK3: GtkCheckButton inherits from GtkToggleButton, use gtk_toggle_button_*
- * GTK4: GtkCheckButton no longer inherits from GtkToggleButton, use gtk_check_button_*
- *
- * Note: These macros are for GtkCheckButton widgets only.
- * For actual GtkToggleButton widgets, the gtk_toggle_button_* functions still work.
- */
-
-#if HC_GTK4
 
 #define hc_check_button_get_active(button) \
 	gtk_check_button_get_active(GTK_CHECK_BUTTON(button))
@@ -1298,18 +862,8 @@ hc_misc_set_alignment(GtkWidget *widget, float xalign, float yalign)
 	gtk_check_button_set_active(GTK_CHECK_BUTTON(button), active)
 
 /*
- * In GTK4, GtkCheckButton no longer inherits from GtkToggleButton.
- * GtkToggleButton still exists as a separate widget with its own API.
- *
- * HexChat uses both:
- * - GtkToggleButton for tab buttons (chanview-tabs.c) - use native GTK4 API
- * - GtkCheckButton for checkboxes - needs gtk_check_button_* API in GTK4
- *
- * Problem: GTK3 code uses gtk_toggle_button_* on GtkCheckButton (since it
- * inherits from GtkToggleButton in GTK3). In GTK4, we need to dispatch to
- * the correct API based on the actual widget type.
- *
- * These macros check the widget type at runtime and call the appropriate API.
+ * Runtime type dispatch for toggle/check buttons.
+ * HexChat uses both GtkToggleButton (tab buttons) and GtkCheckButton (checkboxes).
  */
 static inline gboolean
 hc_toggle_button_get_active_impl (GtkWidget *widget)
@@ -1336,28 +890,12 @@ hc_toggle_button_set_active_impl (GtkWidget *widget, gboolean active)
 #define gtk_toggle_button_set_active(button, active) \
 	hc_toggle_button_set_active_impl (GTK_WIDGET (button), (active))
 
-#else /* GTK3 */
-
-#define hc_check_button_get_active(button) \
-	gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(button))
-
-#define hc_check_button_set_active(button, active) \
-	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(button), active)
-
-#endif
-
 /*
  * =============================================================================
- * GtkListView / GtkColumnView Compatibility (GTK4 only)
+ * GtkListView / GtkColumnView Helpers
  * =============================================================================
- * GTK3: GtkTreeView with GtkListStore/GtkTreeStore
- * GTK4: GtkListView/GtkColumnView with GListModel
- *
- * These helpers simplify creating list views in GTK4. GtkTreeView still works
- * in GTK4 (deprecated) but GtkListView/GtkColumnView are preferred for new code.
+ * These helpers simplify creating list views with GListModel.
  */
-
-#if HC_GTK4
 
 /*
  * hc_list_view_new_simple:
@@ -1527,16 +1065,12 @@ hc_pixbuf_to_texture (GdkPixbuf *pixbuf)
 	return gdk_texture_new_for_pixbuf (pixbuf);
 }
 
-#endif /* HC_GTK4 */
-
 /*
  * =============================================================================
- * GTK4 Removed APIs - Compatibility Macros/Functions
+ * Removed/Renamed GTK3 APIs - Compatibility Macros/Functions
  * =============================================================================
- * These provide no-op or compatible replacements for removed GTK3 APIs
+ * These provide no-op or compatible replacements for removed GTK3 APIs.
  */
-
-#if HC_GTK4
 
 /*
  * GtkBin - removed in GTK4
@@ -1876,17 +1410,9 @@ typedef GtkWidget GtkMenuItem;
 #define gtk_menu_bar_new() gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0)
 
 /*
- * gtk_init - signature changed in GTK4
- * GTK4: gtk_init() takes no arguments
- * Note: Don't redefine gtk_init since GTK4 already provides the correct signature.
- * Code calling gtk_init(&argc, &argv) needs to use:
- *   #if HC_GTK4
- *   gtk_init();
- *   #else
- *   gtk_init(&argc, &argv);
- *   #endif
+ * gtk_init - GTK4 version takes no arguments.
+ * hc_gtk_init provides compatibility for old-style calls.
  */
-/* Compatibility: wrap the old-style call */
 #define hc_gtk_init(argc, argv) gtk_init()
 
 /*
@@ -2020,16 +1546,13 @@ static inline void hc_entry_get_layout_offsets(GtkEntry *entry, gint *x, gint *y
  */
 #define gtk_widget_grab_default(widget) ((void)0)
 
-#endif /* HC_GTK4 */
-
 /*
  * =============================================================================
  * Deprecated/Removed Functions - Compile-time errors
  * =============================================================================
- * Track functions that need complete replacement
+ * These definitions cause compile errors to help identify code that needs
+ * rewriting rather than silently failing at runtime.
  */
-
-#if HC_GTK4
 
 /* These simply don't exist in GTK4 - code must be rewritten */
 #define gtk_widget_show_all COMPILE_ERROR_USE_gtk_widget_set_visible
@@ -2038,29 +1561,20 @@ static inline void hc_entry_get_layout_offsets(GtkEntry *entry, gint *x, gint *y
 
 /*
  * gtk_widget_show - In GTK4, widgets are visible by default.
- * Calling gtk_widget_show on a toplevel window requires the window
- * to be properly initialized. Map to gtk_widget_set_visible which is safer.
- * For windows, calling gtk_widget_set_visible(w, TRUE) is equivalent.
+ * Map to gtk_widget_set_visible which is safer.
  */
 #define gtk_widget_show(widget) gtk_widget_set_visible(widget, TRUE)
 #define gtk_widget_hide(widget) gtk_widget_set_visible(widget, FALSE)
 
-#endif
-
 /*
  * =============================================================================
- * GtkStack as GtkNotebook replacement for GTK4
+ * GtkStack Page Container
  * =============================================================================
- * HexChat uses GtkNotebook without tabs (show_tabs=FALSE) as a page container.
- * In GTK4, GtkNotebook has an internal header that takes space even with tabs hidden.
- * GtkStack is the proper GTK4 widget for this use case.
- *
- * These macros allow using GtkStack in GTK4 while keeping GtkNotebook in GTK3.
+ * HexChat uses this as a page container (like GtkNotebook without tabs).
+ * GtkStack is the proper widget for this use case in GTK4.
  */
 
-#if HC_GTK4
-
-/* Create a new page container - GtkStack in GTK4 */
+/* Create a new page container - GtkStack */
 static inline GtkWidget *
 hc_page_container_new (void)
 {
@@ -2127,44 +1641,6 @@ hc_page_container_remove_page (GtkWidget *container, int page_num)
 		gtk_stack_remove (GTK_STACK (container), child);
 	}
 }
-
-#else /* GTK3 */
-
-/* In GTK3, use GtkNotebook */
-static inline GtkWidget *
-hc_page_container_new (void)
-{
-	GtkWidget *notebook = gtk_notebook_new ();
-	gtk_notebook_set_show_tabs (GTK_NOTEBOOK (notebook), FALSE);
-	gtk_notebook_set_show_border (GTK_NOTEBOOK (notebook), FALSE);
-	return notebook;
-}
-
-static inline void
-hc_page_container_append (GtkWidget *container, GtkWidget *child)
-{
-	gtk_notebook_append_page (GTK_NOTEBOOK (container), child, NULL);
-}
-
-static inline int
-hc_page_container_get_page_num (GtkWidget *container, GtkWidget *child)
-{
-	return gtk_notebook_page_num (GTK_NOTEBOOK (container), child);
-}
-
-static inline void
-hc_page_container_set_current_page (GtkWidget *container, int page_num)
-{
-	gtk_notebook_set_current_page (GTK_NOTEBOOK (container), page_num);
-}
-
-static inline void
-hc_page_container_remove_page (GtkWidget *container, int page_num)
-{
-	gtk_notebook_remove_page (GTK_NOTEBOOK (container), page_num);
-}
-
-#endif /* HC_GTK4 */
 
 /*
  * =============================================================================

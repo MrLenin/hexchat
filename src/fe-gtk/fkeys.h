@@ -34,21 +34,12 @@
 void key_init (void);
 void key_dialog_show (void);
 
-/* Key press handler - GTK3/GTK4 have different signatures for the signal/controller */
-#if HC_GTK4
+/* Key press handler */
 gboolean key_handle_key_press (GtkEventControllerKey *controller, guint keyval,
                                guint keycode, GdkModifierType state, session *sess);
-#else
-int key_handle_key_press (GtkWidget * wid, GdkEventKey * evt, session *sess);
-#endif
 
-/* Key action handler - GTK4 doesn't have GdkEventKey */
-#if HC_GTK4
+/* Key action handler */
 int key_action_insert (GtkWidget * wid, void *evt, char *d1, char *d2,
 						 session *sess);
-#else
-int key_action_insert (GtkWidget * wid, GdkEventKey * evt, char *d1, char *d2,
-						 session *sess);
-#endif
 
 #endif

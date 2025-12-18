@@ -35,22 +35,8 @@ typedef struct session hexchat_context;
 #include "gtkutil.h"
 #include "maingui.h"
 
-#if !HC_GTK4
-/* model for the plugin treeview (GTK3 only) */
-enum
-{
-	NAME_COLUMN,
-	VERSION_COLUMN,
-	FILE_COLUMN,
-	DESC_COLUMN,
-	FILEPATH_COLUMN,
-	N_COLUMNS
-};
-#endif
-
 static GtkWidget *plugin_window = NULL;
 
-#if HC_GTK4
 /*
  * GTK4 Implementation using GListStore + GtkColumnView
  */
@@ -227,60 +213,6 @@ plugingui_columnview_new (GtkWidget *box)
 	return scrolled;
 }
 
-#else /* GTK3 */
-
-static GtkWidget *
-plugingui_treeview_new (GtkWidget *box)
-{
-	GtkListStore *store;
-	GtkWidget *view;
-	GtkTreeViewColumn *col;
-	int col_id;
-
-	store = gtk_list_store_new (N_COLUMNS, G_TYPE_STRING, G_TYPE_STRING,
-	                            G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING);
-	g_return_val_if_fail (store != NULL, NULL);
-	view = gtkutil_treeview_new (box, GTK_TREE_MODEL (store), NULL,
-	                             NAME_COLUMN, _("Name"),
-	                             VERSION_COLUMN, _("Version"),
-	                             FILE_COLUMN, _("File"),
-	                             DESC_COLUMN, _("Description"),
-	                             FILEPATH_COLUMN, NULL, -1);
-	hc_tree_view_set_rules_hint (view, TRUE);
-	for (col_id=0; (col = gtk_tree_view_get_column (GTK_TREE_VIEW (view), col_id));
-	     col_id++)
-			gtk_tree_view_column_set_alignment (col, 0.5);
-
-	return view;
-}
-
-static char *
-plugingui_getfilename (GtkTreeView *view)
-{
-	GtkTreeModel *model;
-	GtkTreeSelection *sel;
-	GtkTreeIter iter;
-	GValue file;
-	char *str;
-
-	memset (&file, 0, sizeof (file));
-
-	sel = gtk_tree_view_get_selection (view);
-	if (gtk_tree_selection_get_selected (sel, &model, &iter))
-	{
-		gtk_tree_model_get_value (model, &iter, FILEPATH_COLUMN, &file);
-
-		str = g_value_dup_string (&file);
-		g_value_unset (&file);
-
-		return str;
-	}
-
-	return NULL;
-}
-
-#endif /* HC_GTK4 */
-
 static void
 plugingui_close (GtkWidget * wid, gpointer a)
 {
@@ -294,21 +226,14 @@ fe_pluginlist_update (void)
 {
 	hexchat_plugin *pl;
 	GSList *list;
-#if HC_GTK4
 	GtkColumnView *view;
 	GListStore *store;
-#else
-	GtkTreeView *view;
-	GtkListStore *store;
-	GtkTreeIter iter;
-#endif
 
 	if (!plugin_window)
 		return;
 
 	view = g_object_get_data (G_OBJECT (plugin_window), "view");
 
-#if HC_GTK4
 	store = g_object_get_data (G_OBJECT (plugin_window), "store");
 	/* Clear the store */
 	g_list_store_remove_all (store);
@@ -327,26 +252,6 @@ fe_pluginlist_update (void)
 		}
 		list = list->next;
 	}
-#else /* GTK3 */
-	store = GTK_LIST_STORE (gtk_tree_view_get_model (view));
-	gtk_list_store_clear (store);
-
-	list = plugin_list;
-	while (list)
-	{
-		pl = list->data;
-		if (pl->version[0] != 0)
-		{
-			gtk_list_store_append (store, &iter);
-			gtk_list_store_set (store, &iter, NAME_COLUMN, pl->name,
-			                    VERSION_COLUMN, pl->version,
-			                    FILE_COLUMN, file_part (pl->filename),
-			                    DESC_COLUMN, pl->desc,
-			                    FILEPATH_COLUMN, pl->filename, -1);
-		}
-		list = list->next;
-	}
-#endif
 }
 
 static void
@@ -385,7 +290,6 @@ plugingui_loadbutton_cb (GtkWidget * wid, gpointer unused)
 static void
 plugingui_unload (GtkWidget * wid, gpointer unused)
 {
-#if HC_GTK4
 	HcPluginItem *item;
 	char *modname, *file;
 
@@ -416,42 +320,11 @@ plugingui_unload (GtkWidget * wid, gpointer unused)
 
 	g_free (modname);
 	g_free (file);
-#else /* GTK3 */
-	char *modname, *file;
-	GtkTreeView *view;
-	GtkTreeIter iter;
-
-	view = g_object_get_data (G_OBJECT (plugin_window), "view");
-	if (!gtkutil_treeview_get_selected (view, &iter, NAME_COLUMN, &modname,
-	                                    FILEPATH_COLUMN, &file, -1))
-		return;
-
-	if (g_str_has_suffix (file, "."PLUGIN_SUFFIX))
-	{
-		if (plugin_kill (modname, FALSE) == 2)
-			fe_message (_("That plugin is refusing to unload.\n"), FE_MSG_ERROR);
-	}
-	else
-	{
-		char *buf;
-		/* let python.so or perl.so handle it */
-		if (strchr (file, ' '))
-			buf = g_strdup_printf ("UNLOAD \"%s\"", file);
-		else
-			buf = g_strdup_printf ("UNLOAD %s", file);
-		handle_command (current_sess, buf, FALSE);
-		g_free (buf);
-	}
-
-	g_free (modname);
-	g_free (file);
-#endif
 }
 
 static void
 plugingui_reloadbutton_cb (GtkWidget *wid, gpointer user_data)
 {
-#if HC_GTK4
 	HcPluginItem *item;
 	char *file;
 
@@ -461,10 +334,6 @@ plugingui_reloadbutton_cb (GtkWidget *wid, gpointer user_data)
 
 	file = g_strdup (item->filepath);
 	g_object_unref (item);
-#else
-	GtkTreeView *view = GTK_TREE_VIEW (user_data);
-	char *file = plugingui_getfilename (view);
-#endif
 
 	if (file)
 	{
@@ -485,13 +354,9 @@ plugingui_open (void)
 {
 	GtkWidget *vbox, *hbox;
 	char buf[128];
-#if HC_GTK4
 	GtkWidget *scrolled;
 	GtkWidget *view;
 	GListStore *store;
-#else
-	GtkWidget *view;
-#endif
 
 	if (plugin_window)
 	{
@@ -504,16 +369,11 @@ plugingui_open (void)
 														 700, 300, &vbox, 0);
 	gtkutil_destroy_on_esc (plugin_window);
 
-#if HC_GTK4
 	scrolled = plugingui_columnview_new (vbox);
 	view = g_object_get_data (G_OBJECT (scrolled), "column-view");
 	store = g_object_get_data (G_OBJECT (scrolled), "store");
 	g_object_set_data (G_OBJECT (plugin_window), "view", view);
 	g_object_set_data (G_OBJECT (plugin_window), "store", store);
-#else
-	view = plugingui_treeview_new (vbox);
-	g_object_set_data (G_OBJECT (plugin_window), "view", view);
-#endif
 
 	hbox = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	hc_button_box_set_layout (hbox, GTK_BUTTONBOX_SPREAD);

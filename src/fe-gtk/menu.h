@@ -23,17 +23,10 @@
 #include "gtk-compat.h"
 
 GtkWidget *menu_create_main (void *accel_group, int bar, int away, int toplevel, GtkWidget **menu_widgets);
-#if HC_GTK4
 void menu_urlmenu (GtkWidget *parent, double x, double y, char *url);
 void menu_chanmenu (session *sess, GtkWidget *parent, double x, double y, char *chan);
 void menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick, int num_sel);
 void menu_middlemenu (session *sess, GtkWidget *parent, double x, double y);
-#else
-void menu_urlmenu (GdkEventButton * event, char *url);
-void menu_chanmenu (session *sess, GdkEventButton * event, char *chan);
-void menu_nickmenu (session *sess, GdkEventButton * event, char *nick, int num_sel);
-void menu_middlemenu (session *sess, GdkEventButton *event);
-#endif
 void menu_addfavoritemenu (server *serv, GtkWidget *menu, char *channel, gboolean istree);
 void menu_addconnectmenu (server *serv, GtkWidget *menu);
 void userlist_button_cb (GtkWidget * button, char *cmd);
@@ -46,11 +39,9 @@ GtkWidget *create_icon_menu (char *labeltext, void *stock_name, int is_stock);
 void menu_create (GtkWidget *menu, GSList *list, char *target, int check_path);
 void menu_bar_toggle (void);
 void menu_add_plugin_items (GtkWidget *menu, char *root, char *target);
-#if HC_GTK4
 void menu_add_plugin_items_gmenu (GMenu *menu, GSimpleActionGroup *action_group,
                                   const char *root, const char *target);
 void menu_add_shortcuts (GtkWidget *window, GtkWidget *menu_bar);
-#endif
 void menu_change_layout (void);
 
 void menu_set_away (session_gui *gui, int away);

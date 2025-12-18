@@ -19,7 +19,6 @@
 
 /* file included in chanview.c */
 
-#if HC_GTK4
 /*
  * =============================================================================
  * GTK4: GtkListView with GtkTreeListModel for hierarchical display
@@ -96,19 +95,8 @@ static HcChanItem *cv_tree_find_item (chanview *cv, chan *ch);
 static HcChanItem *cv_tree_find_server_item (chanview *cv, void *family);
 static chan *cv_tree_get_parent (chan *ch);
 
-#else /* GTK3 */
-
-typedef struct
-{
-	GtkTreeView *tree;
-	GtkWidget *scrollw;	/* scrolledWindow */
-} treeview;
-
-#endif /* HC_GTK4 */
-
 #include <gdk/gdk.h>
 
-#if HC_GTK4
 /*
  * GTK4: Row activated callback for GtkListView
  * Toggle expansion state of tree rows on double-click
@@ -133,21 +121,6 @@ cv_tree_activated_cb (GtkListView *view, guint position, gpointer data)
 		g_object_unref (row);
 }
 
-#else /* GTK3 */
-
-static void 	/* row-activated, when a row is double clicked */
-cv_tree_activated_cb (GtkTreeView *view, GtkTreePath *path,
-							 GtkTreeViewColumn *column, gpointer data)
-{
-	if (gtk_tree_view_row_expanded (view, path))
-		gtk_tree_view_collapse_row (view, path);
-	else
-		gtk_tree_view_expand_row (view, path, FALSE);
-}
-
-#endif /* HC_GTK4 */
-
-#if HC_GTK4
 /*
  * GTK4: Selection changed callback for GtkListView
  */
@@ -186,32 +159,10 @@ cv_tree_sel_cb (GtkSelectionModel *sel_model, guint position, guint n_items, cha
 		g_object_unref (item);
 }
 
-#else /* GTK3 */
-
-static void		/* row selected callback */
-cv_tree_sel_cb (GtkTreeSelection *sel, chanview *cv)
-{
-	GtkTreeModel *model;
-	GtkTreeIter iter;
-	chan *ch;
-
-	if (gtk_tree_selection_get_selected (sel, &model, &iter))
-	{
-		gtk_tree_model_get (model, &iter, COL_CHAN, &ch, -1);
-
-		cv->focused = ch;
-		cv->cb_focus (cv, ch, ch->tag, ch->userdata);
-	}
-}
-
-#endif /* HC_GTK4 */
-
 /*
  * Tree view click handler (for context menus)
- * GTK3: Uses GdkEventButton from button-press-event signal
- * GTK4: Uses GtkGestureClick with different signature
+ * Uses GtkGestureClick with different signature
  */
-#if HC_GTK4
 
 /*
  * Helper to find position at coordinates in GtkListView
@@ -335,34 +286,11 @@ cv_tree_right_click_cb (GtkGestureClick *gesture, int n_press, double x, double 
 	if (item)
 		g_object_unref (item);
 }
-#else /* GTK3 */
-static gboolean
-cv_tree_click_cb (GtkTreeView *tree, GdkEventButton *event, chanview *cv)
-{
-	chan *ch;
-	GtkTreePath *path;
-	GtkTreeIter iter;
-	int ret = FALSE;
-
-	if (gtk_tree_view_get_path_at_pos (tree, event->x, event->y, &path, 0, 0, 0))
-	{
-		if (gtk_tree_model_get_iter (GTK_TREE_MODEL (cv->store), &iter, path))
-		{
-			gtk_tree_model_get (GTK_TREE_MODEL (cv->store), &iter, COL_CHAN, &ch, -1);
-			ret = cv->cb_contextmenu (cv, ch, ch->tag, ch->userdata, event);
-		}
-		gtk_tree_path_free (path);
-	}
-	return ret;
-}
-#endif
 
 /*
  * Scroll event handler for tree view
- * GTK3: Uses GdkEventScroll from "scroll_event" signal
- * GTK4: Uses GtkEventControllerScroll with different signature
+ * Uses GtkEventControllerScroll with different signature
  */
-#if HC_GTK4
 static gboolean
 cv_tree_scroll_event_cb (GtkEventControllerScroll *controller, double dx, double dy, gpointer user_data)
 {
@@ -378,25 +306,6 @@ cv_tree_scroll_event_cb (GtkEventControllerScroll *controller, double dx, double
 
 	return FALSE;
 }
-#else /* GTK3 */
-static gboolean
-cv_tree_scroll_event_cb (GtkWidget *widget, GdkEventScroll *event, gpointer user_data)
-{
-	if (prefs.hex_gui_tab_scrollchans)
-	{
-		if (event->direction == GDK_SCROLL_DOWN)
-			mg_switch_page (1, 1);
-		else if (event->direction == GDK_SCROLL_UP)
-			mg_switch_page (1, -1);
-
-		return TRUE;
-	}
-
-	return FALSE;
-}
-#endif
-
-#if HC_GTK4
 
 /*
  * GTK4: Factory callbacks for GtkListView with GtkTreeExpander
@@ -624,108 +533,6 @@ cv_tree_init (chanview *cv)
 	hc_widget_show (view);
 }
 
-#else /* GTK3 */
-
-static void
-cv_tree_init (chanview *cv)
-{
-	GtkWidget *view, *win;
-	GtkCellRenderer *renderer;
-	GtkTreeViewColumn *col;
-	int wid1, wid2;
-	static const GtkTargetEntry dnd_src_target[] =
-	{
-		{"HEXCHAT_CHANVIEW", GTK_TARGET_SAME_APP, 75 }
-	};
-	static const GtkTargetEntry dnd_dest_target[] =
-	{
-		{"HEXCHAT_USERLIST", GTK_TARGET_SAME_APP, 75 }
-	};
-
-	win = hc_scrolled_window_new ();
-	/*hc_container_set_border_width (win, 1);*/
-	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (win),
-	                                     GTK_SHADOW_IN);
-	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (win),
-	                                GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-	gtk_widget_set_hexpand (win, TRUE);
-	gtk_widget_set_vexpand (win, TRUE);
-	hc_box_pack_start (cv->box, win, TRUE, TRUE, 0);
-	hc_widget_show (win);
-
-	view = gtk_tree_view_new_with_model (GTK_TREE_MODEL (cv->store));
-	gtk_widget_set_name (view, "hexchat-tree");
-	gtk_widget_set_can_focus (view, FALSE);
-	gtk_tree_view_set_headers_visible (GTK_TREE_VIEW (view), FALSE);
-
-	if (prefs.hex_gui_tab_dots)
-	{
-		gtk_tree_view_set_enable_tree_lines (GTK_TREE_VIEW (view), TRUE);
-	}
-
-	/* Indented channels with no server looks silly, but we still want expanders */
-	if (!prefs.hex_gui_tab_server)
-	{
-		gtk_widget_style_get (view, "expander-size", &wid1, "horizontal-separator", &wid2, NULL);
-		gtk_tree_view_set_level_indentation (GTK_TREE_VIEW (view), -wid1 - wid2);
-	}
-
-	hc_scrolled_window_set_child (win, view);
-	col = gtk_tree_view_column_new();
-
-	/* icon column */
-	if (cv->use_icons)
-	{
-		renderer = gtk_cell_renderer_pixbuf_new ();
-		if (prefs.hex_gui_compact)
-			g_object_set (G_OBJECT (renderer), "ypad", 0, NULL);
-
-		gtk_tree_view_column_pack_start(col, renderer, FALSE);
-		gtk_tree_view_column_set_attributes (col, renderer, "pixbuf", COL_PIXBUF, NULL);
-	}
-
-	/* main column */
-	renderer = gtk_cell_renderer_text_new ();
-	if (prefs.hex_gui_compact)
-		g_object_set (G_OBJECT (renderer), "ypad", 0, NULL);
-	gtk_cell_renderer_text_set_fixed_height_from_font (GTK_CELL_RENDERER_TEXT (renderer), 1);
-	gtk_tree_view_column_pack_start(col, renderer, TRUE);
-	gtk_tree_view_column_set_attributes (col, renderer, "text", COL_NAME, "attributes", COL_ATTR, NULL);
-	gtk_tree_view_append_column(GTK_TREE_VIEW(view), col);
-
-	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW (view))),
-	                  "changed", G_CALLBACK (cv_tree_sel_cb), cv);
-
-	g_signal_connect (G_OBJECT (view), "button-press-event",
-	                  G_CALLBACK (cv_tree_click_cb), cv);
-	g_signal_connect (G_OBJECT (view), "scroll_event",
-	                  G_CALLBACK (cv_tree_scroll_event_cb), NULL);
-
-	gtk_drag_dest_set (view, GTK_DEST_DEFAULT_ALL, dnd_dest_target, 1,
-	                   GDK_ACTION_MOVE | GDK_ACTION_COPY | GDK_ACTION_LINK);
-	gtk_drag_source_set (view, GDK_BUTTON1_MASK, dnd_src_target, 1, GDK_ACTION_COPY);
-
-	g_signal_connect (G_OBJECT (view), "drag_begin",
-	                  G_CALLBACK (mg_drag_begin_cb), NULL);
-	g_signal_connect (G_OBJECT (view), "drag_drop",
-	                  G_CALLBACK (mg_drag_drop_cb), NULL);
-	g_signal_connect (G_OBJECT (view), "drag_motion",
-	                  G_CALLBACK (mg_drag_motion_cb), NULL);
-	g_signal_connect (G_OBJECT (view), "drag_end",
-	                  G_CALLBACK (mg_drag_end_cb), NULL);
-
-	g_signal_connect (G_OBJECT (view), "row-activated",
-	                  G_CALLBACK (cv_tree_activated_cb), NULL);
-
-	((treeview *)cv)->tree = GTK_TREE_VIEW (view);
-	((treeview *)cv)->scrollw = win;
-	hc_widget_show (view);
-}
-
-#endif /* HC_GTK4 */
-
-#if HC_GTK4
-
 static void
 cv_tree_postinit (chanview *cv)
 {
@@ -764,41 +571,10 @@ cv_tree_add (chanview *cv, chan *ch, char *name, GtkTreeIter *parent)
 	return NULL;
 }
 
-#else /* GTK3 */
-
-static void
-cv_tree_postinit (chanview *cv)
-{
-	gtk_tree_view_expand_all (((treeview *)cv)->tree);
-}
-
-static void *
-cv_tree_add (chanview *cv, chan *ch, char *name, GtkTreeIter *parent)
-{
-	GtkTreePath *path;
-
-	if (parent)
-	{
-		/* expand the parent node */
-		path = gtk_tree_model_get_path (GTK_TREE_MODEL (cv->store), parent);
-		if (path)
-		{
-			gtk_tree_view_expand_row (((treeview *)cv)->tree, path, FALSE);
-			gtk_tree_path_free (path);
-		}
-	}
-
-	return NULL;
-}
-
-#endif /* HC_GTK4 */
-
 static void
 cv_tree_change_orientation (chanview *cv)
 {
 }
-
-#if HC_GTK4
 
 static void
 cv_tree_focus (chan *ch)
@@ -849,62 +625,6 @@ cv_tree_focus (chan *ch)
 			g_object_unref (item);
 	}
 }
-
-#else /* GTK3 */
-
-static void
-cv_tree_focus (chan *ch)
-{
-	GtkTreeView *tree = ((treeview *)ch->cv)->tree;
-	GtkTreeModel *model = gtk_tree_view_get_model (tree);
-	GtkTreePath *path;
-	GtkTreeIter parent;
-	GdkRectangle cell_rect;
-	GdkRectangle vis_rect;
-	gint dest_y;
-
-	/* expand the parent node */
-	if (gtk_tree_model_iter_parent (model, &parent, &ch->iter))
-	{
-		path = gtk_tree_model_get_path (model, &parent);
-		if (path)
-		{
-			gtk_tree_view_expand_row (tree, path, FALSE);
-			gtk_tree_path_free (path);
-		}
-	}
-
-	path = gtk_tree_model_get_path (model, &ch->iter);
-	if (path)
-	{
-		/* This full section does what
-		 * gtk_tree_view_scroll_to_cell (tree, path, NULL, TRUE, 0.5, 0.5);
-		 * does, except it only scrolls the window if the provided cell is
-		 * not visible. Basic algorithm taken from gtktreeview.c */
-
-		/* obtain information to see if the cell is visible */
-		gtk_tree_view_get_background_area (tree, path, NULL, &cell_rect);
-		gtk_tree_view_get_visible_rect (tree, &vis_rect);
-
-		/* The cordinates aren't offset correctly */
-		gtk_tree_view_convert_widget_to_bin_window_coords (tree, cell_rect.x, cell_rect.y, NULL, &cell_rect.y);
-
-		/* only need to scroll if out of bounds */
-		if (cell_rect.y < vis_rect.y ||
-				cell_rect.y + cell_rect.height > vis_rect.y + vis_rect.height)
-		{
-			dest_y = cell_rect.y - ((vis_rect.height - cell_rect.height) * 0.5);
-			if (dest_y < 0)
-				dest_y = 0;
-			gtk_tree_view_scroll_to_point (tree, -1, dest_y);
-		}
-		/* theft done, now make it focused like */
-		gtk_tree_view_set_cursor (tree, path, NULL, FALSE);
-		gtk_tree_path_free (path);
-	}
-}
-
-#endif /* HC_GTK4 */
 
 static void
 cv_tree_move_focus (chanview *cv, gboolean relative, int num)
@@ -977,8 +697,6 @@ cv_tree_move_family (chan *ch, int delta)
 	move_row (ch, delta, NULL);
 }
 
-#if HC_GTK4
-
 static void
 cv_tree_cleanup (chanview *cv)
 {
@@ -994,19 +712,6 @@ cv_tree_cleanup (chanview *cv)
 	tv->view = NULL;
 }
 
-#else /* GTK3 */
-
-static void
-cv_tree_cleanup (chanview *cv)
-{
-	if (cv->box)
-		/* kill the scrolled window */
-		hc_widget_destroy (((treeview *)cv)->scrollw);
-}
-
-#endif /* HC_GTK4 */
-
-#if HC_GTK4
 /*
  * Helper to trigger rebind of an item in the chanview tree while preserving selection.
  * The remove/insert pattern clears GtkSingleSelection, so we save and restore it.
@@ -1098,29 +803,21 @@ cv_tree_rebind_chan (chan *ch)
 		}
 	}
 }
-#endif /* HC_GTK4 */
 
 static void
 cv_tree_set_color (chan *ch, PangoAttrList *list)
 {
-#if HC_GTK4
 	/* In GTK4, trigger a rebind to pick up the new color from the GtkTreeStore.
 	 * The rebind helper saves and restores selection to prevent it being cleared. */
 	cv_tree_rebind_chan (ch);
-#else
-	/* GTK3: nothing to do, GtkTreeView updates automatically from store changes */
-#endif
 }
 
 static void
 cv_tree_rename (chan *ch, char *name)
 {
-#if HC_GTK4
 	/* In GTK4, trigger a rebind to pick up the new name from the GtkTreeStore.
 	 * The rebind helper saves and restores selection to prevent it being cleared. */
 	cv_tree_rebind_chan (ch);
-#endif
-	/* GTK3: nothing to do, GtkTreeView updates automatically from store changes */
 }
 
 static chan *
@@ -1136,8 +833,6 @@ cv_tree_get_parent (chan *ch)
 
 	return parent_ch;
 }
-
-#if HC_GTK4
 
 static gboolean
 cv_tree_is_collapsed (chan *ch)
@@ -1184,29 +879,6 @@ cv_tree_is_collapsed (chan *ch)
 	return FALSE;
 }
 
-#else /* GTK3 */
-
-static gboolean
-cv_tree_is_collapsed (chan *ch)
-{
-	chan *parent = cv_tree_get_parent (ch);
-	GtkTreePath *path = NULL;
-	gboolean ret;
-
-	if (parent == NULL)
-		return FALSE;
-
-	path = gtk_tree_model_get_path (GTK_TREE_MODEL (parent->cv->store),
-	                                &parent->iter);
-	ret = !gtk_tree_view_row_expanded (((treeview *)parent->cv)->tree, path);
-	gtk_tree_path_free (path);
-
-	return ret;
-}
-
-#endif /* HC_GTK4 */
-
-#if HC_GTK4
 /*
  * GTK4: Helper functions for managing the GListStore-based model
  */
@@ -1345,5 +1017,3 @@ cv_tree_rebuild_model (chanview *cv)
 	}
 	while (gtk_tree_model_iter_next (GTK_TREE_MODEL (cv->store), &iter));
 }
-
-#endif /* HC_GTK4 */

@@ -68,12 +68,10 @@
 
 static GSList *submenu_list;
 
-#if HC_GTK4
 /* Forward declarations for GTK4 */
 static void menu_popover_closed_cb (GtkPopover *popover, gpointer user_data);
 static GMenu *menu_build_gmenu (int away, int toplevel);
 static GSimpleActionGroup *menu_create_action_group (int away, int toplevel);
-#endif
 
 enum
 {
@@ -548,36 +546,6 @@ menu_create (GtkWidget *menu, GSList *list, char *target, int check_path)
 static char *str_copy = NULL;		/* for all pop-up menus */
 static GtkWidget *nick_submenu = NULL;	/* user info submenu */
 
-/* GTK3-only: Menu popup infrastructure using GtkMenu */
-#if !HC_GTK4
-
-static void
-menu_destroy (GtkWidget *menu, gpointer objtounref)
-{
-	hc_widget_destroy (menu);
-	g_object_unref (menu);
-	if (objtounref)
-		g_object_unref (G_OBJECT (objtounref));
-	nick_submenu = NULL;
-}
-
-static void
-menu_popup (GtkWidget *menu, GdkEventButton *event, gpointer objtounref)
-{
-	if (event && event->window)
-		gtk_menu_set_screen (GTK_MENU (menu), gdk_window_get_screen (event->window));
-
-	g_object_ref (menu);
-	g_object_ref_sink (menu);
-	g_object_unref (menu);
-	g_signal_connect (G_OBJECT (menu), "selection-done",
-							G_CALLBACK (menu_destroy), objtounref);
-	gtk_menu_popup (GTK_MENU (menu), NULL, NULL, NULL, NULL,
-						 0, event ? event->time : 0);
-}
-
-#endif /* !HC_GTK4 */
-
 static void
 menu_nickinfo_cb (GtkWidget *menu, session *sess)
 {
@@ -596,11 +564,7 @@ menu_nickinfo_cb (GtkWidget *menu, session *sess)
 static void
 copy_to_clipboard_cb (GtkWidget *item, char *url)
 {
-#if HC_GTK4
 	gtkutil_copy_to_clipboard (item, FALSE, url);
-#else
-	gtkutil_copy_to_clipboard (item, NULL, url);
-#endif
 }
 
 /* returns boolean: Some data is missing */
@@ -723,60 +687,7 @@ fe_userlist_update (session *sess, struct User *user)
 	menu_create_nickinfo_menu (user, nick_submenu);
 }
 
-/* GTK3-only: Nick context menu */
-#if !HC_GTK4
-void
-menu_nickmenu (session *sess, GdkEventButton *event, char *nick, int num_sel)
-{
-	char buf[512];
-	struct User *user;
-	GtkWidget *submenu, *menu = gtk_menu_new ();
-
-	g_free (str_copy);
-	str_copy = g_strdup (nick);
-
-	submenu_list = 0;	/* first time through, might not be 0 */
-
-	/* more than 1 nick selected? */
-	if (num_sel > 1)
-	{
-		g_snprintf (buf, sizeof (buf), _("%d nicks selected."), num_sel);
-		menu_quick_item (0, buf, menu, 0, 0, 0);
-		menu_quick_item (0, 0, menu, XCMENU_SHADED, 0, 0);
-	} else
-	{
-		user = userlist_find (sess, nick);	/* lasttalk is channel specific */
-		if (!user)
-			user = userlist_find_global (current_sess->server, nick);
-		if (user)
-		{
-			nick_submenu = submenu = menu_quick_sub (nick, menu, NULL, XCMENU_DOLIST, -1);
-
-			if (menu_create_nickinfo_menu (user, submenu) ||
-				 !user->hostname || !user->realname || !user->servername)
-			{
-				g_signal_connect (G_OBJECT (submenu), "show", G_CALLBACK (menu_nickinfo_cb), sess);
-			}
-
-			menu_quick_endsub ();
-			menu_quick_item (0, 0, menu, XCMENU_SHADED, 0, 0);
-		}
-	}
-
-	if (num_sel > 1)
-		menu_create (menu, popup_list, NULL, FALSE);
-	else
-		menu_create (menu, popup_list, str_copy, FALSE);
-
-	if (num_sel == 0)	/* xtext click */
-		menu_add_plugin_items (menu, "\x5$NICK", str_copy);
-	else	/* userlist treeview click */
-		menu_add_plugin_items (menu, "\x5$NICK", NULL);
-
-	menu_popup (menu, event, NULL);
-}
-#else
-/* GTK4: Action callbacks for nick menu */
+/* Action callbacks for nick menu */
 static session *nick_menu_sess = NULL;  /* session for nick menu actions */
 static char **nick_popup_cmds = NULL;   /* array of popup commands for current menu */
 static int nick_popup_cmd_count = 0;    /* count of popup commands */
@@ -1300,7 +1211,6 @@ menu_nickmenu (session *sess, GtkWidget *parent, double x, double y, char *nick,
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
 }
-#endif
 
 /* stuff for the View menu */
 
@@ -1346,10 +1256,8 @@ menu_cmbuttons_showhide_cb (session *sess)
 		if (prefs.hex_gui_mode_buttons)
 		{
 			gtk_widget_show (sess->gui->topicbutton_box);
-#if HC_GTK4
-			/* GTK4: Explicitly show children after parent becomes visible */
+			/* Explicitly show children after parent becomes visible */
 			hc_widget_show_all (sess->gui->topicbutton_box);
-#endif
 		}
 		else
 			gtk_widget_hide (sess->gui->topicbutton_box);
@@ -1456,20 +1364,7 @@ menu_fullscreen_toggle (GtkWidget *wid, gpointer ud)
 	}
 }
 
-/* GTK3-only: Middle-click menu */
-#if !HC_GTK4
-void
-menu_middlemenu (session *sess, GdkEventButton *event)
-{
-	GtkWidget *menu;
-	GtkAccelGroup *accel_group;
-
-	accel_group = gtk_accel_group_new ();
-	menu = menu_create_main (accel_group, FALSE, sess->server->is_away, !sess->gui->is_tab, NULL);
-	menu_popup (menu, event, accel_group);
-}
-#else
-/* GTK4: Action callbacks for middle-click menu */
+/* Action callbacks for middle-click menu */
 static session *middle_menu_sess = NULL;
 
 static void
@@ -1727,7 +1622,6 @@ menu_middlemenu (session *sess, GtkWidget *parent, double x, double y)
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
 }
-#endif
 
 static void
 open_url_cb (GtkWidget *item, char *url)
@@ -1739,47 +1633,7 @@ open_url_cb (GtkWidget *item, char *url)
 	handle_command (current_sess, buf, FALSE);
 }
 
-/* GTK3-only: URL context menu */
-#if !HC_GTK4
-void
-menu_urlmenu (GdkEventButton *event, char *url)
-{
-	GtkWidget *menu;
-	char *tmp, *chop;
-
-	g_free (str_copy);
-	str_copy = g_strdup (url);
-
-	menu = gtk_menu_new ();
-	/* more than 51 chars? Chop it */
-	if (g_utf8_strlen (str_copy, -1) >= 52)
-	{
-		tmp = g_strdup (str_copy);
-		chop = g_utf8_offset_to_pointer (tmp, 48);
-		chop[0] = chop[1] = chop[2] = '.';
-		chop[3] = 0;
-		menu_quick_item (0, tmp, menu, XCMENU_SHADED, 0, 0);
-		g_free (tmp);
-	} else
-	{
-		menu_quick_item (0, str_copy, menu, XCMENU_SHADED, 0, 0);
-	}
-	menu_quick_item (0, 0, menu, XCMENU_SHADED, 0, 0);
-
-	/* Two hardcoded entries */
-	if (strncmp (str_copy, "irc://", 6) == 0 ||
-	    strncmp (str_copy, "ircs://",7) == 0)
-		menu_quick_item_with_callback (open_url_cb, _("Connect"), menu, str_copy);
-	else
-		menu_quick_item_with_callback (open_url_cb, _("Open Link in Browser"), menu, str_copy);
-	menu_quick_item_with_callback (copy_to_clipboard_cb, _("Copy Selected Link"), menu, str_copy);
-	/* custom ones from urlhandlers.conf */
-	menu_create (menu, urlhandler_list, str_copy, TRUE);
-	menu_add_plugin_items (menu, "\x4$URL", str_copy);
-	menu_popup (menu, event, NULL);
-}
-#else
-/* GTK4: Action callbacks for URL menu */
+/* Action callbacks for URL menu */
 static char **url_handler_cmds = NULL;   /* array of URL handler commands */
 static int url_handler_cmd_count = 0;    /* count of URL handler commands */
 
@@ -2123,7 +1977,6 @@ menu_urlmenu (GtkWidget *parent, double x, double y, char *url)
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
 }
-#endif
 
 static void
 menu_chan_cycle (GtkWidget * menu, char *chan)
@@ -2173,49 +2026,7 @@ menu_chan_join (GtkWidget * menu, char *chan)
 	}
 }
 
-/* GTK3-only: Channel context menu */
-#if !HC_GTK4
-void
-menu_chanmenu (struct session *sess, GdkEventButton * event, char *chan)
-{
-	GtkWidget *menu;
-	int is_joined = FALSE;
-	session * chan_session;
-
-	chan_session = find_channel (sess->server, chan);
-
-	if (chan_session)
-		is_joined = TRUE;
-
-	g_free (str_copy);
-	str_copy = g_strdup (chan);
-
-	menu = gtk_menu_new ();
-
-	menu_quick_item (0, chan, menu, XCMENU_SHADED, str_copy, 0);
-	menu_quick_item (0, 0, menu, XCMENU_SHADED, str_copy, 0);
-
-	if (!is_joined)
-		menu_quick_item_with_callback (menu_chan_join, _("Join Channel"), menu,
-												 str_copy);
-	else
-	{
-		if (chan_session != current_sess)
-			menu_quick_item_with_callback (menu_chan_focus, _("Focus Channel"), menu,
-													 str_copy);
-		menu_quick_item_with_callback (menu_chan_part, _("Part Channel"), menu,
-												 str_copy);
-		menu_quick_item_with_callback (menu_chan_cycle, _("Cycle Channel"), menu,
-												 str_copy);
-	}
-
-	menu_addfavoritemenu (sess->server, menu, str_copy, FALSE);
-
-	menu_add_plugin_items (menu, "\x5$CHAN", str_copy);
-	menu_popup (menu, event, NULL);
-}
-#else
-/* GTK4: Action callbacks for channel menu */
+/* Action callbacks for channel menu */
 static server *chan_menu_server = NULL;  /* server for autojoin toggle */
 
 static void
@@ -2382,7 +2193,6 @@ menu_chanmenu (session *sess, GtkWidget *parent, double x, double y, char *chan)
 	gtk_popover_popup (GTK_POPOVER (popover));
 	g_object_unref (gmenu);
 }
-#endif
 
 static void
 menu_delfav_cb (GtkWidget *item, server *serv)
@@ -3078,7 +2888,6 @@ menu_about (GtkWidget *wid, gpointer sess)
 	gtk_about_dialog_set_license (dialog, license); /* gtk3 can use GTK_LICENSE_GPL_2_0 */
 	gtk_about_dialog_set_website (dialog, "http://hexchat.github.io");
 	gtk_about_dialog_set_website_label (dialog, "Website");
-#if HC_GTK4
 	{
 		GdkTexture *texture = hc_pixbuf_to_texture (pix_hexchat);
 		if (texture)
@@ -3087,9 +2896,6 @@ menu_about (GtkWidget *wid, gpointer sess)
 			g_object_unref (texture);
 		}
 	}
-#else
-	gtk_about_dialog_set_logo (dialog, pix_hexchat);
-#endif
 	gtk_about_dialog_set_copyright (dialog, "\302\251 1998-2010 Peter \305\275elezn\303\275\n\302\251 2009-2014 Berke Viktor");
 	gtk_about_dialog_set_comments (dialog, comment);
 
@@ -3198,28 +3004,6 @@ static struct mymenu mymenu[] = {
 
 	{0, 0, 0, M_END, 0, 0, 0},
 };
-
-#if !HC_GTK4
-void
-menu_set_away (session_gui *gui, int away)
-{
-	GtkCheckMenuItem *item = GTK_CHECK_MENU_ITEM (gui->menu_item[MENU_ID_AWAY]);
-
-	g_signal_handlers_block_by_func (G_OBJECT (item), menu_away, NULL);
-	gtk_check_menu_item_set_active (item, away);
-	g_signal_handlers_unblock_by_func (G_OBJECT (item), menu_away, NULL);
-}
-
-void
-menu_set_fullscreen (session_gui *gui, int full)
-{
-	GtkCheckMenuItem *item = GTK_CHECK_MENU_ITEM (gui->menu_item[MENU_ID_FULLSCREEN]);
-
-	g_signal_handlers_block_by_func (G_OBJECT (item), menu_fullscreen_toggle, NULL);
-	gtk_check_menu_item_set_active (item, full);
-	g_signal_handlers_unblock_by_func (G_OBJECT (item), menu_fullscreen_toggle, NULL);
-}
-#endif /* !HC_GTK4 */
 
 GtkWidget *
 create_icon_menu (char *labeltext, void *icon_name, int is_icon_name)
@@ -3397,222 +3181,7 @@ menu_toggle_cb (GtkCheckMenuItem *item, menu_entry *me)
 		handle_command (current_sess, me->ucmd, FALSE);
 }
 
-#if !HC_GTK4
-/* GTK3 only: These functions use GtkMenu which doesn't exist in GTK4 */
-static GtkWidget *
-menu_radio_item (char *label, GtkWidget *menu, void *callback, void *userdata,
-						int state, char *groupname)
-{
-	GtkWidget *item;
-	GtkMenuItem *parent;
-	GSList *grouplist = NULL;
-
-	parent = menu_find_item (menu, groupname);
-	if (parent)
-		grouplist = gtk_radio_menu_item_get_group ((GtkRadioMenuItem *)parent);
-
-	item = gtk_radio_menu_item_new_with_label (grouplist, label);
-	gtk_check_menu_item_set_active ((GtkCheckMenuItem*)item, state);
-	gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
-	g_signal_connect (G_OBJECT (item), "activate",
-							G_CALLBACK (callback), userdata);
-	gtk_widget_show (item);
-
-	return item;
-}
-
-static void
-menu_reorder (GtkMenu *menu, GtkWidget *item, int pos)
-{
-	GList *children;
-	guint len;
-
-	if (pos == 0xffff)	/* outbound.c uses this default */
-		return;
-
-	if (pos < 0)	/* position offset from end/bottom */
-	{
-		children = gtk_container_get_children (GTK_CONTAINER (menu));
-		len = g_list_length (children);
-		g_list_free (children);
-		gtk_menu_reorder_child (menu, item, (len + pos) - 1);
-	}
-	else
-		gtk_menu_reorder_child (menu, item, pos);
-}
-
-static GtkWidget *
-menu_add_radio (GtkWidget *menu, menu_entry *me)
-{
-	GtkWidget *item = NULL;
-	char *path = me->path + me->root_offset;
-
-	if (path[0] != 0)
-		menu = menu_find_path (menu, path);
-	if (menu)
-	{
-		item = menu_radio_item (me->label, menu, menu_radio_cb, me, me->state, me->group);
-		menu_reorder (GTK_MENU (menu), item, me->pos);
-	}
-	return item;
-}
-
-static GtkWidget *
-menu_add_toggle (GtkWidget *menu, menu_entry *me)
-{
-	GtkWidget *item = NULL;
-	char *path = me->path + me->root_offset;
-
-	if (path[0] != 0)
-		menu = menu_find_path (menu, path);
-	if (menu)
-	{
-		item = menu_toggle_item (me->label, menu, menu_toggle_cb, me, me->state);
-		menu_reorder (GTK_MENU (menu), item, me->pos);
-	}
-	return item;
-}
-
-static GtkWidget *
-menu_add_item (GtkWidget *menu, menu_entry *me, char *target)
-{
-	GtkWidget *item = NULL;
-	char *path = me->path + me->root_offset;
-
-	if (path[0] != 0)
-		menu = menu_find_path (menu, path);
-	if (menu)
-	{
-		item = menu_quick_item (me->cmd, me->label, menu, me->markup ? XCMENU_MARKUP|XCMENU_MNEMONIC : XCMENU_MNEMONIC, target, me->icon);
-		menu_reorder (GTK_MENU (menu), item, me->pos);
-	}
-	return item;
-}
-
-static GtkWidget *
-menu_add_sub (GtkWidget *menu, menu_entry *me)
-{
-	GtkWidget *item = NULL;
-	char *path = me->path + me->root_offset;
-	int pos;
-	GList *children;
-
-	if (path[0] != 0)
-		menu = menu_find_path (menu, path);
-	if (menu)
-	{
-		pos = me->pos;
-		if (pos < 0)	/* position offset from end/bottom */
-		{
-			children = gtk_container_get_children (GTK_CONTAINER (menu));
-			pos = g_list_length (children) + pos;
-			g_list_free (children);
-		}
-		menu_quick_sub (me->label, menu, &item, me->markup ? XCMENU_MARKUP|XCMENU_MNEMONIC : XCMENU_MNEMONIC, pos);
-	}
-	return item;
-}
-
-static void
-menu_del_cb (GtkWidget *menu, menu_entry *me, char *target)
-{
-	GtkWidget *item = menu_find (menu, me->path + me->root_offset, me->label);
-	if (item)
-		hc_widget_destroy (item);
-}
-
-static void
-menu_add_cb (GtkWidget *menu, menu_entry *me, char *target)
-{
-	GtkWidget *item;
-	GtkAccelGroup *accel_group;
-
-	if (me->group)	/* have a group name? Must be a radio item */
-		item = menu_add_radio (menu, me);
-	else if (me->ucmd)	/* have unselect-cmd? Must be a toggle item */
-		item = menu_add_toggle (menu, me);
-	else if (me->cmd || !me->label)	/* label=NULL for separators */
-		item = menu_add_item (menu, me, target);
-	else
-		item = menu_add_sub (menu, me);
-
-	if (item)
-	{
-		gtk_widget_set_sensitive (item, me->enable);
-		if (me->key)
-		{
-			accel_group = g_object_get_data (G_OBJECT (menu), "accel");
-			if (accel_group)	/* popup menus don't have them */
-				gtk_widget_add_accelerator (item, "activate", accel_group, me->key,
-													 me->modifier, GTK_ACCEL_VISIBLE);
-		}
-	}
-}
-
-char *
-fe_menu_add (menu_entry *me)
-{
-	char *text;
-
-	menu_foreach_gui (me, menu_add_cb);
-
-	if (!me->markup)
-		return NULL;
-
-	if (!pango_parse_markup (me->label, -1, 0, NULL, &text, NULL, NULL))
-		return NULL;
-
-	/* return the label with markup stripped */
-	return text;
-}
-
-void
-fe_menu_del (menu_entry *me)
-{
-	menu_foreach_gui (me, menu_del_cb);
-}
-
-void
-fe_menu_update (menu_entry *me)
-{
-	menu_foreach_gui (me, menu_update_cb);
-}
-
-/* used to add custom menus to the right-click menu */
-
-static void
-menu_add_plugin_mainmenu_items (GtkWidget *menu)
-{
-	GSList *list;
-	menu_entry *me;
-
-	list = menu_list;	/* outbound.c */
-	while (list)
-	{
-		me = list->data;
-		if (me->is_main)
-			menu_add_cb (menu, me, NULL);
-		list = list->next;
-	}
-}
-
-void
-menu_add_plugin_items (GtkWidget *menu, char *root, char *target)
-{
-	GSList *list;
-	menu_entry *me;
-
-	list = menu_list;	/* outbound.c */
-	while (list)
-	{
-		me = list->data;
-		if (!me->is_main && !strncmp (me->path, root + 1, root[0]))
-			menu_add_cb (menu, me, target);
-		list = list->next;
-	}
-}
-
-#else /* HC_GTK4 */
+/* === END STUFF FOR /MENU === */
 
 /*
  * =============================================================================
@@ -3884,12 +3453,6 @@ fe_menu_update (menu_entry *me)
 	 * For main menu, we would need to update action state. */
 	(void)me;
 }
-
-#endif /* !HC_GTK4 */
-
-/* === END STUFF FOR /MENU === */
-
-#if HC_GTK4
 
 /*
  * =============================================================================
@@ -4811,254 +4374,3 @@ menu_add_shortcuts (GtkWidget *window, GtkWidget *menu_bar)
 
 	(void)menu_bar; /* May be used for action group lookup if needed */
 }
-
-#else /* !HC_GTK4 - GTK3 implementation */
-
-GtkWidget *
-menu_create_main (void *accel_group, int bar, int away, int toplevel,
-						GtkWidget **menu_widgets)
-{
-	int i = 0;
-	GtkWidget *item;
-	GtkWidget *menu = 0;
-	GtkWidget *menu_item = 0;
-	GtkWidget *menu_bar;
-	GtkWidget *usermenu = 0;
-	GtkWidget *submenu = 0;
-	int close_mask = STATE_CTRL;
-	int away_mask = STATE_ALT;
-	char *key_theme = NULL;
-	GtkSettings *settings;
-	GSList *group = NULL;
-#ifdef HAVE_GTK_MAC
-	int appmenu_offset = 1; /* 0 is for about */
-#endif
-
-	if (bar)
-	{
-		menu_bar = gtk_menu_bar_new ();
-#ifdef HAVE_GTK_MAC
-		gtkosx_application_set_menu_bar (osx_app, GTK_MENU_SHELL (menu_bar));
-#endif
-	}
-	else
-		menu_bar = gtk_menu_new ();
-
-	/* /MENU needs to know this later */
-	g_object_set_data (G_OBJECT (menu_bar), "accel", accel_group);
-
-	g_signal_connect (G_OBJECT (menu_bar), "can-activate-accel",
-							G_CALLBACK (menu_canacaccel), 0);
-
-	/* set the initial state of toggles */
-	mymenu[MENUBAR_OFFSET].state = !prefs.hex_gui_hide_menu;
-	mymenu[MENUBAR_OFFSET+1].state = prefs.hex_gui_topicbar;
-	mymenu[MENUBAR_OFFSET+2].state = !prefs.hex_gui_ulist_hide;
-	mymenu[MENUBAR_OFFSET+3].state = prefs.hex_gui_ulist_buttons;
-	mymenu[MENUBAR_OFFSET+4].state = prefs.hex_gui_mode_buttons;
-
-	mymenu[AWAY_OFFSET].state = away;
-
-	switch (prefs.hex_gui_tab_layout)
-	{
-	case 0:
-		mymenu[TABS_OFFSET].state = 1;
-		mymenu[TABS_OFFSET+1].state = 0;
-		break;
-	default:
-		mymenu[TABS_OFFSET].state = 0;
-		mymenu[TABS_OFFSET+1].state = 1;
-	}
-
-	mymenu[METRE_OFFSET].state = 0;
-	mymenu[METRE_OFFSET+1].state = 0;
-	mymenu[METRE_OFFSET+2].state = 0;
-	mymenu[METRE_OFFSET+3].state = 0;
-	switch (prefs.hex_gui_lagometer)
-	{
-	case 0:
-		mymenu[METRE_OFFSET].state = 1;
-		break;
-	case 1:
-		mymenu[METRE_OFFSET+1].state = 1;
-		break;
-	case 2:
-		mymenu[METRE_OFFSET+2].state = 1;
-		break;
-	default:
-		mymenu[METRE_OFFSET+3].state = 1;
-	}
-
-	/* change Close binding to ctrl-shift-w when using emacs keys */
-	settings = gtk_widget_get_settings (menu_bar);
-	if (settings)
-	{
-		g_object_get (settings, "gtk-key-theme-name", &key_theme, NULL);
-		if (key_theme)
-		{
-			if (!g_ascii_strcasecmp (key_theme, "Emacs"))
-			{
-				close_mask = STATE_SHIFT | STATE_CTRL;
-				mymenu[SEARCH_OFFSET].key = 0;
-			}
-			g_free (key_theme);
-		}
-	}
-
-	/* Away binding to ctrl-alt-a if the _Help menu conflicts (FR/PT/IT) */
-	{
-		char *help = _("_Help");
-		char *under = strchr (help, '_');
-		if (under && (under[1] == 'a' || under[1] == 'A'))
-			away_mask = STATE_ALT | STATE_CTRL;
-	}
-
-	if (!toplevel)
-	{
-		mymenu[DETACH_OFFSET].text = N_("_Detach");
-		mymenu[CLOSE_OFFSET].text = N_("_Close");
-	}
-	else
-	{
-		mymenu[DETACH_OFFSET].text = N_("_Attach");
-		mymenu[CLOSE_OFFSET].text = N_("_Close");
-	}
-
-	while (1)
-	{
-		item = NULL;
-		if (mymenu[i].id == MENU_ID_USERMENU && !prefs.hex_gui_usermenu)
-		{
-			i++;
-			continue;
-		}
-
-		switch (mymenu[i].type)
-		{
-		case M_NEWMENU:
-			if (menu)
-				gtk_menu_item_set_submenu (GTK_MENU_ITEM (menu_item), menu);
-			item = menu = gtk_menu_new ();
-			if (mymenu[i].id == MENU_ID_USERMENU)
-				usermenu = menu;
-			menu_item = gtk_menu_item_new_with_mnemonic (_(mymenu[i].text));
-			/* record the English name for /menu */
-			g_object_set_data (G_OBJECT (menu_item), "name", mymenu[i].text);
-#ifdef HAVE_GTK_MAC /* Added to app menu, see below */
-			if (!bar || mymenu[i].id != MENU_ID_HEXCHAT)		
-#endif
-				gtk_menu_shell_append (GTK_MENU_SHELL (menu_bar), menu_item);
-			gtk_widget_show (menu_item);
-			break;
-
-		case M_MENUPIX:
-			item = create_icon_menu (_(mymenu[i].text), mymenu[i].image, FALSE);
-			goto normalitem;
-
-		case M_MENUSTOCK:
-			item = create_icon_menu (_(mymenu[i].text), mymenu[i].image, TRUE);
-			goto normalitem;
-
-		case M_MENUITEM:
-			item = gtk_menu_item_new_with_mnemonic (_(mymenu[i].text));
-normalitem:
-			if (mymenu[i].key != 0)
-				gtk_widget_add_accelerator (item, "activate", accel_group,
-										mymenu[i].key,
-										mymenu[i].key == GDK_KEY_F1 ? 0 :
-										mymenu[i].key == GDK_KEY_w ? close_mask :
-										(g_ascii_isupper (mymenu[i].key)) ?
-											STATE_SHIFT | STATE_CTRL :
-											STATE_CTRL,
-										GTK_ACCEL_VISIBLE);
-			if (mymenu[i].callback)
-				g_signal_connect (G_OBJECT (item), "activate",
-										G_CALLBACK (mymenu[i].callback), 0);
-			if (submenu)
-				gtk_menu_shell_append (GTK_MENU_SHELL (submenu), item);
-			else
-				gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
-			gtk_widget_show (item);
-			break;
-
-		case M_MENUTOG:
-			item = gtk_check_menu_item_new_with_mnemonic (_(mymenu[i].text));
-togitem:
-			/* Set active state - in GTK3, we must use the accessor function */
-			gtk_check_menu_item_set_active (GTK_CHECK_MENU_ITEM (item),
-													 mymenu[i].state);
-			if (mymenu[i].key != 0)
-				gtk_widget_add_accelerator (item, "activate", accel_group,
-											mymenu[i].key,
-											mymenu[i].id == MENU_ID_FULLSCREEN ? 0 :
-											mymenu[i].id == MENU_ID_AWAY ? away_mask :
-											STATE_CTRL, GTK_ACCEL_VISIBLE);
-			if (mymenu[i].callback)
-				g_signal_connect (G_OBJECT (item), "toggled",
-									G_CALLBACK (mymenu[i].callback), NULL);
-
-			if (submenu)
-				gtk_menu_shell_append (GTK_MENU_SHELL (submenu), item);
-			else
-				gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
-			gtk_widget_show (item);
-			gtk_widget_set_sensitive (item, mymenu[i].sensitive);
-			break;
-
-		case M_MENURADIO:
-			item = gtk_radio_menu_item_new_with_mnemonic (group, _(mymenu[i].text));
-			group = gtk_radio_menu_item_get_group (GTK_RADIO_MENU_ITEM (item));
-			goto togitem;
-
-		case M_SEP:
-			item = gtk_menu_item_new ();
-			gtk_widget_set_sensitive (item, FALSE);
-			gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
-			gtk_widget_show (item);
-			break;
-
-		case M_MENUSUB:
-			group = NULL;
-			submenu = gtk_menu_new ();
-			item = create_icon_menu (_(mymenu[i].text), mymenu[i].image, TRUE);
-			/* record the English name for /menu */
-			g_object_set_data (G_OBJECT (item), "name", mymenu[i].text);
-			gtk_menu_item_set_submenu (GTK_MENU_ITEM (item), submenu);
-			gtk_menu_shell_append (GTK_MENU_SHELL (menu), item);
-			gtk_widget_show (item);
-			break;
-
-		/*case M_END:*/ default:
-			if (!submenu)
-			{
-				if (menu)
-				{
-					gtk_menu_item_set_submenu (GTK_MENU_ITEM (menu_item), menu);
-					menu_add_plugin_mainmenu_items (menu_bar);
-				}
-				if (usermenu)
-					usermenu_create (usermenu);
-				return (menu_bar);
-			}
-			submenu = NULL;
-		}
-
-		/* record this GtkWidget * so it's state might be changed later */
-		if (mymenu[i].id != 0 && menu_widgets)
-			/* this ends up in sess->gui->menu_item[MENU_ID_XXX] */
-			menu_widgets[mymenu[i].id] = item;
-
-#ifdef HAVE_GTK_MAC
-		/* We want HexChat to be the app menu, not including Quit or HexChat itself */
-		if (bar && item && i <= CLOSE_OFFSET + 1 && mymenu[i].id != MENU_ID_HEXCHAT)
-		{
-			if (!submenu || mymenu[i].type == M_MENUSUB)
-				gtkosx_application_insert_app_menu_item (osx_app, item, appmenu_offset++);
-		}
-#endif
-
-		i++;
-	}
-}
-
-#endif /* !HC_GTK4 */

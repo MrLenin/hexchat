@@ -50,11 +50,7 @@ struct _chanview
 	/* callbacks */
 	void (*cb_focus) (chanview *, chan *, int tag, void *userdata);
 	void (*cb_xbutton) (chanview *, chan *, int tag, void *userdata);
-#if HC_GTK4
 	gboolean (*cb_contextmenu) (chanview *, chan *, int tag, void *userdata, GtkWidget *parent, double x, double y);
-#else
-	gboolean (*cb_contextmenu) (chanview *, chan *, int tag, void *userdata, GdkEventButton *);
-#endif
 	int (*cb_compare) (void *a, void *b);
 
 	/* impl */
@@ -292,11 +288,7 @@ void
 chanview_set_callbacks (chanview *cv,
 	void (*cb_focus) (chanview *, chan *, int tag, void *userdata),
 	void (*cb_xbutton) (chanview *, chan *, int tag, void *userdata),
-#if HC_GTK4
 	gboolean (*cb_contextmenu) (chanview *, chan *, int tag, void *userdata, GtkWidget *parent, double x, double y),
-#else
-	gboolean (*cb_contextmenu) (chanview *, chan *, int tag, void *userdata, GdkEventButton *),
-#endif
 	int (*cb_compare) (void *a, void *b))
 {
 	cv->cb_focus = cb_focus;

@@ -37,13 +37,8 @@ GtkWidget *gtkutil_entry_new (int max, GtkWidget * box, void *callback,
 void show_and_unfocus (GtkWidget * wid);
 void gtkutil_set_icon (GtkWidget *win);
 GtkWidget *gtkutil_window_new (char *title, char *role, int width, int height, int flags);
-#if HC_GTK4
 void gtkutil_copy_to_clipboard (GtkWidget *widget, gboolean primary_only,
                                 const gchar *str);
-#else
-void gtkutil_copy_to_clipboard (GtkWidget *widget, GdkAtom selection,
-                                const gchar *str);
-#endif
 GtkWidget *gtkutil_treeview_new (GtkWidget *box, GtkTreeModel *model,
                                  GtkTreeCellDataFunc mapper, ...);
 gboolean gtkutil_treemodel_string_to_iter (GtkTreeModel *model, gchar *pathstr, GtkTreeIter *iter_ret);

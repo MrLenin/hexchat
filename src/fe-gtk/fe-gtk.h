@@ -70,9 +70,7 @@ struct server_gui
 	GtkWidget *chanlist_wild;		/* GtkEntry */
 	GtkWidget *chanlist_window;
 	GtkWidget *chanlist_list;
-#if HC_GTK4
-	GObject *chanlist_store;		/* GListStore for GTK4 */
-#endif
+	GObject *chanlist_store;		/* GListStore */
 	GtkWidget *chanlist_label;
 	GtkWidget *chanlist_min_spin;	/* minusers GtkSpinButton */
 	GtkWidget *chanlist_refresh;	/* buttons */
@@ -113,11 +111,7 @@ typedef struct restore_gui
 	void *tab;			/* (chan *) */
 
 	/* information stored when this tab isn't front-most */
-#if HC_GTK4
 	GListStore *user_model;		/* for filling the GtkColumnView */
-#else
-	GtkListStore *user_model;	/* for filling the GtkTreeView */
-#endif
 	void *buffer;		/* xtext_Buffer */
 	char *input_text;	/* input text buffer (while not-front tab) */
 	char *topic_text;	/* topic GtkEntry buffer */

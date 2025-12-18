@@ -259,11 +259,7 @@ struct _GtkXText
 struct _GtkXTextClass
 {
 	GtkWidgetClass parent_class;
-#if HC_GTK4
 	void (*word_click) (GtkXText * xtext, char *word, guint button, GdkModifierType state, double x, double y);
-#else
-	void (*word_click) (GtkXText * xtext, char *word, GdkEventButton * event);
-#endif
 	void (*set_scroll_adjustments) (GtkXText *xtext, GtkAdjustment *hadj, GtkAdjustment *vadj);
 };
 

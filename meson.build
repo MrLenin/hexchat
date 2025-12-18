@@ -49,18 +49,9 @@ config_h.set('G_DISABLE_SINGLE_INCLUDES', true)
 config_h.set('GTK_DISABLE_SINGLE_INCLUDES', true)
 config_h.set('GDK_PIXBUF_DISABLE_SINGLE_INCLUDES', true)
 
-# GTK4 migration support
-use_gtk4 = get_option('gtk4')
-config_h.set('USE_GTK4', use_gtk4)
-if use_gtk4
-  # GTK4 requires GLib 2.66+
-  config_h.set('GLIB_VERSION_MAX_ALLOWED', 'GLIB_VERSION_2_76')
-  config_h.set('GLIB_VERSION_MIN_REQUIRED', 'GLIB_VERSION_2_66')
-else
-  # GTK3 requires GLib 2.44+
-  config_h.set('GLIB_VERSION_MAX_ALLOWED', 'GLIB_VERSION_2_44')
-  config_h.set('GLIB_VERSION_MIN_REQUIRED', 'GLIB_VERSION_2_44')
-endif
+# GTK4 configuration (GTK3 no longer supported)
+config_h.set('GLIB_VERSION_MAX_ALLOWED', 'GLIB_VERSION_2_76')
+config_h.set('GLIB_VERSION_MIN_REQUIRED', 'GLIB_VERSION_2_66')
 
 # Detected features
 config_h.set('HAVE_MEMRCHR', cc.has_function('memrchr'))
@@ -195,7 +186,7 @@ if meson.version().version_compare('>= 0.53.0')
     'Plugin Support': get_option('plugin'),
     'DBus Support': dbus_glib_dep.found(),
     'libcanberra': libcanberra_dep.found(),
-    'GTK Version': use_gtk4 ? 'GTK4 (experimental)' : 'GTK3',
+    'GTK Version': 'GTK4',
   }, section: 'Features')
 
   summary({

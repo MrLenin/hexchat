@@ -1428,11 +1428,7 @@ setup_color_button_set_color (GtkWidget *button, GdkRGBA *col)
 		(int)(col->red * 255), (int)(col->green * 255), (int)(col->blue * 255), col->alpha);
 
 	provider = gtk_css_provider_new ();
-#if HC_GTK4
 	gtk_css_provider_load_from_data (provider, css, -1);
-#else
-	gtk_css_provider_load_from_data (provider, css, -1, NULL);
-#endif
 
 	context = gtk_widget_get_style_context (button);
 	gtk_style_context_add_provider (context, GTK_STYLE_PROVIDER (provider),
@@ -1498,15 +1494,11 @@ setup_create_color_button (GtkWidget *table, int num, int row, int col)
 						/* 12345678901 23456789 01  23456789 */
 		sprintf (buf, "<span size=\"x-small\">%d</span>", num);
 	but = gtk_button_new_with_label (" ");
-#if HC_GTK4
 	{
 		GtkWidget *label = gtk_button_get_child (GTK_BUTTON (but));
 		if (label && GTK_IS_LABEL (label))
 			gtk_label_set_markup (GTK_LABEL (label), buf);
 	}
-#else
-	gtk_label_set_markup (GTK_LABEL (gtk_bin_get_child (GTK_BIN (but))), buf);
-#endif
 	/* win32 build uses this to turn off themeing */
 	g_object_set_data (G_OBJECT (but), "hexchat-color", (gpointer)1);
 	gtk_grid_attach (GTK_GRID (table), but, col, row, 1, 1);
@@ -1843,11 +1835,7 @@ setup_create_sound_page (void)
 	gtk_widget_show (sound_browse);
 	gtk_grid_attach (GTK_GRID (table1), sound_browse, 1, 1, 1, 1);
 
-#if HC_GTK4
 	sound_play = gtk_button_new_from_icon_name ("media-playback-start");
-#else
-	sound_play = gtk_button_new_from_icon_name ("media-playback-start", GTK_ICON_SIZE_BUTTON);
-#endif
 	g_signal_connect (G_OBJECT (sound_play), "clicked",
 							G_CALLBACK (setup_snd_play_cb), sndfile_entry);
 	gtk_widget_show (sound_play);
@@ -1889,9 +1877,6 @@ setup_add_page (const char *title, GtkWidget *book, GtkWidget *tab)
 	gtk_scrolled_window_set_policy (sw, GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
 
 	viewport = gtk_viewport_new (NULL, NULL);
-#if !HC_GTK4
-	gtk_viewport_set_shadow_type (GTK_VIEWPORT(viewport), GTK_SHADOW_NONE);
-#endif
 	hc_viewport_set_child (viewport, vvbox);
 	hc_scrolled_window_set_child (GTK_WIDGET (sw), viewport);
 

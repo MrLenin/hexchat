@@ -42,20 +42,10 @@
 #include "maingui.h"
 #include "editlist.h"
 
-#if !HC_GTK4
-/* model for the editlist treeview (GTK3 only) */
-enum
-{
-	NAME_COLUMN,
-	CMD_COLUMN,
-	N_COLUMNS
-};
-#endif
 
 static GtkWidget *editlist_win = NULL;
 static GSList *editlist_list = NULL;
 
-#if HC_GTK4
 /*
  * GTK4 Implementation using GListStore + GtkColumnView
  */
@@ -109,20 +99,9 @@ get_store (void)
 	return g_object_get_data (G_OBJECT (editlist_win), "store");
 }
 
-#else /* GTK3 */
-
-static GtkTreeModel *
-get_store (void)
-{
-	return gtk_tree_view_get_model (g_object_get_data (G_OBJECT (editlist_win), "view"));
-}
-
-#endif /* HC_GTK4 */
-
 static void
 editlist_save (GtkWidget *igad, gchar *file)
 {
-#if HC_GTK4
 	GListStore *store = get_store ();
 	guint i, n_items;
 	char buf[512];
@@ -144,30 +123,6 @@ editlist_save (GtkWidget *igad, gchar *file)
 				g_object_unref (item);
 			}
 		}
-#else /* GTK3 */
-	GtkTreeModel *store = get_store ();
-	GtkTreeIter iter;
-	char buf[512];
-	char *name, *cmd;
-	int fh;
-
-	fh = hexchat_open_file (file, O_TRUNC | O_WRONLY | O_CREAT, 0600, XOF_DOMODE);
-	if (fh != -1)
-	{
-		if (gtk_tree_model_get_iter_first (GTK_TREE_MODEL (store), &iter))
-		{
-			do
-			{
-				name = NULL;
-				cmd = NULL;
-				gtk_tree_model_get (GTK_TREE_MODEL (store), &iter, NAME_COLUMN, &name, CMD_COLUMN, &cmd, -1);
-				g_snprintf (buf, sizeof (buf), "NAME %s\nCMD %s\n\n", name, cmd);
-				write (fh, buf, strlen (buf));
-				g_free (name);
-				g_free (cmd);
-			} while (gtk_tree_model_iter_next (GTK_TREE_MODEL (store), &iter));
-		}
-#endif
 
 		close (fh);
 		hc_window_destroy (editlist_win);
@@ -224,7 +179,6 @@ editlist_save (GtkWidget *igad, gchar *file)
 	}
 }
 
-#if HC_GTK4
 static void
 editlist_load (GListStore *store, GSList *list)
 {
@@ -239,34 +193,10 @@ editlist_load (GListStore *store, GSList *list)
 		list = list->next;
 	}
 }
-#else /* GTK3 */
-static void
-editlist_load (GtkListStore *store, GSList *list)
-{
-	struct popup *pop;
-	gchar *name, *cmd;
-	GtkTreeIter iter;
-
-	while (list)
-	{
-		pop = (struct popup *) list->data;
-		name = pop->name;
-		cmd = pop->cmd;
-
-		gtk_list_store_append (store, &iter);
-		gtk_list_store_set (store, &iter,
-						NAME_COLUMN, name,
-						CMD_COLUMN, cmd, -1);
-
-		list = list->next;
-	}
-}
-#endif /* HC_GTK4 */
 
 static void
 editlist_delete (GtkWidget *wid, gpointer userdata)
 {
-#if HC_GTK4
 	GtkColumnView *view = g_object_get_data (G_OBJECT (editlist_win), "view");
 	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
 	GListStore *store = get_store ();
@@ -287,30 +217,11 @@ editlist_delete (GtkWidget *wid, gpointer userdata)
 			gtk_selection_model_select_item (sel_model, position, TRUE);
 		}
 	}
-#else /* GTK3 */
-	GtkTreeView *view = g_object_get_data (G_OBJECT (editlist_win), "view");
-	GtkListStore *store = GTK_LIST_STORE (gtk_tree_view_get_model (view));
-	GtkTreeIter iter;
-	GtkTreePath *path;
-
-	if (gtkutil_treeview_get_selected (view, &iter, -1))
-	{
-		/* delete this row, select next one */
-		if (gtk_list_store_remove (store, &iter))
-		{
-			path = gtk_tree_model_get_path (GTK_TREE_MODEL (store), &iter);
-			gtk_tree_view_scroll_to_cell (view, path, NULL, TRUE, 1.0, 0.0);
-			gtk_tree_view_set_cursor (view, path, NULL, FALSE);
-			gtk_tree_path_free (path);
-		}
-	}
-#endif /* HC_GTK4 */
 }
 
 static void
 editlist_add (GtkWidget *wid, gpointer userdata)
 {
-#if HC_GTK4
 	GtkColumnView *view = g_object_get_data (G_OBJECT (editlist_win), "view");
 	GtkSelectionModel *sel_model = gtk_column_view_get_model (view);
 	GListStore *store = get_store ();
@@ -327,22 +238,6 @@ editlist_add (GtkWidget *wid, gpointer userdata)
 	gtk_selection_model_select_item (sel_model, position, TRUE);
 
 	/* Scroll to show new item - GtkColumnView handles this via selection */
-#else /* GTK3 */
-	GtkTreeView *view = g_object_get_data (G_OBJECT (editlist_win), "view");
-	GtkTreeViewColumn *col;
-	GtkListStore *store = GTK_LIST_STORE (get_store ());
-	GtkTreeIter iter;
-	GtkTreePath *path;
-
-	gtk_list_store_append (store, &iter);
-
-	/* make sure the new row is visible and selected */
-	path = gtk_tree_model_get_path (GTK_TREE_MODEL (store), &iter);
-	col = gtk_tree_view_get_column (view, NAME_COLUMN);
-	gtk_tree_view_scroll_to_cell (view, path, NULL, FALSE, 0.0, 0.0);
-	gtk_tree_view_set_cursor (view, path, col, TRUE);
-	gtk_tree_path_free (path);
-#endif /* HC_GTK4 */
 }
 
 static void
@@ -352,29 +247,10 @@ editlist_close (GtkWidget *wid, gpointer userdata)
 	editlist_win = NULL;
 }
 
-#if !HC_GTK4
-/* GTK3 only: cell renderer edited callback */
-static void
-editlist_edited (GtkCellRendererText *render, gchar *pathstr, gchar *new_text, gpointer data)
-{
-	GtkTreeModel *model = get_store ();
-	GtkTreePath *path = gtk_tree_path_new_from_string (pathstr);
-	GtkTreeIter iter;
-	gint column = GPOINTER_TO_INT (data);
-
-	gtk_tree_model_get_iter (model, &iter, path);
-	gtk_list_store_set (GTK_LIST_STORE (model), &iter, column, new_text, -1);
-
-	gtk_tree_path_free (path);
-}
-#endif /* !HC_GTK4 */
-
 /*
  * Key press handler for editlist
- * GTK3: Uses GdkEventKey from "key_press_event" signal
- * GTK4: Uses GtkEventControllerKey with different signature
+ * Uses GtkEventControllerKey with different signature
  */
-#if HC_GTK4
 static gboolean
 editlist_keypress (GtkEventControllerKey *controller, guint keyval,
                    guint keycode, GdkModifierType state, gpointer userdata)
@@ -443,51 +319,7 @@ editlist_keypress (GtkEventControllerKey *controller, guint keyval,
 
 	return handled;
 }
-#else /* GTK3 */
-static gboolean
-editlist_keypress (GtkWidget *wid, GdkEventKey *evt, gpointer userdata)
-{
-	GtkTreeView *view = g_object_get_data (G_OBJECT (editlist_win), "view");
-	GtkTreeModel *store;
-	GtkTreeIter iter1, iter2;
-	GtkTreeSelection *sel;
-	GtkTreePath *path;
-	gboolean handled = FALSE;
-	int delta;
 
-	if (evt->state & GDK_SHIFT_MASK)
-	{
-		if (evt->keyval == GDK_KEY_Up)
-		{
-			handled = TRUE;
-			delta = -1;
-		}
-		else if (evt->keyval == GDK_KEY_Down)
-		{
-			handled = TRUE;
-			delta = 1;
-		}
-	}
-
-	if (handled)
-	{
-		sel = gtk_tree_view_get_selection (view);
-		gtk_tree_selection_get_selected (sel, &store, &iter1);
-		path = gtk_tree_model_get_path (store, &iter1);
-		if (delta == 1)
-			gtk_tree_path_next (path);
-		else
-			gtk_tree_path_prev (path);
-		gtk_tree_model_get_iter (store, &iter2, path);
-		gtk_tree_path_free (path);
-		gtk_list_store_swap (GTK_LIST_STORE (store), &iter1, &iter2);
-	}
-
-	return handled;
-}
-#endif
-
-#if HC_GTK4
 /*
  * GTK4 Implementation using GtkColumnView with GtkEditableLabel for inline editing
  */
@@ -628,69 +460,6 @@ editlist_columnview_new (GtkWidget *box, char *title1, char *title2, GListStore 
 	return view;
 }
 
-#else /* GTK3 */
-
-static GtkWidget *
-editlist_treeview_new (GtkWidget *box, char *title1, char *title2)
-{
-	GtkWidget *scroll;
-	GtkListStore *store;
-	GtkTreeViewColumn *col;
-	GtkWidget *view;
-	GtkCellRenderer *render;
-
-	scroll = hc_scrolled_window_new ();
-	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scroll), GTK_SHADOW_IN);
-
-	store = gtk_list_store_new (N_COLUMNS, G_TYPE_STRING, G_TYPE_STRING);
-	g_return_val_if_fail (store != NULL, NULL);
-
-	view = gtk_tree_view_new_with_model (GTK_TREE_MODEL (store));
-	gtk_tree_view_set_fixed_height_mode (GTK_TREE_VIEW (view), TRUE);
-	gtk_tree_view_set_enable_search (GTK_TREE_VIEW (view), FALSE);
-	gtk_tree_view_set_reorderable (GTK_TREE_VIEW (view), TRUE);
-
-	/* GTK3: Use traditional signal */
-	g_signal_connect (G_OBJECT (view), "key_press_event",
-						G_CALLBACK (editlist_keypress), NULL);
-
-	gtk_tree_view_set_rules_hint (GTK_TREE_VIEW (view), TRUE);
-
-	render = gtk_cell_renderer_text_new ();
-	g_object_set (render, "editable", TRUE, NULL);
-	g_signal_connect (G_OBJECT (render), "edited",
-					G_CALLBACK (editlist_edited), GINT_TO_POINTER(NAME_COLUMN));
-	gtk_tree_view_insert_column_with_attributes (
-					GTK_TREE_VIEW (view), NAME_COLUMN,
-					title1, render,
-					"text", NAME_COLUMN,
-					NULL);
-
-	render = gtk_cell_renderer_text_new ();
-	g_object_set (render, "editable", TRUE, NULL);
-	g_signal_connect (G_OBJECT (render), "edited",
-					G_CALLBACK (editlist_edited), GINT_TO_POINTER(CMD_COLUMN));
-	gtk_tree_view_insert_column_with_attributes (
-					GTK_TREE_VIEW (view), CMD_COLUMN,
-					title2, render,
-					"text", CMD_COLUMN,
-					NULL);
-
-	col = gtk_tree_view_get_column (GTK_TREE_VIEW (view), NAME_COLUMN);
-	gtk_tree_view_column_set_sizing (col, GTK_TREE_VIEW_COLUMN_AUTOSIZE);
-	gtk_tree_view_column_set_resizable (col, TRUE);
-	gtk_tree_view_column_set_min_width (col, 100);
-
-	hc_scrolled_window_set_child (scroll, view);
-	hc_box_pack_start (box, scroll, TRUE, TRUE, 0);
-	hc_widget_show_all (box);
-
-	return view;
-}
-
-#endif /* HC_GTK4 */
-
 
 void
 editlist_gui_open (char *title1, char *title2, GSList *list, char *title, char *wmclass,
@@ -698,11 +467,7 @@ editlist_gui_open (char *title1, char *title2, GSList *list, char *title, char *
 {
 	GtkWidget *vbox, *box;
 	GtkWidget *view;
-#if HC_GTK4
 	GListStore *store;
-#else
-	GtkListStore *store;
-#endif
 
 	if (editlist_win)
 	{
@@ -715,14 +480,9 @@ editlist_gui_open (char *title1, char *title2, GSList *list, char *title, char *
 
 	editlist_list = list;
 
-#if HC_GTK4
 	view = editlist_columnview_new (vbox, title1, title2, &store);
 	g_object_set_data (G_OBJECT (editlist_win), "view", view);
 	g_object_set_data (G_OBJECT (editlist_win), "store", store);
-#else
-	view = editlist_treeview_new (vbox, title1, title2);
-	g_object_set_data (G_OBJECT (editlist_win), "view", view);
-#endif
 
 	if (help)
 		gtk_widget_set_tooltip_text (view, help);
@@ -742,12 +502,7 @@ editlist_gui_open (char *title1, char *title2, GSList *list, char *title, char *
 	gtkutil_button (box, "document-save", 0, editlist_save,
 					file, _("Save"));
 
-#if HC_GTK4
 	editlist_load (store, list);
-#else
-	store = GTK_LIST_STORE (gtk_tree_view_get_model (GTK_TREE_VIEW (view)));
-	editlist_load (store, list);
-#endif
 
 	gtk_widget_show (editlist_win);
 }

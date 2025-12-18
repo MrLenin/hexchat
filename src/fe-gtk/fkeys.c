@@ -84,16 +84,10 @@ struct key_binding
  * Key action handler type - GTK4 doesn't have GdkEventKey, so we use void*
  * The event parameter is not actually used by most handlers anyway
  */
-#if HC_GTK4
 typedef int (*key_action_handler) (GtkWidget *wid, void *evt, char *d1, char *d2,
                                    struct session *sess);
 /* Macro for function implementation signatures - allows a single definition to work for both */
 #define KEY_EVENT_PARAM void *evt
-#else
-typedef int (*key_action_handler) (GtkWidget *wid, GdkEventKey *evt, char *d1, char *d2,
-                                   struct session *sess);
-#define KEY_EVENT_PARAM GdkEventKey *evt
-#endif
 
 struct key_action
 {
@@ -112,7 +106,6 @@ static int key_load_kbs (void);
 static int key_save_kbs (void);
 
 /* Key action function declarations - use void* for evt in GTK4 */
-#if HC_GTK4
 static int key_action_handle_command (GtkWidget *wid, void *evt,
                                       char *d1, char *d2, struct session *sess);
 static int key_action_page_switch (GtkWidget *wid, void *evt,
@@ -143,44 +136,6 @@ static int key_action_move_tab_family_right (GtkWidget *wid, void *evt,
                                              char *d1, char *d2, struct session *sess);
 static int key_action_put_history (GtkWidget *wid, void *evt,
                                    char *d1, char *d2, struct session *sess);
-#else /* GTK3 */
-static int key_action_handle_command (GtkWidget * wid, GdkEventKey * evt,
-												  char *d1, char *d2,
-												  struct session *sess);
-static int key_action_page_switch (GtkWidget * wid, GdkEventKey * evt,
-											  char *d1, char *d2, struct session *sess);
-int key_action_insert (GtkWidget * wid, GdkEventKey * evt, char *d1, char *d2,
-							  struct session *sess);
-static int key_action_scroll_page (GtkWidget * wid, GdkEventKey * evt,
-											  char *d1, char *d2, struct session *sess);
-static int key_action_set_buffer (GtkWidget * wid, GdkEventKey * evt,
-											 char *d1, char *d2, struct session *sess);
-static int key_action_history_up (GtkWidget * wid, GdkEventKey * evt,
-											 char *d1, char *d2, struct session *sess);
-static int key_action_history_down (GtkWidget * wid, GdkEventKey * evt,
-												char *d1, char *d2, struct session *sess);
-static int key_action_tab_comp (GtkWidget * wid, GdkEventKey * evt, char *d1,
-										  char *d2, struct session *sess);
-static int key_action_comp_chng (GtkWidget * wid, GdkEventKey * evt, char *d1,
-                                                                                        char *d2, struct session *sess);
-static int key_action_replace (GtkWidget * wid, GdkEventKey * evt, char *d1,
-										 char *d2, struct session *sess);
-static int key_action_move_tab_left (GtkWidget * wid, GdkEventKey * evt,
-												 char *d1, char *d2,
-												 struct session *sess);
-static int key_action_move_tab_right (GtkWidget * wid, GdkEventKey * evt,
-												  char *d1, char *d2,
-												  struct session *sess);
-static int key_action_move_tab_family_left (GtkWidget * wid, GdkEventKey * evt,
-												 char *d1, char *d2,
-												 struct session *sess);
-static int key_action_move_tab_family_right (GtkWidget * wid, GdkEventKey * evt,
-												  char *d1, char *d2,
-												  struct session *sess);
-static int key_action_put_history (GtkWidget * wid, GdkEventKey * evt,
-												  char *d1, char *d2,
-												  struct session *sess);
-#endif /* HC_GTK4 */
 
 static GSList *keybind_list = NULL;
 
@@ -322,9 +277,9 @@ key_free (gpointer data)
    * key bindings are stored in a linked list of key_binding structs
    * which looks like {
    guint keyval;  GDK keynumber
-   int action;  Index into key_actions 
+   int action;  Index into key_actions
    GdkModiferType mod; modifier, only ones from key_modifer_get_valid()
-   char *data1, *data2;  Pointers to strings, these must be freed 
+   char *data1, *data2;  Pointers to strings, these must be freed
    struct key_binding *next;
    }
    * remember that is (data1 || data2) != NULL then they need to be free()'ed
@@ -353,7 +308,6 @@ key_modifier_get_valid (GdkModifierType mod)
  * GTK3: Uses GdkEventKey from "key-press-event" signal
  * GTK4: Uses GtkEventControllerKey with different signature
  */
-#if HC_GTK4
 gboolean
 key_handle_key_press (GtkEventControllerKey *controller, guint keyval,
                       guint keycode, GdkModifierType state, session *sess)
@@ -421,74 +375,6 @@ key_handle_key_press (GtkEventControllerKey *controller, guint keyval,
 
 	return 0;
 }
-#else /* GTK3 */
-gboolean
-key_handle_key_press (GtkWidget *wid, GdkEventKey *evt, session *sess)
-{
-	struct key_binding *kb;
-	int n;
-	GSList *list;
-
-	/* where did this event come from? */
-	list = sess_list;
-	while (list)
-	{
-		sess = list->data;
-		if (sess->gui->input_box == wid)
-		{
-			if (sess->gui->is_tab)
-				sess = current_tab;
-			break;
-		}
-		list = list->next;
-	}
-	if (!list)
-		return FALSE;
-	current_sess = sess;
-
-	if (plugin_emit_keypress (sess, evt->state, evt->keyval, gdk_keyval_to_unicode (evt->keyval)))
-		return 1;
-
-	/* maybe the plugin closed this tab? */
-	if (!is_session (sess))
-		return 1;
-
-	list = keybind_list;
-	while (list)
-	{
-		kb = (struct key_binding*)list->data;
-
-		if (kb->keyval == evt->keyval && kb->mod == key_modifier_get_valid (evt->state))
-		{
-			if (kb->action < 0 || kb->action > KEY_MAX_ACTIONS)
-				return 0;
-
-			/* Run the function */
-			n = key_actions[kb->action].handler (wid, evt, kb->data1,
-															 kb->data2, sess);
-			switch (n)
-			{
-			case 0:
-				return 1;
-			case 2:
-				g_signal_stop_emission_by_name (G_OBJECT (wid),
-														"key_press_event");
-				return 1;
-			}
-		}
-		list = g_slist_next (list);
-	}
-
-	switch (evt->keyval)
-	{
-	case GDK_KEY_space:
-		key_action_tab_clean ();
-		break;
-	}
-
-	return 0;
-}
-#endif
 
 
 /* ***** GUI code here ******************* */
@@ -522,7 +408,7 @@ key_dialog_print_text (GtkXText *xtext, char *text)
 }
 
 static void
-key_dialog_set_key (GtkCellRendererAccel *accel, gchar *pathstr, guint accel_key, 
+key_dialog_set_key (GtkCellRendererAccel *accel, gchar *pathstr, guint accel_key,
 					GdkModifierType accel_mods, guint hardware_keycode, gpointer userdata)
 {
 	GtkTreeModel *model = get_store ();
@@ -602,7 +488,6 @@ key_dialog_entry_edited (GtkCellRendererText *render, gchar *pathstr, gchar *new
  * GTK3: Uses GdkEventKey from "key-press-event" signal
  * GTK4: Uses GtkEventControllerKey with different signature
  */
-#if HC_GTK4
 static gboolean
 key_dialog_keypress (GtkEventControllerKey *controller, guint keyval,
                      guint keycode, GdkModifierType state, gpointer userdata)
@@ -645,49 +530,6 @@ key_dialog_keypress (GtkEventControllerKey *controller, guint keyval,
 
 	return handled;
 }
-#else /* GTK3 */
-static gboolean
-key_dialog_keypress (GtkWidget *wid, GdkEventKey *evt, gpointer userdata)
-{
-	GtkTreeView *view = g_object_get_data (G_OBJECT (key_dialog), "view");
-	GtkTreeModel *store;
-	GtkTreeIter iter1, iter2;
-	GtkTreeSelection *sel;
-	GtkTreePath *path;
-	gboolean handled = FALSE;
-	int delta;
-
-	if (evt->state & GDK_SHIFT_MASK)
-	{
-		if (evt->keyval == GDK_KEY_Up)
-		{
-			handled = TRUE;
-			delta = -1;
-		}
-		else if (evt->keyval == GDK_KEY_Down)
-		{
-			handled = TRUE;
-			delta = 1;
-		}
-	}
-
-	if (handled)
-	{
-		sel = gtk_tree_view_get_selection (view);
-		gtk_tree_selection_get_selected (sel, &store, &iter1);
-		path = gtk_tree_model_get_path (store, &iter1);
-		if (delta == 1)
-			gtk_tree_path_next (path);
-		else
-			gtk_tree_path_prev (path);
-		gtk_tree_model_get_iter (store, &iter2, path);
-		gtk_tree_path_free (path);
-		gtk_list_store_swap (GTK_LIST_STORE (store), &iter1, &iter2);
-	}
-
-	return handled;
-}
-#endif
 
 static void
 key_dialog_selection_changed (GtkTreeSelection *sel, gpointer userdata)
@@ -832,9 +674,6 @@ key_dialog_treeview_new (GtkWidget *box)
 
 	scroll = hc_scrolled_window_new ();
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
-#if !HC_GTK4
-	gtk_scrolled_window_set_shadow_type (GTK_SCROLLED_WINDOW (scroll), GTK_SHADOW_IN);
-#endif
 
 	store = gtk_list_store_new (N_COLUMNS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_STRING,
 								G_TYPE_STRING, G_TYPE_STRING);
@@ -845,19 +684,10 @@ key_dialog_treeview_new (GtkWidget *box)
 	gtk_tree_view_set_enable_search (GTK_TREE_VIEW (view), FALSE);
 	gtk_tree_view_set_reorderable (GTK_TREE_VIEW (view), TRUE);
 
-#if HC_GTK4
 	/* GTK4: Use event controller for key events */
 	hc_add_key_controller (view, G_CALLBACK (key_dialog_keypress), NULL, NULL);
-#else
-	g_signal_connect (G_OBJECT (view), "key-press-event",
-					G_CALLBACK (key_dialog_keypress), NULL);
-#endif
 	g_signal_connect (G_OBJECT (gtk_tree_view_get_selection (GTK_TREE_VIEW(view))),
 					"changed", G_CALLBACK (key_dialog_selection_changed), NULL);
-
-#if !HC_GTK4
-	gtk_tree_view_set_rules_hint (GTK_TREE_VIEW (view), TRUE);
-#endif
 
 	render = gtk_cell_renderer_accel_new ();
 	g_object_set (render, "editable", TRUE,
@@ -894,7 +724,7 @@ key_dialog_treeview_new (GtkWidget *box)
 	render = gtk_cell_renderer_combo_new ();
 	g_object_set (G_OBJECT (render), "model", combostore,
 									"has-entry", FALSE,
-									"editable", TRUE, 
+									"editable", TRUE,
 									"text-column", 0,
 									NULL);
 	g_signal_connect (G_OBJECT (render), "edited",
@@ -903,7 +733,7 @@ key_dialog_treeview_new (GtkWidget *box)
 					G_CALLBACK (key_dialog_combo_changed), combostore);
 	gtk_tree_view_insert_column_with_attributes (GTK_TREE_VIEW (view), ACTION_COLUMN,
 													"Action", render,
-													"text", ACTION_COLUMN, 
+													"text", ACTION_COLUMN,
 													NULL);
 
 	render = gtk_cell_renderer_text_new ();
@@ -1007,9 +837,6 @@ key_dialog_show ()
 	box = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	hc_button_box_set_layout (box, GTK_BUTTONBOX_SPREAD);
 	hc_box_pack_start (vbox, box, FALSE, FALSE, 2);
-#if !HC_GTK4
-	hc_container_set_border_width (box, 5);
-#endif
 
 	gtkutil_button (box, "document-new", NULL, key_dialog_add,
 					NULL, _("Add"));
@@ -1159,7 +986,7 @@ key_load_kbs (void)
 	}
 
 	while (buf_get_line (ibuf, &buf, &pnt, size))
-	{		
+	{
 		if (buf[0] == '#')
 			continue;
 		if (strlen (buf) == 0)
@@ -1181,7 +1008,7 @@ key_load_kbs (void)
 				kb->keyval = keyval;
 				kb->mod = key_modifier_get_valid (mod);
 
-				state = KBSTATE_ACT; 
+				state = KBSTATE_ACT;
 				continue;
 			}
 
@@ -1669,7 +1496,7 @@ key_action_tab_comp (GtkWidget *t, KEY_EVENT_PARAM, char *d1, char *d2,
 			return 2;
 
 		cursor_pos = g_utf8_pointer_to_offset(text, ch);
-		if (cursor_pos && (g_utf8_get_char_validated(ch, -1) == ':' || 
+		if (cursor_pos && (g_utf8_get_char_validated(ch, -1) == ':' ||
 					g_utf8_get_char_validated(ch, -1) == ',' ||
 					g_utf8_get_char_validated (ch, -1) == g_utf8_get_char_validated (prefs.hex_completion_suffix, -1)))
 		{
@@ -1680,7 +1507,7 @@ key_action_tab_comp (GtkWidget *t, KEY_EVENT_PARAM, char *d1, char *d2,
 	}
 
 	comp = skip_len;
-	
+
 	/* store the text following the cursor for reinsertion later */
 	if ((cursor_pos + skip_len) < len)
 		postfix = g_utf8_offset_to_pointer(text, cursor_pos + skip_len);
@@ -1714,7 +1541,7 @@ key_action_tab_comp (GtkWidget *t, KEY_EVENT_PARAM, char *d1, char *d2,
 	elen = cursor_pos - ent_start;
 
 	g_utf8_strncpy (ent, g_utf8_offset_to_pointer (text, prefix_len), elen);
-	
+
 	if (sess->type == SESS_DIALOG && is_nick)
 	{
 		/* tab in a dialog completes the other person's name */
@@ -1763,9 +1590,9 @@ key_action_tab_comp (GtkWidget *t, KEY_EVENT_PARAM, char *d1, char *d2,
 			key_action_tab_clean ();
 			comp = 0;
 		}
-	
+
 		list = g_completion_complete_utf8 (gcomp, comp ? old_gcomp.data : ent, &result);
-		
+
 		if (result == NULL) /* No matches found */
 		{
 			g_completion_free(gcomp);
@@ -1870,7 +1697,7 @@ key_action_tab_comp (GtkWidget *t, KEY_EVENT_PARAM, char *d1, char *d2,
 			}
 		}
 	}
-	
+
 	if(result)
 	{
 		buf = g_string_sized_new (len + NICKLEN);
@@ -2025,4 +1852,3 @@ replace_handle (GtkWidget *t)
 		list = list->next;
 	}
 }
-

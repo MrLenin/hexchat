@@ -81,7 +81,6 @@ rawlog_savebutton (GtkWidget * wid, server *serv)
 	return FALSE;
 }
 
-#if HC_GTK4
 static gboolean
 rawlog_key_cb (GtkEventControllerKey *controller, guint keyval, guint keycode,
                GdkModifierType state, gpointer userdata)
@@ -99,24 +98,6 @@ rawlog_key_cb (GtkEventControllerKey *controller, guint keyval, guint keycode,
 	}
 	return FALSE;
 }
-#else
-static gboolean
-rawlog_key_cb (GtkWidget * wid, GdkEventKey * key, gpointer userdata)
-{
-	(void)wid;
-	/* Copy rawlog selection to clipboard when Ctrl+Shift+C is pressed,
-	 * but make sure not to copy twice, i.e. when auto-copy is enabled.
-	 */
-	if (!prefs.hex_text_autocopy_text &&
-		(key->keyval == GDK_KEY_c || key->keyval == GDK_KEY_C) &&
-		key->state & STATE_SHIFT &&
-		key->state & STATE_CTRL)
-	{
-		gtk_xtext_copy_selection (userdata);
-	}
-	return FALSE;
-}
-#endif
 
 void
 open_rawlog (struct server *serv)
@@ -157,11 +138,7 @@ open_rawlog (struct server *serv)
 						 serv, _("Save As..."));
 
 	/* Copy selection to clipboard when Ctrl+Shift+C is pressed AND text auto-copy is disabled */
-#if HC_GTK4
 	hc_add_key_controller (serv->gui->rawlog_window, G_CALLBACK (rawlog_key_cb), NULL, serv->gui->rawlog_textlist);
-#else
-	g_signal_connect (G_OBJECT (serv->gui->rawlog_window), "key_press_event", G_CALLBACK (rawlog_key_cb), serv->gui->rawlog_textlist);
-#endif
 
 	hc_widget_show_all (serv->gui->rawlog_window);
 }
