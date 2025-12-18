@@ -46,8 +46,15 @@ hexchat_gtk_cflags = []
 
 hexchat_gtk_ldflags = []
 
+# Tray library include directory (Windows only for now)
+tray_inc = []
+
 if host_machine.system() == 'windows'
   hexchat_gtk_sources += 'notifications/notification-windows.c'
+
+  # System tray support using dmikushin/tray library
+  hexchat_gtk_sources += '../../external/tray/tray_windows.c'
+  tray_inc = include_directories('../../external/tray')
 
   # TODO: mingw doesn't have these headers or libs
   # add_languages('cpp')
@@ -86,6 +93,7 @@ endif
 executable('hexchat',
   sources:  resources + hexchat_gtk_sources,
   dependencies: hexchat_gtk_deps,
+  include_directories: tray_inc,
   c_args: hexchat_gtk_cflags,
   link_args: hexchat_gtk_ldflags,
   pie: true,

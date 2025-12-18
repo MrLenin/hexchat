@@ -23,13 +23,7 @@
   <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   <Import Project="..\hexchat.props" />
 
-  <!-- Detect GTK version from OwnFlags -->
-  <PropertyGroup>
-    <IsGTK4>false</IsGTK4>
-    <IsGTK4 Condition="$(OwnFlags.Contains('HC_GTK4'))">true</IsGTK4>
-  </PropertyGroup>
-
-  <!-- Common files (both GTK3 and GTK4) -->
+  <!-- GTK4 build files -->
   <ItemGroup>
     <!-- GLib/GTK core DLLs from gvsbuild -->
     <None Include="$(DepsRoot)\bin\cairo-2.dll" />
@@ -78,23 +72,13 @@
     <!-- Config and data -->
     <FontConfig Include="$(DepsRoot)\etc\fonts\*" />
     <Share Include="share\**\*" />
+    <!-- Tray icons -->
+    <TrayIcons Include="..\..\data\icons\tray_*.ico" />
     <DepsRootDocs Include="$(DepsRoot)\share\doc\**\*" />
     <Locale Include="$(HexChatBin)locale\**\*;$(DepsRoot)\share\locale\**\*" />
     <MSWindowsTheme Include="$(DepsRoot)\share\themes\MS-Windows\**\*" />
     <PythonCffi Include="$(Python3Path)\Lib\site-packages\_cffi_backend*.pyd" />
-  </ItemGroup>
-
-  <!-- GTK3-specific files -->
-  <ItemGroup Condition="'$(IsGTK4)' == 'false'">
-    <None Include="$(DepsRoot)\bin\gtk-3-0.dll" />
-    <None Include="$(DepsRoot)\bin\gdk-3-0.dll" />
-    <None Include="$(DepsRoot)\bin\atk-1.0-0.dll" />
-    <None Include="$(DepsRoot)\bin\libenchant-2.dll" />
-    <Gtk3Engines Include="$(DepsRoot)\lib\gtk-3.0\$(PlatformArchitecture)\engines\**\*" />
-  </ItemGroup>
-
-  <!-- GTK4-specific files -->
-  <ItemGroup Condition="'$(IsGTK4)' == 'true'">
+    <!-- GTK4 DLLs -->
     <None Include="$(DepsRoot)\bin\gtk-4-1.dll" />
     <None Include="$(DepsRoot)\bin\graphene-1.0-0.dll" />
     <!-- Enchant is optional - may be installed separately -->
@@ -108,9 +92,8 @@
     <Copy SourceFiles="@(LuaExe)" DestinationFolder="$(HexChatRel)" />
     <Copy SourceFiles="@(PythonCffi)" DestinationFolder="$(HexChatRel)" />
     <Copy SourceFiles="@(FontConfig)" DestinationFolder="$(HexChatRel)\etc\fonts" />
-    <!-- GTK3 theme engines -->
-    <Copy Condition="'$(IsGTK4)' == 'false'" SourceFiles="@(Gtk3Engines)" DestinationFiles="@(Gtk3Engines->'$(HexChatRel)\lib\gtk-3.0\$(PlatformArchitecture)\engines\%(RecursiveDir)%(Filename)%(Extension)')" />
     <Copy SourceFiles="@(Share)" DestinationFiles="@(Share->'$(HexChatRel)\share\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(TrayIcons)" DestinationFolder="$(HexChatRel)\share\icons" />
     <Copy SourceFiles="..\..\COPYING" DestinationFolder="$(HexChatRel)\share\doc\hexchat" />
     <Copy SourceFiles="$(WinSparklePath)\COPYING" DestinationFolder="$(HexChatRel)\share\doc\WinSparkle" />
     <!-- Enchant hunspell provider (optional) -->

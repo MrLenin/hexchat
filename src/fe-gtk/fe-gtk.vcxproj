@@ -30,8 +30,8 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;TRAY_EXPORTS;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);..\..\external\tray;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
@@ -42,8 +42,8 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;_WIN64;_AMD64_;NDEBUG;_WINDOWS;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WIN64;_AMD64_;NDEBUG;_WINDOWS;TRAY_EXPORTS;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);..\..\external\tray;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;4267;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
@@ -87,6 +87,7 @@ powershell "Get-Content -Encoding UTF8 '$(HexChatLib)hexchat.rc.utf8' | Out-File
     <ClInclude Include="palette.h" />
     <ClInclude Include="pixmaps.h" />
     <ClInclude Include="plugin-tray.h" />
+    <ClInclude Include="..\..\external\tray\tray.h" />
     <ClInclude Include="plugingui.h" />
     <ClInclude Include="rawlog.h" />
     <ClInclude Include="servlistgui.h" />
@@ -119,6 +120,7 @@ powershell "Get-Content -Encoding UTF8 '$(HexChatLib)hexchat.rc.utf8' | Out-File
     <ClCompile Include="pixmaps.c" />
     <ClCompile Include="plugin-notification.c" />
     <ClCompile Include="plugin-tray.c" />
+    <ClCompile Include="..\..\external\tray\tray_windows.c" />
     <ClCompile Include="plugingui.c" />
     <ClCompile Include="rawlog.c" />
     <ClCompile Include="$(HexChatLib)resources.c" />

@@ -441,6 +441,26 @@ fe_set_title (session *sess)
 	gtk_window_set_title (GTK_WINDOW (sess->gui->window), tbuf);
 }
 
+/* GTK4: Surface state callback - handles minimize detection */
+static void
+mg_surface_state_cb (GObject *gobject, GParamSpec *pspec, gpointer userdata)
+{
+	GdkToplevel *toplevel = GDK_TOPLEVEL (gobject);
+	GdkToplevelState state = gdk_toplevel_get_state (toplevel);
+	GtkWindow *wid = GTK_WINDOW (userdata);
+
+	/* Minimize to tray: intercept minimize and hide to tray instead */
+	if (state & GDK_TOPLEVEL_STATE_MINIMIZED)
+	{
+		if (prefs.hex_gui_tray_minimize && gtkutil_tray_icon_supported (wid))
+		{
+			/* Unminimize first, then hide to tray */
+			gtk_window_unminimize (wid);
+			tray_toggle_visibility (TRUE);
+		}
+	}
+}
+
 /* GTK4: Window state changes are monitored differently - track via property notifications */
 static void
 mg_windowstate_cb (GObject *gobject, GParamSpec *pspec, gpointer userdata)
@@ -452,8 +472,6 @@ mg_windowstate_cb (GObject *gobject, GParamSpec *pspec, gpointer userdata)
 	if (surface && GDK_IS_TOPLEVEL (surface))
 		state = gdk_toplevel_get_state (GDK_TOPLEVEL (surface));
 
-	/* GTK4 doesn't have minimize-to-tray in the same way - skip this check */
-
 	prefs.hex_gui_win_state = 0;
 	if (state & GDK_TOPLEVEL_STATE_MAXIMIZED)
 		prefs.hex_gui_win_state = 1;
@@ -463,6 +481,19 @@ mg_windowstate_cb (GObject *gobject, GParamSpec *pspec, gpointer userdata)
 		prefs.hex_gui_win_fullscreen = 1;
 
 	menu_set_fullscreen (current_sess->gui, prefs.hex_gui_win_fullscreen);
+}
+
+/* GTK4: Connect to surface state after window is realized */
+static void
+mg_realize_cb (GtkWidget *widget, gpointer userdata)
+{
+	GdkSurface *surface = gtk_native_get_surface (GTK_NATIVE (widget));
+
+	if (surface && GDK_IS_TOPLEVEL (surface))
+	{
+		g_signal_connect (G_OBJECT (surface), "notify::state",
+						  G_CALLBACK (mg_surface_state_cb), widget);
+	}
 }
 
 /* GTK4: Use "notify::default-width/height" signal - position isn't available */
@@ -3876,6 +3907,9 @@ mg_create_tabwindow (session *sess)
 							G_CALLBACK (mg_windowstate_cb), NULL);
 	g_signal_connect (G_OBJECT (win), "notify::fullscreened",
 							G_CALLBACK (mg_windowstate_cb), NULL);
+	/* Connect to realize to hook surface state for minimize-to-tray */
+	g_signal_connect (G_OBJECT (win), "realize",
+							G_CALLBACK (mg_realize_cb), NULL);
 
 	palette_alloc (win);
 

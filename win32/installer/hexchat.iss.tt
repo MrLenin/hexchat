@@ -179,6 +179,10 @@ Source: "plugins\hcexec.dll"; DestDir: "{app}\plugins"; Flags: ignoreversion; Co
 Source: "plugins\hcfishlim.dll"; DestDir: "{app}\plugins"; Flags: ignoreversion; Components: plugins\fishlim
 Source: "share\music.png"; DestDir: "{app}\share"; Flags: ignoreversion; Components: plugins\winamp
 Source: "share\download.png"; DestDir: "{app}\share"; Flags: ignoreversion; Components: plugins\upd
+Source: "share\icons\tray_normal.ico"; DestDir: "{app}\share\icons"; Flags: ignoreversion; Components: libs
+Source: "share\icons\tray_message.ico"; DestDir: "{app}\share\icons"; Flags: ignoreversion; Components: libs
+Source: "share\icons\tray_highlight.ico"; DestDir: "{app}\share\icons"; Flags: ignoreversion; Components: libs
+Source: "share\icons\tray_fileoffer.ico"; DestDir: "{app}\share\icons"; Flags: ignoreversion; Components: libs
 Source: "plugins\hcupd.dll"; DestDir: "{app}\plugins"; Flags: ignoreversion; Components: plugins\upd
 Source: "WinSparkle.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: plugins\upd
 Source: "plugins\hcwinamp.dll"; DestDir: "{app}\plugins"; Flags: ignoreversion; Components: plugins\winamp
