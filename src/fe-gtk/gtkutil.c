@@ -56,18 +56,11 @@ extern void path_part (char *file, char *path, int pathlen);
 
 struct file_req
 {
-	GtkWidget *dialog;
+	GtkFileChooserNative *native;
 	void *userdata;
 	filereqcallback callback;
 	int flags;		/* FRF_* flags */
 };
-
-static void
-gtkutil_file_req_destroy (GtkWidget * wid, struct file_req *freq)
-{
-	freq->callback (freq->userdata, NULL);
-	g_free (freq);
-}
 
 static void
 gtkutil_check_file (char *filename, struct file_req *freq)
@@ -137,66 +130,60 @@ gtkutil_check_file (char *filename, struct file_req *freq)
 }
 
 static void
-gtkutil_file_req_done (GtkWidget * wid, struct file_req *freq)
+gtkutil_file_req_response (GtkNativeDialog *native, gint res, struct file_req *freq)
 {
-	GSList *files, *cur;
-	GtkFileChooser *fs = GTK_FILE_CHOOSER (freq->dialog);
+	GtkFileChooser *fs = GTK_FILE_CHOOSER (native);
 
-	if (freq->flags & FRF_MULTIPLE)
+	if (res == GTK_RESPONSE_ACCEPT)
 	{
-		files = cur = gtk_file_chooser_get_filenames (fs);
-		while (cur)
+		if (freq->flags & FRF_MULTIPLE)
 		{
-			gtkutil_check_file (cur->data, freq);
-			g_free (cur->data);
-			cur = cur->next;
-		}
-		if (files)
-			g_slist_free (files);
-	}
-	else
-	{
-		if (freq->flags & FRF_CHOOSEFOLDER)
-		{
-			GFile *folder = gtk_file_chooser_get_current_folder (fs);
-			if (folder)
+			GListModel *files = gtk_file_chooser_get_files (fs);
+			guint n = g_list_model_get_n_items (files);
+			for (guint i = 0; i < n; i++)
 			{
-				gchar *filename = g_file_get_path (folder);
-				gtkutil_check_file (filename, freq);
-				g_free (filename);
-				g_object_unref (folder);
-			}
-		}
-		else
-		{
-			GFile *file = gtk_file_chooser_get_file (fs);
-			if (file)
-			{
+				GFile *file = g_list_model_get_item (files, i);
 				gchar *filename = g_file_get_path (file);
 				gtkutil_check_file (filename, freq);
 				g_free (filename);
 				g_object_unref (file);
 			}
+			g_object_unref (files);
+		}
+		else
+		{
+			if (freq->flags & FRF_CHOOSEFOLDER)
+			{
+				GFile *folder = gtk_file_chooser_get_current_folder (fs);
+				if (folder)
+				{
+					gchar *filename = g_file_get_path (folder);
+					gtkutil_check_file (filename, freq);
+					g_free (filename);
+					g_object_unref (folder);
+				}
+			}
+			else
+			{
+				GFile *file = gtk_file_chooser_get_file (fs);
+				if (file)
+				{
+					gchar *filename = g_file_get_path (file);
+					gtkutil_check_file (filename, freq);
+					g_free (filename);
+					g_object_unref (file);
+				}
+			}
 		}
 	}
-
-	/* this should call the "destroy" cb, where we free(freq) */
-	hc_window_destroy (freq->dialog);
-}
-
-static void
-gtkutil_file_req_response (GtkWidget *dialog, gint res, struct file_req *freq)
-{
-	switch (res)
+	else
 	{
-	case GTK_RESPONSE_ACCEPT:
-		gtkutil_file_req_done (dialog, freq);
-		break;
-
-	case GTK_RESPONSE_CANCEL:
-		/* this should call the "destroy" cb, where we free(freq) */
-		hc_window_destroy (freq->dialog);
+		/* Cancelled - call callback with NULL */
+		freq->callback (freq->userdata, NULL);
 	}
+
+	g_object_unref (freq->native);
+	g_free (freq);
 }
 
 void
@@ -204,29 +191,31 @@ gtkutil_file_req (GtkWindow *parent, const char *title, void *callback, void *us
 						int flags)
 {
 	struct file_req *freq;
-	GtkWidget *dialog;
+	GtkFileChooserNative *native;
+	GtkFileChooser *chooser;
+	GtkFileChooserAction action;
 	GtkFileFilter *filefilter;
-	extern char *get_xdir_fs (void);
 	char *token;
 	char *tokenbuffer;
 
-	if (flags & FRF_WRITE)
-	{
-		dialog = gtk_file_chooser_dialog_new (title, NULL,
-												GTK_FILE_CHOOSER_ACTION_SAVE,
-												_("_Cancel"), GTK_RESPONSE_CANCEL,
-												_("_Save"), GTK_RESPONSE_ACCEPT,
-												NULL);
-
-		if (!(flags & FRF_NOASKOVERWRITE))
-			gtk_file_chooser_set_do_overwrite_confirmation (GTK_FILE_CHOOSER (dialog), TRUE);
-	}
+	/* Determine action based on flags */
+	if (flags & FRF_CHOOSEFOLDER)
+		action = GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER;
+	else if (flags & FRF_WRITE)
+		action = GTK_FILE_CHOOSER_ACTION_SAVE;
 	else
-		dialog = gtk_file_chooser_dialog_new (title, NULL,
-												GTK_FILE_CHOOSER_ACTION_OPEN,
-												_("_Cancel"), GTK_RESPONSE_CANCEL,
-												_("_Open"), GTK_RESPONSE_ACCEPT,
-												NULL);
+		action = GTK_FILE_CHOOSER_ACTION_OPEN;
+
+	/* Use GtkFileChooserNative for native file dialogs on Windows/macOS.
+	 * This avoids GSettings issues and provides a better user experience. */
+	native = gtk_file_chooser_native_new (title, parent, action,
+		(flags & FRF_WRITE) ? _("_Save") : _("_Open"),
+		_("_Cancel"));
+
+	chooser = GTK_FILE_CHOOSER (native);
+
+	if (flags & FRF_MODAL && parent)
+		gtk_native_dialog_set_modal (GTK_NATIVE_DIALOG (native), TRUE);
 
 	if (filter && filter[0] && (flags & FRF_FILTERISINITIAL))
 	{
@@ -234,23 +223,21 @@ gtkutil_file_req (GtkWindow *parent, const char *title, void *callback, void *us
 		{
 			char temp[1024];
 			path_part (filter, temp, sizeof (temp));
-			hc_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), temp);
-			gtk_file_chooser_set_current_name (GTK_FILE_CHOOSER (dialog), file_part (filter));
+			hc_file_chooser_set_current_folder (chooser, temp);
+			gtk_file_chooser_set_current_name (chooser, file_part (filter));
 		}
 		else
 		{
-			hc_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), filter);
+			hc_file_chooser_set_current_folder (chooser, filter);
 		}
 	}
 	else if (!(flags & FRF_RECENTLYUSED))
 	{
-		hc_file_chooser_set_current_folder (GTK_FILE_CHOOSER (dialog), get_xdir ());
+		hc_file_chooser_set_current_folder (chooser, get_xdir ());
 	}
 
 	if (flags & FRF_MULTIPLE)
-		gtk_file_chooser_set_select_multiple (GTK_FILE_CHOOSER (dialog), TRUE);
-	if (flags & FRF_CHOOSEFOLDER)
-		gtk_file_chooser_set_action (GTK_FILE_CHOOSER (dialog), GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER);
+		gtk_file_chooser_set_select_multiple (chooser, TRUE);
 
 	if ((flags & FRF_EXTENSIONS || flags & FRF_MIMETYPES) && extensions != NULL)
 	{
@@ -268,36 +255,19 @@ gtkutil_file_req (GtkWindow *parent, const char *title, void *callback, void *us
 		}
 
 		g_free (tokenbuffer);
-		gtk_file_chooser_set_filter (GTK_FILE_CHOOSER (dialog), filefilter);
-	}
-
-	{
-		GFile *shortcut = g_file_new_for_path (get_xdir ());
-		gtk_file_chooser_add_shortcut_folder (GTK_FILE_CHOOSER (dialog), shortcut, NULL);
-		g_object_unref (shortcut);
+		gtk_file_chooser_set_filter (chooser, filefilter);
 	}
 
 	freq = g_new (struct file_req, 1);
-	freq->dialog = dialog;
+	freq->native = native;
 	freq->flags = flags;
 	freq->callback = callback;
 	freq->userdata = userdata;
 
-	g_signal_connect (G_OBJECT (dialog), "response",
+	g_signal_connect (native, "response",
 							G_CALLBACK (gtkutil_file_req_response), freq);
-	g_signal_connect (G_OBJECT (dialog), "destroy",
-						   G_CALLBACK (gtkutil_file_req_destroy), (gpointer) freq);
 
-	if (parent)
-		gtk_window_set_transient_for (GTK_WINDOW (dialog), parent);
-
-	if (flags & FRF_MODAL)
-	{
-		g_assert (parent);
-		gtk_window_set_modal (GTK_WINDOW (dialog), TRUE);
-	}
-
-	gtk_widget_show (dialog);
+	gtk_native_dialog_show (GTK_NATIVE_DIALOG (native));
 }
 
 static gboolean
