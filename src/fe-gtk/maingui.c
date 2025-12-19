@@ -50,9 +50,9 @@
 #include "chanview.h"
 #include "pixmaps.h"
 #include "plugin-tray.h"
+#include "servlistgui.h"
 #include "xtext.h"
 #include "sexy-spell-entry.h"
-#include "gtkutil.h"
 
 #ifdef G_OS_WIN32
 #include <windows.h>

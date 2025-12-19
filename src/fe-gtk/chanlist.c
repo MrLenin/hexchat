@@ -39,9 +39,11 @@
 #include "../common/util.h"
 #include "../common/fe.h"
 #include "../common/server.h"
+#include "../common/servlist.h"
 #include "gtkutil.h"
 #include "maingui.h"
 #include "menu.h"
+#include "servlistgui.h"
 
 #include "custom-list.h"
 

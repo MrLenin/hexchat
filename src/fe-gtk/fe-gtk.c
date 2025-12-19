@@ -1284,7 +1284,7 @@ fe_open_url_inner (const char *url)
 #else
 	char *escaped_url = maybe_escape_uri (url);
 	g_debug ("Opening URL \"%s\" (%s)", escaped_url, url);
-	gtk_show_uri (NULL, escaped_url, GDK_CURRENT_TIME, NULL);
+	gtk_show_uri (NULL, escaped_url, GDK_CURRENT_TIME);
 	g_free (escaped_url);
 #endif
 }
