@@ -457,6 +457,7 @@ fe_init (void)
 				/* Userlist buttons - minimal padding for shrinkable panel */
 				".hexchat-userlistbutton { "
 				"  padding: 1px 2px; "
+				"  margin: 0; "
 				"  min-width: 0; "
 				"  min-height: 0; "
 				"}");
@@ -484,10 +485,6 @@ fe_main (void)
 	g_signal_connect (G_OBJECT(osx_app), "NSApplicationWillTerminate",
 					G_CALLBACK(gtkosx_application_terminate), NULL);
 #endif
-
-	GtkSettings* settings = gtk_settings_get_default();
-	g_object_set(settings, "gtk-theme-name", "Default", NULL);
-
 	/* GTK4: Use GMainLoop since gtk_main() was removed */
 	gtk4_main_loop = g_main_loop_new (NULL, FALSE);
 	g_main_loop_run (gtk4_main_loop);
@@ -498,8 +495,6 @@ fe_main (void)
 	/* GUI is closed at this point, so the user doesn't even know! */
 	if (prefs.wait_on_exit)
 		sleep (2);
-
-	g_free(settings);
 }
 
 void

@@ -2087,9 +2087,21 @@ mg_userlist_button (GtkWidget * box, char *label, char *cmd,
 						  int a, int b, int c, int d)
 {
 	GtkWidget *wid = gtk_button_new_with_label (label);
+	GtkWidget *label_widget;
+
 	g_signal_connect (G_OBJECT (wid), "clicked",
 							G_CALLBACK (userlist_button_cb), cmd);
 	gtk_widget_add_css_class (wid, "hexchat-userlistbutton");
+	gtk_button_set_can_shrink (GTK_BUTTON (wid), TRUE);
+
+	/* Explicitly enable ellipsizing on the button label */
+	label_widget = gtk_button_get_child (GTK_BUTTON (wid));
+	if (GTK_IS_LABEL (label_widget))
+	{
+		gtk_label_set_ellipsize (GTK_LABEL (label_widget), PANGO_ELLIPSIZE_END);
+		gtk_label_set_wrap (GTK_LABEL (label_widget), FALSE);
+	}
+
 	gtk_widget_set_hexpand (wid, TRUE);
 	gtk_widget_set_vexpand (wid, FALSE);
 	gtk_grid_attach (GTK_GRID (box), wid, a, c, b - a, d - c);
@@ -2107,7 +2119,8 @@ mg_create_userlistbuttons (GtkWidget *box)
 	tab = gtk_grid_new ();
 	/* Allow userlist panel to shrink below button grid's natural width */
 	gtk_widget_set_size_request (tab, 1, -1);
-	hc_box_pack_start (box, tab, FALSE, FALSE, 0);
+	/* pack_end places buttons at bottom, matching GTK2 behavior */
+	hc_box_pack_end (box, tab, FALSE, FALSE, 0);
 
 	while (list)
 	{
@@ -2820,12 +2833,17 @@ mg_create_infoframe (GtkWidget *box)
 
 	frame = gtk_frame_new (0);
 	gtk_frame_set_shadow_type ((GtkFrame*)frame, GTK_SHADOW_OUT);
+	/* Allow frame to shrink below natural minimum */
+	gtk_widget_set_size_request (frame, 1, -1);
 	hc_box_add (box, frame);
 
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_widget_set_size_request (hbox, 1, -1);
 	hc_frame_set_child (frame, hbox);
 
 	label = gtk_label_new (NULL);
+	gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
+	gtk_widget_set_size_request (label, 1, -1);
 	hc_box_add (hbox, label);
 
 	return label;
@@ -2836,12 +2854,21 @@ mg_create_meters (session_gui *gui, GtkWidget *parent_box)
 {
 	GtkWidget *infbox, *wid, *box;
 
-	gui->meter_box = infbox = box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 1);
-	hc_box_pack_start (parent_box, box, 0, 0, 0);
+	/* Wrap meters in a scrolled window with EXTERNAL policy to allow shrinking */
+	gui->meter_box = hc_scrolled_window_new ();
+	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (gui->meter_box),
+									GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER);
+	gtk_widget_set_size_request (gui->meter_box, 1, -1);
+	hc_box_pack_start (parent_box, gui->meter_box, 0, 0, 0);
+
+	infbox = box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 1);
+	gtk_widget_set_size_request (box, 1, -1);
+	hc_scrolled_window_set_child (gui->meter_box, box);
 
 	if ((prefs.hex_gui_lagometer & 2) || (prefs.hex_gui_throttlemeter & 2))
 	{
 		infbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+		gtk_widget_set_size_request (infbox, 1, -1);
 		hc_box_pack_start (box, infbox, 0, 0, 0);
 	}
 
@@ -2855,6 +2882,7 @@ mg_create_meters (session_gui *gui, GtkWidget *parent_box)
 #endif
 
 		wid = hc_event_box_new ();
+		gtk_widget_set_size_request (wid, 1, -1);
 		hc_event_box_set_child (wid, gui->lagometer);
 		hc_box_pack_start (box, wid, 0, 0, 0);
 	}
@@ -2874,6 +2902,7 @@ mg_create_meters (session_gui *gui, GtkWidget *parent_box)
 #endif
 
 		wid = hc_event_box_new ();
+		gtk_widget_set_size_request (wid, 1, -1);
 		hc_event_box_set_child (wid, gui->throttlemeter);
 		hc_box_pack_start (box, wid, 0, 0, 0);
 	}
@@ -2904,6 +2933,8 @@ mg_create_userlist (session_gui *gui, GtkWidget *box)
 
 	vbox = gtk_box_new (GTK_ORIENTATION_VERTICAL, 1);
 	gtk_widget_set_vexpand (vbox, TRUE);
+	/* Allow userlist panel to shrink below natural minimum */
+	gtk_widget_set_size_request (vbox, 1, -1);
 	hc_box_add (box, vbox);
 
 	frame = gtk_frame_new (NULL);
@@ -3180,6 +3211,8 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 	gtk_paned_pack1 (GTK_PANED (gui->hpane_right), book, TRUE, TRUE);
 
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	/* Allow userlist panel to clip content when shrunk below natural size */
+	gtk_widget_set_overflow (hbox, GTK_OVERFLOW_HIDDEN);
 	mg_create_userlist (gui, hbox);
 
 	gui->user_box = hbox;
@@ -3284,23 +3317,24 @@ mg_place_userlist_and_chanview_real (session_gui *gui, GtkWidget *userlist, GtkW
 		gtk_widget_set_margin_bottom (chanview, 0);
 
 		/* then place them back in their new positions */
+		/* shrink=TRUE matches original GTK2 behavior */
 		switch (prefs.hex_gui_tab_pos)
 		{
 		case POS_TOPLEFT:
 			gtk_widget_set_vexpand (chanview, FALSE);
-			gtk_paned_pack1 (GTK_PANED (gui->vpane_left), chanview, FALSE, FALSE);
+			gtk_paned_pack1 (GTK_PANED (gui->vpane_left), chanview, FALSE, TRUE);
 			break;
 		case POS_BOTTOMLEFT:
 			gtk_widget_set_vexpand (chanview, FALSE);
-			gtk_paned_pack2 (GTK_PANED (gui->vpane_left), chanview, FALSE, FALSE);
+			gtk_paned_pack2 (GTK_PANED (gui->vpane_left), chanview, FALSE, TRUE);
 			break;
 		case POS_TOPRIGHT:
 			gtk_widget_set_vexpand (chanview, FALSE);
-			gtk_paned_pack1 (GTK_PANED (gui->vpane_right), chanview, FALSE, FALSE);
+			gtk_paned_pack1 (GTK_PANED (gui->vpane_right), chanview, FALSE, TRUE);
 			break;
 		case POS_BOTTOMRIGHT:
 			gtk_widget_set_vexpand (chanview, FALSE);
-			gtk_paned_pack2 (GTK_PANED (gui->vpane_right), chanview, FALSE, FALSE);
+			gtk_paned_pack2 (GTK_PANED (gui->vpane_right), chanview, FALSE, TRUE);
 			break;
 		case POS_TOP:
 			gtk_widget_set_margin_bottom (chanview, GUI_SPACING-1);
@@ -3328,21 +3362,22 @@ mg_place_userlist_and_chanview_real (session_gui *gui, GtkWidget *userlist, GtkW
 
 	if (userlist)
 	{
+		/* shrink=TRUE allows userlist to shrink below natural minimum */
 		switch (prefs.hex_gui_ulist_pos)
 		{
 		case POS_TOPLEFT:
-			gtk_paned_pack1 (GTK_PANED (gui->vpane_left), userlist, FALSE, FALSE);
+			gtk_paned_pack1 (GTK_PANED (gui->vpane_left), userlist, FALSE, TRUE);
 			break;
 		case POS_BOTTOMLEFT:
-			gtk_paned_pack2 (GTK_PANED (gui->vpane_left), userlist, FALSE, FALSE);
+			gtk_paned_pack2 (GTK_PANED (gui->vpane_left), userlist, FALSE, TRUE);
 			break;
 		case POS_BOTTOMRIGHT:
-			gtk_paned_pack2 (GTK_PANED (gui->vpane_right), userlist, FALSE, FALSE);
+			gtk_paned_pack2 (GTK_PANED (gui->vpane_right), userlist, FALSE, TRUE);
 			break;
 		/*case POS_HIDDEN:
 			break;*/	/* Hide using the VIEW menu instead */
 		default:/* POS_TOPRIGHT */
-			gtk_paned_pack1 (GTK_PANED (gui->vpane_right), userlist, FALSE, FALSE);
+			gtk_paned_pack1 (GTK_PANED (gui->vpane_right), userlist, FALSE, TRUE);
 		}
 	}
 

@@ -995,12 +995,10 @@ userlist_create (GtkWidget *box)
 	GtkDropTarget *drop_target;
 
 	sw = hc_scrolled_window_new ();
-	/* GTK4: Use EXTERNAL for horizontal policy to allow the userlist panel
-	 * to shrink below the content's natural width (restoring GTK3 behavior) */
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (sw),
 											  prefs.hex_gui_ulist_show_hosts ?
 												GTK_POLICY_AUTOMATIC :
-												GTK_POLICY_EXTERNAL,
+												GTK_POLICY_NEVER,
 											  GTK_POLICY_AUTOMATIC);
 	gtk_widget_set_hexpand (sw, TRUE);
 	hc_box_pack_start (box, sw, TRUE, TRUE, 0);
