@@ -365,6 +365,7 @@ make_sbutton (GtkArrowType type, void *click_cb, void *userdata)
 
 	button = gtk_button_new ();
 	image = gtk_image_new_from_icon_name (icon_name);
+	gtk_widget_set_halign (image, GTK_ALIGN_CENTER);
 	gtk_button_set_child (GTK_BUTTON (button), image);
 	gtk_button_set_has_frame (GTK_BUTTON (button), FALSE);
 	g_signal_connect (G_OBJECT (button), "clicked",
@@ -457,6 +458,9 @@ cv_tabs_init (chanview *cv)
 
 	if (hbox)
 	{
+		/* When vertical, expand scroll buttons horizontally */
+		gtk_widget_set_hexpand (((tabview *)cv)->b2, TRUE);
+		gtk_widget_set_hexpand (((tabview *)cv)->b1, TRUE);
 		hc_box_pack_start (hbox, ((tabview *)cv)->b2, FALSE, FALSE, 0);
 		hc_box_pack_start (hbox, ((tabview *)cv)->b1, FALSE, FALSE, 0);
 	} else

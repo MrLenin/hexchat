@@ -584,12 +584,10 @@ gtkutil_button (GtkWidget *box, char *icon, char *tip, void *callback,
 	}
 	else
 	{
-		bbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
-		hc_button_set_child (wid, bbox);
-		gtk_widget_show (bbox);
-
+		/* Icon-only button - center the icon */
 		img = hc_image_new_from_icon_name (icon, GTK_ICON_SIZE_MENU);
-		hc_box_add (bbox, img);
+		gtk_widget_set_halign (img, GTK_ALIGN_CENTER);
+		hc_button_set_child (wid, img);
 		gtk_widget_show (img);
 		hc_box_pack_start (box, wid, 0, 0, 0);
 	}
