@@ -621,7 +621,6 @@ userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 	/* Nick label */
 	nick_label = gtk_label_new (NULL);
 	gtk_label_set_xalign (GTK_LABEL (nick_label), 0.0);
-	gtk_label_set_ellipsize (GTK_LABEL (nick_label), PANGO_ELLIPSIZE_END);
 	gtk_widget_set_hexpand (nick_label, TRUE);
 	if (prefs.hex_gui_compact)
 		gtk_widget_set_margin_top (nick_label, 0);
