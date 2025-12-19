@@ -891,6 +891,10 @@ userlist_left_click_cb (GtkGestureClick *gesture, int n_press, double x, double 
 			g_free (nicks);
 		}
 	}
+
+	/* Return focus to input box */
+	if (current_sess && current_sess->gui)
+		gtk_widget_grab_focus (current_sess->gui->input_box);
 }
 
 /*

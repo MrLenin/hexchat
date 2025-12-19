@@ -246,6 +246,10 @@ cv_tree_left_click_cb (GtkGestureClick *gesture, int n_press, double x, double y
 		/* Explicitly select this item */
 		gtk_selection_model_select_item (sel_model, position, TRUE);
 	}
+
+	/* Return focus to input box */
+	if (current_sess && current_sess->gui)
+		gtk_widget_grab_focus (current_sess->gui->input_box);
 }
 
 /*
