@@ -2212,8 +2212,6 @@ setup_apply (struct hexchatprefs *pr)
 		noapply = TRUE;
 	if (DIFF (hex_gui_ulist_icons))
 		noapply = TRUE;
-	if (DIFF (hex_gui_ulist_show_hosts))
-		noapply = TRUE;
 	if (DIFF (hex_gui_ulist_style))
 		noapply = TRUE;
 	if (DIFF (hex_gui_ulist_sort))
