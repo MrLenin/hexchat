@@ -96,10 +96,9 @@ static int tray_hilight_count = 0;
 static int tray_file_count = 0;
 
 /* Window state for toggle */
-static int saved_x = 0, saved_y = 0;
 static int saved_width = 0, saved_height = 0;
-static int was_maximized = 0;
-static int was_fullscreen = 0;
+static gboolean was_maximized = FALSE;
+static gboolean was_fullscreen = FALSE;
 
 /* Menu items */
 static struct tray_menu menu_items[10];
@@ -626,8 +625,6 @@ gboolean
 tray_toggle_visibility (gboolean force_hide)
 {
 	GtkWindow *win;
-	GdkSurface *surface;
-	HWND hwnd;
 
 	if (!tray_initialized)
 		return FALSE;
@@ -643,33 +640,19 @@ tray_toggle_visibility (gboolean force_hide)
 	if (!win)
 		return FALSE;
 
-	/* Get the native window handle */
-	surface = gtk_native_get_surface (GTK_NATIVE (win));
-	if (!surface)
-		return FALSE;
-
-	hwnd = (HWND) gdk_win32_surface_get_handle (surface);
-	if (!hwnd)
-		return FALSE;
-
-	if (force_hide || IsWindowVisible (hwnd))
+	if (force_hide || gtk_widget_get_visible (GTK_WIDGET (win)))
 	{
-		RECT rect;
-
-		/* Save window state */
-		GetWindowRect (hwnd, &rect);
-		saved_x = rect.left;
-		saved_y = rect.top;
-		saved_width = rect.right - rect.left;
-		saved_height = rect.bottom - rect.top;
-		was_maximized = IsZoomed (hwnd);
-		was_fullscreen = prefs.hex_gui_win_fullscreen;
+		/* Save window state before hiding */
+		gtk_window_get_default_size (win, &saved_width, &saved_height);
+		was_maximized = gtk_window_is_maximized (win);
+		was_fullscreen = gtk_window_is_fullscreen (win);
 
 		/* Execute away command if enabled */
 		if (prefs.hex_gui_tray_away)
 			hexchat_command (ph, "ALLSERV AWAY");
 
-		ShowWindow (hwnd, SW_HIDE);
+		/* Hide using GTK - this keeps GTK's visibility state in sync */
+		gtk_widget_set_visible (GTK_WIDGET (win), FALSE);
 	}
 	else
 	{
@@ -677,19 +660,17 @@ tray_toggle_visibility (gboolean force_hide)
 		if (prefs.hex_gui_tray_away)
 			hexchat_command (ph, "ALLSERV BACK");
 
-		/* Restore window */
-		SetWindowPos (hwnd, NULL, saved_x, saved_y, saved_width, saved_height,
-						  SWP_NOZORDER);
+		/* Restore window using GTK */
+		gtk_widget_set_visible (GTK_WIDGET (win), TRUE);
 
 		if (was_maximized)
-			ShowWindow (hwnd, SW_MAXIMIZE);
-		else
-			ShowWindow (hwnd, SW_SHOW);
+			gtk_window_maximize (win);
 
 		if (was_fullscreen)
 			gtk_window_fullscreen (win);
 
-		SetForegroundWindow (hwnd);
+		/* Bring to front */
+		gtk_window_present (win);
 	}
 
 	/* Rebuild menu (to toggle "Hide/Restore" text) */
