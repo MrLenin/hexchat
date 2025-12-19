@@ -636,10 +636,10 @@ void
 gtkutil_set_icon (GtkWidget *win)
 {
 #ifndef WIN32
-	/* FIXME: Magically breaks icon rendering in most
-	 * (sub)windows, but OFC only on Windows. GTK <3
+	/* GTK4: Use icon name instead of GdkPixbuf.
+	 * The icon must be installed in the icon theme (e.g., hicolor).
 	 */
-	gtk_window_set_icon (GTK_WINDOW (win), pix_hexchat);
+	gtk_window_set_icon_name (GTK_WINDOW (win), "io.github.Hexchat");
 #endif
 }
 
