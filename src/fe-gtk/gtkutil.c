@@ -810,11 +810,22 @@ gtkutil_tray_icon_supported (GtkWindow *window)
 #else
 	/* GTK4: GdkScreen was removed. Use GdkDisplay directly.
 	 * Screen number is always 0 on modern X11 (Xinerama/RandR merged screens).
+	 * Must check for X11 display at runtime - could be Wayland.
 	 */
 	GdkDisplay *display = gtk_widget_get_display (GTK_WIDGET (window));
-	Display *xdisplay = gdk_x11_display_get_xdisplay (display);
-	Atom selection_atom = XInternAtom (xdisplay, "_NET_SYSTEM_TRAY_S0", False);
+	Display *xdisplay;
+	Atom selection_atom;
 	Window tray_window = None;
+
+	/* Runtime check: may be compiled with X11 support but running on Wayland */
+	if (!GDK_IS_X11_DISPLAY (display))
+		return TRUE; /* Assume supported on non-X11 (Wayland uses different tray mechanism) */
+
+	xdisplay = gdk_x11_display_get_xdisplay (display);
+	if (!xdisplay)
+		return TRUE;
+
+	selection_atom = XInternAtom (xdisplay, "_NET_SYSTEM_TRAY_S0", False);
 
 	XGrabServer (xdisplay);
 
