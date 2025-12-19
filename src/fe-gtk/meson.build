@@ -37,10 +37,11 @@ hexchat_gtk_deps = [
   gtk_dep
 ]
 
-# GTK3+ handles X11 dependency internally
-# if gtk_dep.get_pkgconfig_variable('target') == 'x11'
-#   hexchat_gtk_deps += dependency('x11')
-# endif
+# GTK4: Need explicit X11 dependency for direct Xlib calls (XFlush, XGrabServer, etc.)
+x11_dep = dependency('x11', required: false)
+if x11_dep.found()
+  hexchat_gtk_deps += x11_dep
+endif
 
 hexchat_gtk_cflags = []
 
