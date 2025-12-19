@@ -757,7 +757,6 @@ mg_hide_empty_boxes (session_gui *gui)
 	mg_hide_empty_pane ((GtkPaned*)gui->vpane_right);
 	mg_hide_empty_pane ((GtkPaned*)gui->vpane_left);
 }
-
 static void
 mg_userlist_showhide (session *sess, int show)
 {
@@ -2090,6 +2089,7 @@ mg_userlist_button (GtkWidget * box, char *label, char *cmd,
 	GtkWidget *wid = gtk_button_new_with_label (label);
 	g_signal_connect (G_OBJECT (wid), "clicked",
 							G_CALLBACK (userlist_button_cb), cmd);
+	gtk_widget_add_css_class (wid, "hexchat-userlistbutton");
 	gtk_widget_set_hexpand (wid, TRUE);
 	gtk_widget_set_vexpand (wid, FALSE);
 	gtk_grid_attach (GTK_GRID (box), wid, a, c, b - a, d - c);
@@ -2105,6 +2105,8 @@ mg_create_userlistbuttons (GtkWidget *box)
 	GtkWidget *tab;
 
 	tab = gtk_grid_new ();
+	/* Allow userlist panel to shrink below button grid's natural width */
+	gtk_widget_set_size_request (tab, 1, -1);
 	hc_box_pack_start (box, tab, FALSE, FALSE, 0);
 
 	while (list)
@@ -2909,6 +2911,7 @@ mg_create_userlist (session_gui *gui, GtkWidget *box)
 		hc_box_pack_start (vbox, frame, 0, 0, GUI_SPACING);
 
 	gui->namelistinfo = gtk_label_new (NULL);
+	gtk_label_set_ellipsize (GTK_LABEL (gui->namelistinfo), PANGO_ELLIPSIZE_END);
 	hc_frame_set_child (frame, gui->namelistinfo);
 
 	gui->user_tree = ulist = userlist_create (vbox);
@@ -3157,7 +3160,8 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 		gtk_paned_pack1 (GTK_PANED (gui->hpane_left), gui->vpane_left, FALSE, TRUE);
 		gtk_paned_pack2 (GTK_PANED (gui->hpane_left), gui->hpane_right, TRUE, TRUE);
 	}
-	gtk_paned_pack2 (GTK_PANED (gui->hpane_right), gui->vpane_right, FALSE, FALSE);
+	/* shrink=TRUE allows userlist panel to shrink below its natural minimum */
+	gtk_paned_pack2 (GTK_PANED (gui->hpane_right), gui->vpane_right, FALSE, TRUE);
 
 	/* GTK3: Ensure main paned fills its container for proper anchoring */
 	gtk_widget_set_halign (gui->hpane_left, GTK_ALIGN_FILL);
@@ -3283,15 +3287,19 @@ mg_place_userlist_and_chanview_real (session_gui *gui, GtkWidget *userlist, GtkW
 		switch (prefs.hex_gui_tab_pos)
 		{
 		case POS_TOPLEFT:
+			gtk_widget_set_vexpand (chanview, FALSE);
 			gtk_paned_pack1 (GTK_PANED (gui->vpane_left), chanview, FALSE, FALSE);
 			break;
 		case POS_BOTTOMLEFT:
+			gtk_widget_set_vexpand (chanview, FALSE);
 			gtk_paned_pack2 (GTK_PANED (gui->vpane_left), chanview, FALSE, FALSE);
 			break;
 		case POS_TOPRIGHT:
+			gtk_widget_set_vexpand (chanview, FALSE);
 			gtk_paned_pack1 (GTK_PANED (gui->vpane_right), chanview, FALSE, FALSE);
 			break;
 		case POS_BOTTOMRIGHT:
+			gtk_widget_set_vexpand (chanview, FALSE);
 			gtk_paned_pack2 (GTK_PANED (gui->vpane_right), chanview, FALSE, FALSE);
 			break;
 		case POS_TOP:

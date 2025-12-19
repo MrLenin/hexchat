@@ -729,6 +729,9 @@ cv_tabs_add (chanview *cv, chan *ch, char *name, GtkTreeIter *parent)
 
 	/* GTK4: Allow button to shrink below natural size for compact tab bar */
 	gtk_button_set_can_shrink (GTK_BUTTON (but), TRUE);
+
+	/* When tabs are vertical (on left/right side), expand horizontally to fill width */
+	gtk_widget_set_hexpand (but, cv->vertical);
 	/* GTK4: Use gesture for right-click context menu */
 	hc_add_click_gesture (but, G_CALLBACK (tab_click_cb), NULL, ch);
 	/* GTK4: No need to connect enter/leave signals - prelights handled by CSS */

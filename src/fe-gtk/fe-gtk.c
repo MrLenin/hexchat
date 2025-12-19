@@ -453,6 +453,12 @@ fe_init (void)
 				/* Channel tabs - reduce horizontal padding for compact appearance */
 				"#hexchat-tab { "
 				"  padding: 2px 4px; "
+				"} "
+				/* Userlist buttons - minimal padding for shrinkable panel */
+				".hexchat-userlistbutton { "
+				"  padding: 1px 2px; "
+				"  min-width: 0; "
+				"  min-height: 0; "
 				"}");
 			gtk_style_context_add_provider_for_display (
 				gdk_display_get_default (),
