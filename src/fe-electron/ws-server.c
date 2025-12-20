@@ -17,6 +17,7 @@
 #include <jansson.h>
 
 #include "../common/hexchat.h"
+#include "../common/hexchatc.h"
 #include "fe-electron.h"
 
 /* Maximum message size */
@@ -117,6 +118,8 @@ ws_callback(struct lws *wsi, enum lws_callback_reasons reason,
 		connected_clients = g_list_append(connected_clients, wsi);
 		printf("WebSocket client connected (total: %d)\n",
 		       g_list_length(connected_clients));
+		/* Send current state to the new client */
+		ws_send_state_sync(wsi);
 		break;
 
 	case LWS_CALLBACK_CLOSED:
@@ -234,6 +237,42 @@ ws_server_broadcast_json(const char *json)
 	}
 
 	g_mutex_unlock(&queue_mutex);
+}
+
+/* Send message to a single client */
+static void
+ws_send_to_client(struct lws *wsi, const char *json)
+{
+	if (!json || !wsi)
+		return;
+
+	g_mutex_lock(&queue_mutex);
+	g_queue_push_tail(message_queue, g_strdup(json));
+	lws_callback_on_writable(wsi);
+	g_mutex_unlock(&queue_mutex);
+}
+
+/* Send full state sync to newly connected client */
+void
+ws_send_state_sync(struct lws *wsi)
+{
+	GSList *list;
+	struct session *sess;
+	char *json;
+
+	/* Send all existing sessions */
+	for (list = sess_list; list; list = list->next)
+	{
+		sess = (struct session *)list->data;
+		json = json_session_created(sess, FALSE);
+		if (json)
+		{
+			ws_send_to_client(wsi, json);
+			g_free(json);
+		}
+	}
+
+	printf("Sent state sync to client (%d sessions)\n", g_slist_length(sess_list));
 }
 
 /* Poll WebSocket server - called from main loop */

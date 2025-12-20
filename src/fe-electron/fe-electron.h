@@ -47,4 +47,7 @@ char *json_message(const char *msg, int flags);
 void handle_ws_command(const char *session_id, const char *command);
 void handle_ws_input(const char *session_id, const char *text);
 
+/* Send full state to a newly connected client */
+void ws_send_state_sync(struct lws *wsi);
+
 #endif /* HEXCHAT_FE_ELECTRON_H */
