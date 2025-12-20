@@ -1,0 +1,69 @@
+:root {
+  /* Background colors */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f5;
+  --bg-header: #e8e8e8;
+  --bg-topic: #f0f0f0;
+  --bg-input: #fafafa;
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: #0066cc;
+
+  /* Text colors */
+  --text-primary: #1a1a1a;
+  --text-secondary: #666666;
+  --text-active: #ffffff;
+
+  /* Border colors */
+  --border-color: #d0d0d0;
+  --border-focus: #0066cc;
+
+  /* Status colors */
+  --status-connected: #22aa22;
+  --status-disconnected: #cc3333;
+
+  /* Tab activity colors */
+  --tab-data: #0000cc;
+  --tab-message: #cc0000;
+  --tab-hilight: #cc00cc;
+
+  /* User mode colors */
+  --user-op: #cc0000;
+  --user-hop: #00cc00;
+  --user-voice: #0000cc;
+
+  /* IRC colors (mIRC standard 16 colors) */
+  --irc-color-0: #ffffff;  /* white */
+  --irc-color-1: #000000;  /* black */
+  --irc-color-2: #00007f;  /* navy */
+  --irc-color-3: #009300;  /* green */
+  --irc-color-4: #ff0000;  /* red */
+  --irc-color-5: #7f0000;  /* brown/maroon */
+  --irc-color-6: #9c009c;  /* purple */
+  --irc-color-7: #fc7f00;  /* orange */
+  --irc-color-8: #ffff00;  /* yellow */
+  --irc-color-9: #00fc00;  /* lime */
+  --irc-color-10: #009393; /* teal */
+  --irc-color-11: #00ffff; /* cyan */
+  --irc-color-12: #0000fc; /* blue */
+  --irc-color-13: #ff00ff; /* magenta */
+  --irc-color-14: #7f7f7f; /* gray */
+  --irc-color-15: #d2d2d2; /* light gray */
+}
+
+/* Dark theme variant - can be activated by adding .dark to body */
+body.dark {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-header: #333333;
+  --bg-topic: #2d2d2d;
+  --bg-input: #1e1e1e;
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: #0066cc;
+
+  --text-primary: #d4d4d4;
+  --text-secondary: #808080;
+  --text-active: #ffffff;
+
+  --border-color: #404040;
+  --border-focus: #0066cc;
+}

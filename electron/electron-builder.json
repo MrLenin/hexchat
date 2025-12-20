@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  "appId": "org.hexchat.electron",
+  "productName": "HexChat Electron",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "../build/src/fe-electron/hexchat-electron${ext}",
+      "to": "bin/hexchat-electron${ext}"
+    }
+  ],
+  "win": {
+    "target": ["nsis", "portable"],
+    "icon": "../data/icons/hexchat.ico"
+  },
+  "mac": {
+    "target": ["dmg", "zip"],
+    "category": "public.app-category.social-networking"
+  },
+  "linux": {
+    "target": ["AppImage", "deb", "rpm"],
+    "category": "Network;Chat"
+  }
+}

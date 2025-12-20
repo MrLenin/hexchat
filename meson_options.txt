@@ -5,6 +5,9 @@ option('gtk-frontend', type: 'boolean',
 option('text-frontend', type: 'boolean', value: false,
   description: 'Text interface (not generally useful)'
 )
+option('electron-frontend', type: 'boolean', value: false,
+  description: 'WebSocket backend for Electron GUI, requires libwebsockets and jansson'
+)
 option('theme-manager', type: 'boolean', value: false,
   description: 'Utility to help manage themes, requires mono/.net'
 )
