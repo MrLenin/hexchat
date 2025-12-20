@@ -55,11 +55,13 @@ function startBackend() {
     }
   }
 
-  console.log(`Starting backend: ${backendPath}`)
+  const backendDir = path.dirname(backendPath)
+  console.log(`Starting backend: ${backendPath} (cwd: ${backendDir})`)
 
   try {
     backendProcess = spawn(backendPath, ['--ws-port', WS_PORT.toString()], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: backendDir,
     })
 
     backendProcess.stdout?.on('data', (data) => {
