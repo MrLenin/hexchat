@@ -7,6 +7,9 @@ let backendProcess: ChildProcess | null = null
 
 const WS_PORT = 9867
 
+// Detect if running in development (not packaged)
+const isDev = !app.isPackaged
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -20,7 +23,7 @@ function createWindow() {
   })
 
   // In development, load from Vite dev server
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
   } else {
@@ -37,8 +40,9 @@ function startBackend() {
   // Determine backend executable path
   let backendPath: string
 
-  if (process.env.NODE_ENV === 'development') {
-    // In development, expect it in the build directory
+  if (isDev) {
+    // In development, expect it in the build directory relative to the electron app
+    // Adjust this path based on your build setup
     backendPath = path.join(__dirname, '../../../../build/src/fe-electron/hexchat-electron')
     if (process.platform === 'win32') {
       backendPath += '.exe'
