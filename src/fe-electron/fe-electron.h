@@ -47,6 +47,10 @@ char *json_message(const char *msg, int flags);
 void handle_ws_command(const char *session_id, const char *command);
 void handle_ws_input(const char *session_id, const char *text);
 
+/* Idle callback wrappers for thread-safe command handling */
+gboolean handle_ws_command_idle(gpointer data);
+gboolean handle_ws_input_idle(gpointer data);
+
 /* Send full state to a newly connected client */
 void ws_send_state_sync(struct lws *wsi);
 

@@ -18,6 +18,7 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false,  // Don't throttle when window loses focus
     },
     title: 'HexChat Electron',
   })

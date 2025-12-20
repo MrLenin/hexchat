@@ -531,8 +531,8 @@ fe_main (void)
 {
 	main_loop = g_main_loop_new (NULL, FALSE);
 
-	/* Add WebSocket poll to main loop */
-	g_timeout_add (10, ws_server_poll, NULL);
+	/* WebSocket server runs in its own thread - no polling needed here.
+	 * The GLib main loop now only handles IRC sockets and timers. */
 
 	g_main_loop_run (main_loop);
 }

@@ -1,25 +1,32 @@
 import React, { useRef, useEffect, useState, KeyboardEvent } from 'react'
-import { useStore, SessionState } from '../store'
+import { useStore } from '../store'
 import MessageRenderer from './MessageRenderer'
 
 interface ChatWindowProps {
-  session: SessionState | null
+  sessionId: string | null
 }
 
-function ChatWindow({ session }: ChatWindowProps) {
-  const { sendInput } = useStore()
+function ChatWindow({ sessionId }: ChatWindowProps) {
+  const sendInput = useStore((state) => state.sendInput)
+  const sessions = useStore((state) => state.sessions)
+  const updateCounter = useStore((state) => state.updateCounter)
   const [inputText, setInputText] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Get session from store
+  const session = sessionId ? sessions.get(sessionId) ?? null : null
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [session?.messages.length])
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [updateCounter])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && inputText.trim() && session) {
-      sendInput(session.sessionId, inputText)
+    if (e.key === 'Enter' && inputText.trim() && sessionId) {
+      sendInput(sessionId, inputText)
       setInputText('')
     }
   }

@@ -16,5 +16,7 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Disable HMR in Electron to avoid WebSocket conflicts
+    hmr: false,
   },
 })

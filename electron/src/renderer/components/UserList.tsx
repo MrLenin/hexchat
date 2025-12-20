@@ -1,11 +1,17 @@
 import React from 'react'
-import { SessionState, UserInfo } from '../store'
+import { useStore, UserInfo } from '../store'
 
 interface UserListProps {
-  session: SessionState | null
+  sessionId: string | null
 }
 
-function UserList({ session }: UserListProps) {
+function UserList({ sessionId }: UserListProps) {
+  const sessions = useStore((state) => state.sessions)
+  // Subscribe to updateCounter to force re-renders when userlist changes
+  useStore((state) => state.updateCounter)
+
+  const session = sessionId ? sessions.get(sessionId) ?? null : null
+
   if (!session) {
     return <div className="userlist empty" />
   }

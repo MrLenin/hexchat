@@ -48,6 +48,7 @@ interface HexChatStore {
   servers: Map<string, ServerState>
   sessions: Map<string, SessionState>
   activeSessionId: string | null
+  updateCounter: number  // Increments on each state change to force re-renders
 
   // Actions
   connect: (port: number) => void
@@ -66,8 +67,16 @@ export const useStore = create<HexChatStore>((set, get) => ({
   servers: new Map(),
   sessions: new Map(),
   activeSessionId: null,
+  updateCounter: 0,
 
   connect: (port: number) => {
+    // Prevent duplicate connections (React StrictMode calls useEffect twice)
+    const existingWs = get().ws
+    if (existingWs && existingWs.readyState !== WebSocket.CLOSED) {
+      console.log('WebSocket already connected, skipping')
+      return
+    }
+
     const ws = new WebSocket(`ws://localhost:${port}`)
 
     ws.onopen = () => {
@@ -93,6 +102,9 @@ export const useStore = create<HexChatStore>((set, get) => ({
     ws.onmessage = (event) => {
       get().handleMessage(event)
     }
+
+    // Store the ws immediately to prevent race conditions
+    set({ ws })
   },
 
   disconnect: () => {
@@ -194,7 +206,7 @@ export const useStore = create<HexChatStore>((set, get) => ({
               ...session,
               messages: [...session.messages, newMessage].slice(-1000), // Keep last 1000 messages
             })
-            set({ sessions })
+            set({ sessions, updateCounter: get().updateCounter + 1 })
           }
           break
         }

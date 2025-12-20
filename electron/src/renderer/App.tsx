@@ -14,7 +14,9 @@ declare global {
 }
 
 function App() {
-  const { connect, connected, activeSessionId, sessions } = useStore()
+  const connect = useStore((state) => state.connect)
+  const connected = useStore((state) => state.connected)
+  const activeSessionId = useStore((state) => state.activeSessionId)
 
   useEffect(() => {
     // Connect to WebSocket server
@@ -25,8 +27,6 @@ function App() {
     }
     initConnection()
   }, [connect])
-
-  const activeSession = activeSessionId ? sessions.get(activeSessionId) : null
 
   return (
     <div className="app">
@@ -41,10 +41,10 @@ function App() {
           <ServerTree />
         </div>
         <div className="chat-panel">
-          <ChatWindow session={activeSession} />
+          <ChatWindow sessionId={activeSessionId} />
         </div>
         <div className="userlist-panel">
-          <UserList session={activeSession} />
+          <UserList sessionId={activeSessionId} />
         </div>
       </div>
     </div>
