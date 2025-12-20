@@ -18,6 +18,7 @@
 
 #include "../common/hexchat.h"
 #include "../common/hexchatc.h"
+#include "../common/servlist.h"
 #include "../common/fe.h"
 #include "fe-electron.h"
 
@@ -336,8 +337,11 @@ json_set_title(struct session *sess)
 
 	/* Build title similar to GTK frontend */
 	if (sess->server && sess->server->network)
+	{
+		ircnet *net = (ircnet *)sess->server->network;
 		g_snprintf(title, sizeof(title), "%s - %s", sess->channel,
-		           sess->server->network->name ? sess->server->network->name : sess->server->servername);
+		           net->name ? net->name : sess->server->servername);
+	}
 	else
 		g_strlcpy(title, sess->channel, sizeof(title));
 
