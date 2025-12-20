@@ -598,11 +598,13 @@ userlist_selection_changed_cb (GtkListItem *item, GParamSpec *pspec, gpointer us
 
 /*
  * GtkListView row setup - creates a horizontal box containing icon, nick, and host.
+ * user_data is a GtkSizeGroup for aligning nick labels across rows (when hosts shown).
  */
 static void
 userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer user_data)
 {
 	GtkWidget *hbox, *picture, *nick_label, *host_label;
+	GtkSizeGroup *nick_size_group = GTK_SIZE_GROUP (user_data);
 
 	hbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 2);
 
@@ -618,27 +620,27 @@ userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 		gtk_box_append (GTK_BOX (hbox), picture);
 	}
 
-	/* Nick label */
+	/* Nick label - always created, size group controls alignment when hosts shown */
 	nick_label = gtk_label_new (NULL);
 	gtk_label_set_xalign (GTK_LABEL (nick_label), 0.0);
-	gtk_widget_set_hexpand (nick_label, TRUE);
 	if (prefs.hex_gui_compact)
 		gtk_widget_set_margin_top (nick_label, 0);
 	gtk_widget_set_name (nick_label, "userlist-nick");
 	gtk_box_append (GTK_BOX (hbox), nick_label);
 
-	/* Host label (only if enabled) */
-	if (prefs.hex_gui_ulist_show_hosts)
-	{
-		host_label = gtk_label_new (NULL);
-		gtk_label_set_xalign (GTK_LABEL (host_label), 0.0);
-		gtk_label_set_ellipsize (GTK_LABEL (host_label), PANGO_ELLIPSIZE_END);
-		gtk_widget_set_hexpand (host_label, TRUE);
-		if (prefs.hex_gui_compact)
-			gtk_widget_set_margin_top (host_label, 0);
-		gtk_widget_set_name (host_label, "userlist-host");
-		gtk_box_append (GTK_BOX (hbox), host_label);
-	}
+	/* Add nick label to size group for alignment when hosts are shown */
+	if (nick_size_group)
+		gtk_size_group_add_widget (nick_size_group, nick_label);
+
+	/* Host label - always created, visibility controlled in bind callback */
+	host_label = gtk_label_new (NULL);
+	gtk_label_set_xalign (GTK_LABEL (host_label), 0.0);
+	gtk_label_set_ellipsize (GTK_LABEL (host_label), PANGO_ELLIPSIZE_END);
+	gtk_widget_set_hexpand (host_label, TRUE);
+	if (prefs.hex_gui_compact)
+		gtk_widget_set_margin_top (host_label, 0);
+	gtk_widget_set_name (host_label, "userlist-host");
+	gtk_box_append (GTK_BOX (hbox), host_label);
 
 	gtk_list_item_set_child (item, hbox);
 
@@ -695,10 +697,18 @@ userlist_bind_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer u
 	/* Set nick color (respects selection state) */
 	userlist_update_nick_color (item);
 
-	/* Set host */
+	/* Set host - visibility controlled by pref, checked dynamically */
 	if (host_label)
 	{
-		gtk_label_set_text (GTK_LABEL (host_label), user_item->hostname ? user_item->hostname : "");
+		if (prefs.hex_gui_ulist_show_hosts)
+		{
+			gtk_label_set_text (GTK_LABEL (host_label), user_item->hostname ? user_item->hostname : "");
+			gtk_widget_set_visible (host_label, TRUE);
+		}
+		else
+		{
+			gtk_widget_set_visible (host_label, FALSE);
+		}
 	}
 }
 
@@ -992,6 +1002,7 @@ userlist_create (GtkWidget *box)
 	GtkWidget *sw, *view;
 	GtkListItemFactory *factory;
 	GtkDropTarget *drop_target;
+	GtkSizeGroup *nick_size_group;
 
 	sw = hc_scrolled_window_new ();
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (sw),
@@ -1003,9 +1014,12 @@ userlist_create (GtkWidget *box)
 	hc_box_pack_start (box, sw, TRUE, TRUE, 0);
 	hc_widget_show (sw);
 
+	/* Create size group for nick label alignment when hosts are shown */
+	nick_size_group = gtk_size_group_new (GTK_SIZE_GROUP_HORIZONTAL);
+
 	/* Create list view with single-row factory - model will be set later in userlist_show() */
 	factory = gtk_signal_list_item_factory_new ();
-	g_signal_connect (factory, "setup", G_CALLBACK (userlist_setup_row_cb), NULL);
+	g_signal_connect (factory, "setup", G_CALLBACK (userlist_setup_row_cb), nick_size_group);
 	g_signal_connect (factory, "bind", G_CALLBACK (userlist_bind_row_cb), NULL);
 
 	view = gtk_list_view_new (NULL, factory);
@@ -1038,6 +1052,10 @@ userlist_create (GtkWidget *box)
 		gtk_widget_add_controller (view, GTK_EVENT_CONTROLLER (gesture));
 	}
 	hc_add_key_controller (view, G_CALLBACK (userlist_key_cb), NULL, NULL);
+
+	/* Store size group on view for cleanup when view is destroyed */
+	g_object_set_data_full (G_OBJECT (view), "nick-size-group",
+	                        nick_size_group, g_object_unref);
 
 	hc_scrolled_window_set_child (sw, view);
 	hc_widget_show (view);
