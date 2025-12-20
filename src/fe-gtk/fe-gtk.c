@@ -466,6 +466,27 @@ fe_init (void)
 				GTK_STYLE_PROVIDER (layout_css),
 				GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 		}
+
+		/* Compact mode CSS - add row padding when NOT in compact mode */
+		if (!prefs.hex_gui_compact)
+		{
+			static GtkCssProvider *spacing_css = NULL;
+			if (!spacing_css)
+			{
+				spacing_css = gtk_css_provider_new ();
+				gtk_css_provider_load_from_string (spacing_css,
+					/* Add vertical padding to userlist and channel tree rows */
+					"#hexchat-userlist row, "
+					"#hexchat-tree row { "
+					"  padding-top: 4px; "
+					"  padding-bottom: 4px; "
+					"}");
+				gtk_style_context_add_provider_for_display (
+					gdk_display_get_default (),
+					GTK_STYLE_PROVIDER (spacing_css),
+					GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+			}
+		}
 	}
 }
 

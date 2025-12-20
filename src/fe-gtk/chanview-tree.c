@@ -334,8 +334,6 @@ cv_tree_factory_setup_cb (GtkListItemFactory *factory, GtkListItem *item, chanvi
 		icon = gtk_picture_new ();
 		gtk_picture_set_content_fit (GTK_PICTURE (icon), GTK_CONTENT_FIT_SCALE_DOWN);
 		gtk_widget_set_size_request (icon, 16, -1);
-		if (prefs.hex_gui_compact)
-			gtk_widget_set_margin_top (icon, 0);
 		gtk_box_append (GTK_BOX (content_box), icon);
 		g_object_set_data (G_OBJECT (item), "icon", icon);
 	}
@@ -344,8 +342,6 @@ cv_tree_factory_setup_cb (GtkListItemFactory *factory, GtkListItem *item, chanvi
 	label = gtk_label_new (NULL);
 	gtk_label_set_xalign (GTK_LABEL (label), 0.0);
 	gtk_label_set_ellipsize (GTK_LABEL (label), PANGO_ELLIPSIZE_END);
-	if (prefs.hex_gui_compact)
-		gtk_widget_set_margin_top (label, 0);
 	gtk_widget_set_hexpand (label, TRUE);
 	gtk_box_append (GTK_BOX (content_box), label);
 

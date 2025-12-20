@@ -614,8 +614,6 @@ userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 		picture = gtk_picture_new ();
 		gtk_picture_set_content_fit (GTK_PICTURE (picture), GTK_CONTENT_FIT_SCALE_DOWN);
 		gtk_widget_set_size_request (picture, 16, -1);
-		if (prefs.hex_gui_compact)
-			gtk_widget_set_margin_top (picture, 0);
 		gtk_widget_set_name (picture, "userlist-icon");
 		gtk_box_append (GTK_BOX (hbox), picture);
 	}
@@ -623,8 +621,6 @@ userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 	/* Nick label - always created, size group controls alignment when hosts shown */
 	nick_label = gtk_label_new (NULL);
 	gtk_label_set_xalign (GTK_LABEL (nick_label), 0.0);
-	if (prefs.hex_gui_compact)
-		gtk_widget_set_margin_top (nick_label, 0);
 	gtk_widget_set_name (nick_label, "userlist-nick");
 	gtk_box_append (GTK_BOX (hbox), nick_label);
 
@@ -637,8 +633,6 @@ userlist_setup_row_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer 
 	gtk_label_set_xalign (GTK_LABEL (host_label), 0.0);
 	gtk_label_set_ellipsize (GTK_LABEL (host_label), PANGO_ELLIPSIZE_END);
 	gtk_widget_set_hexpand (host_label, TRUE);
-	if (prefs.hex_gui_compact)
-		gtk_widget_set_margin_top (host_label, 0);
 	gtk_widget_set_name (host_label, "userlist-host");
 	gtk_box_append (GTK_BOX (hbox), host_label);
 
