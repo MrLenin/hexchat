@@ -1439,50 +1439,61 @@ setup_color_button_set_color (GtkWidget *button, GdkRGBA *col)
 	g_object_unref (provider);
 }
 
+/* Callback for GtkColorDialog async completion */
 static void
-setup_color_response_cb (GtkDialog *dialog, gint response_id, gpointer userdata)
+setup_color_dialog_finish_cb (GObject *source, GAsyncResult *result, gpointer userdata)
 {
-	GdkRGBA *col;
-	GtkWidget *button;
+	GtkColorDialog *dialog = GTK_COLOR_DIALOG (source);
+	GtkWidget *button = GTK_WIDGET (userdata);
+	GdkRGBA *color;
+	GdkRGBA *chosen_color;
+	GError *error = NULL;
 
-	if (response_id == GTK_RESPONSE_OK)
+	chosen_color = gtk_color_dialog_choose_rgba_finish (dialog, result, &error);
+
+	if (chosen_color != NULL)
 	{
-		col = g_object_get_data (G_OBJECT (dialog), "c");
-		button = g_object_get_data (G_OBJECT (dialog), "b");
-
-		if (GTK_IS_WIDGET (button))
+		color = g_object_get_data (G_OBJECT (button), "color_ptr");
+		if (color != NULL)
 		{
 			color_change = TRUE;
-
-			gtk_color_chooser_get_rgba (GTK_COLOR_CHOOSER (dialog), col);
-			setup_color_button_set_color (button, col);
+			*color = *chosen_color;
+			setup_color_button_set_color (button, color);
 		}
+		gdk_rgba_free (chosen_color);
+	}
+	else if (error != NULL)
+	{
+		/* User cancelled or error occurred - ignore cancellation errors */
+		if (!g_error_matches (error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_CANCELLED) &&
+		    !g_error_matches (error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_DISMISSED))
+		{
+			g_warning ("Color dialog error: %s", error->message);
+		}
+		g_error_free (error);
 	}
 
-	hc_window_destroy (GTK_WIDGET (dialog));
+	g_object_unref (dialog);
 }
 
 static void
 setup_color_cb (GtkWidget *button, gpointer userdata)
 {
-	GtkWidget *dialog;
+	GtkColorDialog *dialog;
 	GdkRGBA *color;
 
 	color = &colors[GPOINTER_TO_INT (userdata)];
 
-	dialog = gtk_color_chooser_dialog_new (_("Select color"), GTK_WINDOW (setup_window));
-	gtk_window_set_modal (GTK_WINDOW (dialog), TRUE);
+	/* Store color pointer on button for use in callback */
+	g_object_set_data (G_OBJECT (button), "color_ptr", color);
 
-	gtk_color_chooser_set_rgba (GTK_COLOR_CHOOSER (dialog), color);
-	gtk_color_chooser_set_use_alpha (GTK_COLOR_CHOOSER (dialog), FALSE);
+	dialog = gtk_color_dialog_new ();
+	gtk_color_dialog_set_title (dialog, _("Select color"));
+	gtk_color_dialog_set_modal (dialog, TRUE);
+	gtk_color_dialog_set_with_alpha (dialog, FALSE);
 
-	g_object_set_data (G_OBJECT (dialog), "c", color);
-	g_object_set_data (G_OBJECT (dialog), "b", button);
-
-	g_signal_connect (G_OBJECT (dialog), "response",
-							G_CALLBACK (setup_color_response_cb), NULL);
-
-	gtk_widget_show (dialog);
+	gtk_color_dialog_choose_rgba (dialog, GTK_WINDOW (setup_window), color, NULL,
+	                              setup_color_dialog_finish_cb, button);
 }
 
 static void

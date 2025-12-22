@@ -29,7 +29,8 @@ hexchat_gtk_sources = [
 ]
 
 # GTK4 dependency (GTK3 no longer supported)
-gtk_dep = dependency('gtk4', version: '>= 4.6.0')
+# GTK 4.10 required for GtkColorDialog (GtkColorChooserDialog has GSettings issues on Windows)
+gtk_dep = dependency('gtk4', version: '>= 4.10.0')
 
 hexchat_gtk_deps = [
   hexchat_common_dep,
