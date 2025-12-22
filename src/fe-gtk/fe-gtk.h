@@ -179,6 +179,7 @@ typedef struct session_gui
 
 	guint16 is_tab;	/* is tab or toplevel? */
 	guint16 ul_hidden;	/* userlist hidden? */
+	guint16 vpane_restored;	/* vpane position restored from config? */
 
 } session_gui;
 

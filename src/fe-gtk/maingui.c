@@ -757,6 +757,82 @@ mg_hide_empty_boxes (session_gui *gui)
 	mg_hide_empty_pane ((GtkPaned*)gui->vpane_right);
 	mg_hide_empty_pane ((GtkPaned*)gui->vpane_left);
 }
+
+/* Deferred right pane position restoration - called after window is mapped */
+static gboolean
+mg_restore_right_pane_position (gpointer user_data)
+{
+	session_gui *gui = (session_gui *)user_data;
+	int pane_width, right_size;
+
+	if (!gui || !gui->hpane_right)
+		return G_SOURCE_REMOVE;
+
+	pane_width = gtk_widget_get_width (gui->hpane_right);
+	right_size = MAX (prefs.hex_gui_pane_right_size, prefs.hex_gui_pane_right_size_min);
+
+	hc_debug_log ("mg_restore_right_pane_position: pane_width=%d right_size=%d",
+	              pane_width, right_size);
+
+	if (pane_width > 0 && right_size > 0)
+	{
+		gtk_paned_set_position (GTK_PANED (gui->hpane_right), pane_width - right_size);
+	}
+	else if (pane_width <= 0)
+	{
+		/* Window not yet fully laid out, try again */
+		return G_SOURCE_CONTINUE;
+	}
+
+	return G_SOURCE_REMOVE;
+}
+
+/* Deferred vpane position restoration - called after window is mapped */
+static gboolean
+mg_restore_vpane_position (gpointer user_data)
+{
+	session_gui *gui = (session_gui *)user_data;
+	int position = prefs.hex_gui_pane_divider_position;
+	int tab_pos = prefs.hex_gui_tab_pos;
+	int ulist_pos = prefs.hex_gui_ulist_pos;
+
+	hc_debug_log ("mg_restore_vpane_position: position=%d tab_pos=%d ulist_pos=%d",
+	              position, tab_pos, ulist_pos);
+
+	if (!gui)
+		return G_SOURCE_REMOVE;
+
+	/* Restore vpane_left if both chanview and userlist are on the left */
+	if ((tab_pos == POS_TOPLEFT || tab_pos == POS_BOTTOMLEFT) &&
+	    (ulist_pos == POS_TOPLEFT || ulist_pos == POS_BOTTOMLEFT))
+	{
+		int height = gtk_widget_get_height (gui->vpane_left);
+		hc_debug_log ("  vpane_left: height=%d, setting position=%d", height, position);
+		if (height <= 0)
+			return G_SOURCE_CONTINUE;
+		if (position > 0)
+			gtk_paned_set_position (GTK_PANED (gui->vpane_left), position);
+	}
+
+	/* Restore vpane_right if both chanview and userlist are on the right */
+	if ((tab_pos == POS_TOPRIGHT || tab_pos == POS_BOTTOMRIGHT) &&
+	    (ulist_pos == POS_TOPRIGHT || ulist_pos == POS_BOTTOMRIGHT))
+	{
+		int height = gtk_widget_get_height (gui->vpane_right);
+		hc_debug_log ("  vpane_right: height=%d, setting position=%d", height, position);
+		if (height <= 0)
+			return G_SOURCE_CONTINUE;
+		if (position > 0)
+			gtk_paned_set_position (GTK_PANED (gui->vpane_right), position);
+	}
+
+	/* Mark vpane as restored so callbacks can now save position changes */
+	gui->vpane_restored = 1;
+	hc_debug_log ("  vpane_restored set to 1");
+
+	return G_SOURCE_REMOVE;
+}
+
 static void
 mg_userlist_showhide (session *sess, int show)
 {
@@ -775,6 +851,11 @@ mg_userlist_showhide (session *sess, int show)
 			int pane_width = gtk_widget_get_width (gui->hpane_right);
 			if (pane_width > 0)
 				gtk_paned_set_position (GTK_PANED (gui->hpane_right), pane_width - right_size);
+			else
+			{
+				/* Defer position setting if window not yet realized */
+				g_idle_add (mg_restore_right_pane_position, gui);
+			}
 		}
 	}
 	else
@@ -3053,7 +3134,22 @@ mg_update_window_minimum (session_gui *gui)
 static void
 mg_vpane_cb (GtkPaned *pane, GParamSpec *param, session_gui *gui)
 {
-	prefs.hex_gui_pane_divider_position = gtk_paned_get_position (pane);
+	int height = gtk_widget_get_height (GTK_WIDGET (pane));
+	int position = gtk_paned_get_position (pane);
+
+	hc_debug_log ("mg_vpane_cb: height=%d position=%d vpane_restored=%d",
+	              height, position, gui ? gui->vpane_restored : -1);
+
+	/* Don't save until the vpane has been restored from config */
+	if (!gui || !gui->vpane_restored)
+		return;
+
+	/* Only save if pane has valid dimensions and position is reasonable */
+	if (height > 0 && position > 0 && position < height)
+	{
+		hc_debug_log ("  -> saving position=%d", position);
+		prefs.hex_gui_pane_divider_position = position;
+	}
 }
 
 /* Data structure for deferred pane size calculation */
@@ -3185,14 +3281,27 @@ mg_create_center (session *sess, session_gui *gui, GtkWidget *box)
 	{
 		gtk_paned_pack2 (GTK_PANED (gui->hpane_left), gui->vpane_left, FALSE, TRUE);
 		gtk_paned_pack1 (GTK_PANED (gui->hpane_left), gui->hpane_right, TRUE, TRUE);
+		/* GTK4: Add margins to vpane_left (end child) to prevent content overlapping
+		 * the horizontal pane separator. In GTK4, paned separators overlay children. */
+		gtk_widget_set_margin_start (gui->vpane_left, 4);
+		gtk_widget_set_margin_end (gui->vpane_left, 4);
 	}
 	else
 	{
 		gtk_paned_pack1 (GTK_PANED (gui->hpane_left), gui->vpane_left, FALSE, TRUE);
 		gtk_paned_pack2 (GTK_PANED (gui->hpane_left), gui->hpane_right, TRUE, TRUE);
+		/* GTK4: Add margins to vpane_left (start child) to prevent content overlapping
+		 * the horizontal pane separator. */
+		gtk_widget_set_margin_start (gui->vpane_left, 4);
+		gtk_widget_set_margin_end (gui->vpane_left, 4);
 	}
 	/* shrink=TRUE allows userlist panel to shrink below its natural minimum */
 	gtk_paned_pack2 (GTK_PANED (gui->hpane_right), gui->vpane_right, FALSE, TRUE);
+
+	/* GTK4: Add margins to vpane_right to prevent content overlapping the
+	 * horizontal pane separator. In GTK4, paned separators overlay children. */
+	gtk_widget_set_margin_start (gui->vpane_right, 4);
+	gtk_widget_set_margin_end (gui->vpane_right, 4);
 
 	/* GTK3: Ensure main paned fills its container for proper anchoring */
 	gtk_widget_set_halign (gui->hpane_left, GTK_ALIGN_FILL);
@@ -3381,10 +3490,16 @@ mg_place_userlist_and_chanview_real (session_gui *gui, GtkWidget *userlist, GtkW
 		}
 	}
 
-	if (mg_is_userlist_and_tree_combined () && prefs.hex_gui_pane_divider_position != 0)
+	/* Restore vertical pane divider positions (deferred until window is mapped) */
+	if (prefs.hex_gui_pane_divider_position != 0)
 	{
-		gtk_paned_set_position (GTK_PANED (gui->vpane_left), prefs.hex_gui_pane_divider_position);
-		gtk_paned_set_position (GTK_PANED (gui->vpane_right), prefs.hex_gui_pane_divider_position);
+		g_idle_add (mg_restore_vpane_position, gui);
+	}
+
+	/* Restore horizontal right pane position if chanview is on the right */
+	if (prefs.hex_gui_tab_pos == POS_TOPRIGHT || prefs.hex_gui_tab_pos == POS_BOTTOMRIGHT)
+	{
+		g_idle_add (mg_restore_right_pane_position, gui);
 	}
 
 	if (unref_chanview)
@@ -3404,6 +3519,11 @@ mg_place_userlist_and_chanview (session_gui *gui)
 	int pos;
 
 	mg_sanitize_positions (&prefs.hex_gui_tab_pos, &prefs.hex_gui_ulist_pos);
+
+	/* GTK4: Update bottom margin based on tab position - tabs at bottom
+	 * provide their own spacing, otherwise add margin for input box */
+	gtk_widget_set_margin_bottom (gui->main_table,
+		prefs.hex_gui_tab_pos == POS_BOTTOM ? 0 : 4);
 
 	if (gui->chanview)
 	{
@@ -3961,6 +4081,10 @@ mg_create_tabwindow (session *sess)
 	gtk_grid_set_row_spacing (GTK_GRID (table), GUI_SPACING);
 	/* left and right borders */
 	gtk_grid_set_column_spacing (GTK_GRID (table), 1);
+	/* GTK4: Add bottom margin so input box doesn't touch window edge,
+	 * but skip when tabs are at bottom (they provide their own spacing) */
+	if (prefs.hex_gui_tab_pos != POS_BOTTOM)
+		gtk_widget_set_margin_bottom (table, 4);
 	hc_window_set_child (win, table);
 
 	mg_create_irctab (sess, table);
