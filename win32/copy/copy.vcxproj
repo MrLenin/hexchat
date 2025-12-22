@@ -77,6 +77,13 @@
     <DepsRootDocs Include="$(DepsRoot)\share\doc\**\*" />
     <Locale Include="$(HexChatBin)locale\**\*;$(DepsRoot)\share\locale\**\*" />
     <MSWindowsTheme Include="$(DepsRoot)\share\themes\MS-Windows\**\*" />
+    <!-- GSettings schemas (required for GTK color chooser, file chooser, etc.) -->
+    <GSettingsSchemas Include="$(DepsRoot)\share\glib-2.0\schemas\gschemas.compiled" />
+    <GSettingsSchemas Include="$(DepsRoot)\share\glib-2.0\schemas\org.gtk.gtk4.Settings.ColorChooser.gschema.xml" />
+    <GSettingsSchemas Include="$(DepsRoot)\share\glib-2.0\schemas\org.gtk.gtk4.Settings.FileChooser.gschema.xml" />
+    <GSettingsSchemas Include="$(DepsRoot)\share\glib-2.0\schemas\org.gtk.gtk4.Settings.EmojiChooser.gschema.xml" />
+    <GSettingsSchemas Include="$(DepsRoot)\share\glib-2.0\schemas\org.gtk.gtk4.Settings.Debug.gschema.xml" />
+    <GSettingsSchemas Include="$(DepsRoot)\share\glib-2.0\schemas\gschema.dtd" />
     <PythonCffi Include="$(Python3Path)\Lib\site-packages\_cffi_backend*.pyd" />
     <!-- GTK4 DLLs -->
     <None Include="$(DepsRoot)\bin\gtk-4-1.dll" />
@@ -108,6 +115,8 @@
     <Copy SourceFiles="..\..\plugins\python\_hexchat.py" DestinationFolder="$(HexChatRel)\python" />
     <WriteLinesToFile File="$(HexChatRel)portable-mode" Lines="2" Overwrite="true" />
     <Copy SourceFiles="@(DepsRootDocs)" DestinationFiles="@(DepsRootDocs->'$(HexChatRel)\share\doc\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <!-- GSettings schemas for GTK4 dialogs -->
+    <Copy SourceFiles="@(GSettingsSchemas)" DestinationFolder="$(HexChatRel)\share\glib-2.0\schemas" />
     <!-- Copy CA certificate bundle as cert.pem (expected by ssl.c) -->
     <Copy SourceFiles="@(CACert)" DestinationFiles="$(HexChatRel)\cert.pem" />
   </Target>
