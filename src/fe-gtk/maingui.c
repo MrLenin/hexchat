@@ -3517,13 +3517,34 @@ mg_place_userlist_and_chanview (session_gui *gui)
 	GtkOrientation orientation;
 	GtkWidget *chanviewbox = NULL;
 	int pos;
+	int tab_pos, ulist_pos;
+	gboolean left_has_content, right_has_content;
 
 	mg_sanitize_positions (&prefs.hex_gui_tab_pos, &prefs.hex_gui_ulist_pos);
+
+	tab_pos = prefs.hex_gui_tab_pos;
+	ulist_pos = prefs.hex_gui_ulist_pos;
 
 	/* GTK4: Update bottom margin based on tab position - tabs at bottom
 	 * provide their own spacing, otherwise add margin for input box */
 	gtk_widget_set_margin_bottom (gui->main_table,
-		prefs.hex_gui_tab_pos == POS_BOTTOM ? 0 : 4);
+		tab_pos == POS_BOTTOM ? 0 : 4);
+
+	/* GTK4: Add left/right margins when no pane is visible on that side.
+	 * Only consider userlist position if userlist is actually visible. */
+	left_has_content = (tab_pos == POS_TOPLEFT || tab_pos == POS_BOTTOMLEFT);
+	right_has_content = (tab_pos == POS_TOPRIGHT || tab_pos == POS_BOTTOMRIGHT);
+
+	if (!prefs.hex_gui_ulist_hide)
+	{
+		if (ulist_pos == POS_TOPLEFT || ulist_pos == POS_BOTTOMLEFT)
+			left_has_content = TRUE;
+		if (ulist_pos == POS_TOPRIGHT || ulist_pos == POS_BOTTOMRIGHT)
+			right_has_content = TRUE;
+	}
+
+	gtk_widget_set_margin_start (gui->main_table, left_has_content ? 0 : 4);
+	gtk_widget_set_margin_end (gui->main_table, right_has_content ? 0 : 4);
 
 	if (gui->chanview)
 	{
