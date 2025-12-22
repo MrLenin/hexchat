@@ -4059,8 +4059,10 @@ gtk_xtext_remove_top (xtext_buffer *buffer)
 	buffer->old_value -= g_slist_length (ent->sublines);
 	if (buffer->xtext->buffer == buffer)	/* is it the current buffer? */
 	{
+		g_signal_handler_block (buffer->xtext->adj, buffer->xtext->vc_signal_tag);
 		gtk_adjustment_set_value (buffer->xtext->adj,
 			gtk_adjustment_get_value (buffer->xtext->adj) - g_slist_length (ent->sublines));
+		g_signal_handler_unblock (buffer->xtext->adj, buffer->xtext->vc_signal_tag);
 		buffer->xtext->select_start_adj -= g_slist_length (ent->sublines);
 	}
 
