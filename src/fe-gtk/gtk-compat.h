@@ -135,9 +135,36 @@ hc_box_pack_end_impl (GtkBox *box, GtkWidget *child, gboolean expand)
 #define hc_event_box_new() \
 	gtk_box_new(GTK_ORIENTATION_VERTICAL, 0)
 
-/* Generic add child to a box (no packing options) */
+/* Generic add child to a box (no packing options).
+ * Also handles buttonbox SPREAD layout by setting hexpand on children.
+ * Note: Layout is stored as (layout + 1) to distinguish from NULL (0 = SPREAD). */
+static inline void
+hc_box_add_impl (GtkWidget *box, GtkWidget *child)
+{
+	gpointer layout_ptr = g_object_get_data (G_OBJECT (box), "buttonbox-layout");
+	if (layout_ptr != NULL)
+	{
+		int layout = GPOINTER_TO_INT (layout_ptr) - 1; /* Subtract 1 to get actual layout */
+		if (layout == 0) /* GTK_BUTTONBOX_SPREAD */
+		{
+			/* Make child expand to take equal space, but center within that space */
+			GtkOrientation orient = gtk_orientable_get_orientation (GTK_ORIENTABLE (box));
+			if (orient == GTK_ORIENTATION_HORIZONTAL)
+			{
+				gtk_widget_set_hexpand (child, TRUE);
+				gtk_widget_set_halign (child, GTK_ALIGN_CENTER);
+			}
+			else
+			{
+				gtk_widget_set_vexpand (child, TRUE);
+				gtk_widget_set_valign (child, GTK_ALIGN_CENTER);
+			}
+		}
+	}
+	gtk_box_append (GTK_BOX (box), child);
+}
 #define hc_box_add(box, child) \
-	gtk_box_append(GTK_BOX(box), child)
+	hc_box_add_impl(GTK_WIDGET(box), GTK_WIDGET(child))
 
 /* For viewports */
 #define hc_viewport_set_child(viewport, child) \
@@ -741,7 +768,34 @@ hc_button_box_set_layout_impl (GtkWidget *bbox, int layout)
 		else
 			gtk_widget_set_valign (bbox, GTK_ALIGN_CENTER);
 	}
-	/* For SPREAD (0), EDGE (1), and EXPAND (5), use fill (default behavior) */
+	else if (layout == 0) /* GTK_BUTTONBOX_SPREAD */
+	{
+		/* Spread: box fills space, children will be set to expand when added.
+		 * Store layout type so hc_box_add can configure children appropriately.
+		 * Store as (layout + 1) since GINT_TO_POINTER(0) == NULL. */
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_halign (bbox, GTK_ALIGN_FILL);
+		else
+			gtk_widget_set_valign (bbox, GTK_ALIGN_FILL);
+		g_object_set_data (G_OBJECT (bbox), "buttonbox-layout", GINT_TO_POINTER (layout + 1));
+	}
+	else if (layout == 5) /* GTK_BUTTONBOX_EXPAND */
+	{
+		/* Expand: fill the space and make children homogeneous */
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_halign (bbox, GTK_ALIGN_FILL);
+		else
+			gtk_widget_set_valign (bbox, GTK_ALIGN_FILL);
+		gtk_box_set_homogeneous (GTK_BOX (bbox), TRUE);
+	}
+	else if (layout == 1) /* GTK_BUTTONBOX_EDGE */
+	{
+		/* Edge: fill space but don't make homogeneous */
+		if (orient == GTK_ORIENTATION_HORIZONTAL)
+			gtk_widget_set_halign (bbox, GTK_ALIGN_FILL);
+		else
+			gtk_widget_set_valign (bbox, GTK_ALIGN_FILL);
+	}
 }
 
 #define hc_button_box_set_layout(bbox, layout) \

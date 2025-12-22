@@ -510,7 +510,7 @@ pevent_bind_desc_cb (GtkListItemFactory *factory, GtkListItem *item, gpointer us
 }
 
 static GtkWidget *
-pevent_columnview_new (GtkWidget *box)
+pevent_columnview_new (void)
 {
 	GtkWidget *scroll;
 	GtkWidget *view;
@@ -521,6 +521,7 @@ pevent_columnview_new (GtkWidget *box)
 	scroll = hc_scrolled_window_new ();
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
 	gtk_widget_set_size_request (GTK_WIDGET (scroll), -1, 250);
+	gtk_widget_set_vexpand (scroll, TRUE);
 
 	/* Create list store for events */
 	pevent_store = g_list_store_new (HC_TYPE_EVENT_ITEM);
@@ -557,13 +558,15 @@ pevent_columnview_new (GtkWidget *box)
 	g_object_unref (col);
 
 	hc_scrolled_window_set_child (scroll, view);
-	hc_box_add (box, scroll);
 
-	return view;
+	/* Store the view in the scroll widget's data for later retrieval */
+	g_object_set_data (G_OBJECT (scroll), "column-view", view);
+
+	return scroll;
 }
 
 static GtkWidget *
-pevent_hlist_columnview_new (GtkWidget *box)
+pevent_hlist_columnview_new (void)
 {
 	GtkWidget *scroll;
 	GtkWidget *view;
@@ -572,6 +575,7 @@ pevent_hlist_columnview_new (GtkWidget *box)
 
 	scroll = hc_scrolled_window_new ();
 	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scroll), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	gtk_widget_set_vexpand (scroll, FALSE);
 
 	/* Create list store for help items */
 	pevent_help_store = g_list_store_new (HC_TYPE_HELP_ITEM);
@@ -599,15 +603,18 @@ pevent_hlist_columnview_new (GtkWidget *box)
 	g_object_unref (col);
 
 	hc_scrolled_window_set_child (scroll, view);
-	hc_box_add (box, scroll);
 
-	return view;
+	/* Store the view in the scroll widget's data for later retrieval */
+	g_object_set_data (G_OBJECT (scroll), "column-view", view);
+
+	return scroll;
 }
 
 void
 pevent_dialog_show ()
 {
-	GtkWidget *vbox, *hbox, *wid, *pane;
+	GtkWidget *vbox, *hbox, *wid, *pane, *lists_pane, *preview_box;
+	GtkWidget *event_scroll, *help_scroll;
 
 	if (pevent_dialog)
 	{
@@ -620,27 +627,57 @@ pevent_dialog_show ()
 											 TRUE, FALSE, pevent_dialog_close, NULL,
 											 600, 455, &vbox, 0);
 
+	/* Add margin around the dialog content */
+	gtk_widget_set_margin_start (vbox, 4);
+	gtk_widget_set_margin_end (vbox, 4);
+	gtk_widget_set_margin_top (vbox, 4);
+	gtk_widget_set_margin_bottom (vbox, 4);
+
+	/* Outer pane: lists on top, preview on bottom (resizable) */
 	pane = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
 	hc_box_pack_start (vbox, pane, TRUE, TRUE, 0);
 
-	pevent_dialog_list = pevent_columnview_new (pane);
+	/* Inner pane for events list and help list */
+	lists_pane = gtk_paned_new (GTK_ORIENTATION_VERTICAL);
+	gtk_paned_set_start_child (GTK_PANED (pane), lists_pane);
+	gtk_paned_set_resize_start_child (GTK_PANED (pane), TRUE);
+	gtk_paned_set_shrink_start_child (GTK_PANED (pane), FALSE);
+
+	/* Create events list (top of inner pane) */
+	event_scroll = pevent_columnview_new ();
+	pevent_dialog_list = g_object_get_data (G_OBJECT (event_scroll), "column-view");
+	gtk_paned_set_start_child (GTK_PANED (lists_pane), event_scroll);
+	gtk_paned_set_resize_start_child (GTK_PANED (lists_pane), TRUE);
+	gtk_paned_set_shrink_start_child (GTK_PANED (lists_pane), FALSE);
 	pevent_dialog_fill ();
 
-	pevent_dialog_hlist = pevent_hlist_columnview_new (pane);
+	/* Create help list (bottom of inner pane) */
+	help_scroll = pevent_hlist_columnview_new ();
+	pevent_dialog_hlist = g_object_get_data (G_OBJECT (help_scroll), "column-view");
+	gtk_paned_set_end_child (GTK_PANED (lists_pane), help_scroll);
+	gtk_paned_set_resize_end_child (GTK_PANED (lists_pane), FALSE);
+	gtk_paned_set_shrink_end_child (GTK_PANED (lists_pane), FALSE);
 
-	wid = hc_scrolled_window_new ();
-	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (wid), GTK_POLICY_NEVER, GTK_POLICY_ALWAYS);
-	hc_box_pack_start (vbox, wid, FALSE, TRUE, 0);
+	/* Preview area: xtext with its own scrollbar (resizable via outer pane) */
+	preview_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0);
+	gtk_paned_set_end_child (GTK_PANED (pane), preview_box);
+	gtk_paned_set_resize_end_child (GTK_PANED (pane), FALSE);
+	gtk_paned_set_shrink_end_child (GTK_PANED (pane), FALSE);
 
 	pevent_dialog_twid = gtk_xtext_new (colors, 0);
-	gtk_widget_set_sensitive (pevent_dialog_twid, FALSE);
-	gtk_widget_set_size_request (pevent_dialog_twid, -1, 75);
-	hc_scrolled_window_set_child (wid, pevent_dialog_twid);
+	gtk_widget_set_size_request (pevent_dialog_twid, -1, 100);
+	hc_box_pack_start (preview_box, pevent_dialog_twid, TRUE, TRUE, 0);
 	gtk_xtext_set_font (GTK_XTEXT (pevent_dialog_twid), prefs.hex_text_font);
+
+	/* Scrollbar connected to xtext's internal adjustment */
+	wid = gtk_scrollbar_new (GTK_ORIENTATION_VERTICAL,
+	                         GTK_XTEXT (pevent_dialog_twid)->adj);
+	hc_box_pack_start (preview_box, wid, FALSE, TRUE, 0);
 
 	hbox = hc_button_box_new (GTK_ORIENTATION_HORIZONTAL);
 	hc_button_box_set_layout (hbox, GTK_BUTTONBOX_SPREAD);
-	hc_box_pack_start (vbox, hbox, FALSE, FALSE, 4);
+	gtk_widget_set_margin_top (hbox, 6);
+	hc_box_pack_start (vbox, hbox, FALSE, FALSE, 0);
 	gtkutil_button (hbox, "document-save-as", NULL, pevent_save_cb,
 						 (void *) 1, _("Save As..."));
 	gtkutil_button (hbox, "document-open", NULL, pevent_load_cb,

@@ -569,6 +569,9 @@ gtkutil_button (GtkWidget *box, char *icon, char *tip, void *callback,
 		GtkWidget *label;
 
 		bbox = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+		/* Add horizontal padding inside the button */
+		gtk_widget_set_margin_start (bbox, 6);
+		gtk_widget_set_margin_end (bbox, 6);
 		hc_button_set_child (wid, bbox);
 
 		if (icon)
