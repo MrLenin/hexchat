@@ -29,6 +29,9 @@
 #include "../common/cfgfiles.h"
 #include "../common/fe.h"
 #include "../common/util.h"
+#ifdef USE_LIBWEBSOCKETS
+#include "../common/oauth.h"
+#endif
 
 #include "fe-gtk.h"
 #include "gtkutil.h"
@@ -86,6 +89,22 @@ static GtkWidget *edit_label_nick2;
 static GtkWidget *edit_label_real;
 static GtkWidget *edit_label_user;
 static GtkWidget *edit_trees[N_TREES];
+
+#ifdef USE_LIBWEBSOCKETS
+/* OAuth configuration widgets */
+static GtkWidget *edit_label_oauth_section;
+static GtkWidget *edit_entry_oauth_authurl;
+static GtkWidget *edit_label_oauth_authurl;
+static GtkWidget *edit_entry_oauth_tokenurl;
+static GtkWidget *edit_label_oauth_tokenurl;
+static GtkWidget *edit_entry_oauth_clientid;
+static GtkWidget *edit_label_oauth_clientid;
+static GtkWidget *edit_entry_oauth_clientsecret;
+static GtkWidget *edit_label_oauth_clientsecret;
+static GtkWidget *edit_entry_oauth_scopes;
+static GtkWidget *edit_label_oauth_scopes;
+static GtkWidget *edit_button_oauth_authorize;
+#endif
 
 static ircnet *selected_net = NULL;
 static ircserver *selected_serv = NULL;
@@ -718,6 +737,10 @@ servlist_edit_close_cb (GtkWidget *button, gpointer userdata)
 
 	hc_window_destroy (edit_win);
 	edit_win = NULL;
+
+	/* Ensure focus returns to the server list window */
+	if (serverlist_win)
+		gtk_window_present (GTK_WINDOW (serverlist_win));
 }
 
 static gboolean
@@ -1560,6 +1583,95 @@ servlist_combo_cb (GtkEntry *entry, gpointer userdata)
 	selected_net->encoding = g_strdup (hc_entry_get_text (GTK_WIDGET (entry)));
 }
 
+#ifdef USE_LIBWEBSOCKETS
+/* Helper to show error/info messages parented to the edit dialog */
+static void
+servlist_edit_message (const char *msg, int type)
+{
+	GtkWidget *dialog;
+	GtkWindow *parent = edit_win ? GTK_WINDOW (edit_win) : GTK_WINDOW (serverlist_win);
+
+	dialog = gtk_message_dialog_new (parent,
+									 GTK_DIALOG_DESTROY_WITH_PARENT | GTK_DIALOG_MODAL,
+									 type, GTK_BUTTONS_OK, "%s", msg);
+	gtk_window_set_transient_for (GTK_WINDOW (dialog), parent);
+	g_signal_connect (dialog, "response", G_CALLBACK (gtk_window_destroy), NULL);
+	gtk_window_present (GTK_WINDOW (dialog));
+}
+
+/* OAuth authorization completion callback */
+static void
+servlist_oauth_complete_cb (oauth_token *token, const char *error, void *user_data)
+{
+	if (error)
+	{
+		servlist_edit_message (error, GTK_MESSAGE_ERROR);
+		return;
+	}
+
+	if (!selected_net || !token)
+		return;
+
+	/* Store the token in the network */
+	g_free (selected_net->oauth_access_token);
+	selected_net->oauth_access_token = g_strdup (token->access_token);
+	g_free (selected_net->oauth_refresh_token);
+	selected_net->oauth_refresh_token = g_strdup (token->refresh_token);
+	selected_net->oauth_token_expires = token->expires_at;
+
+	servlist_edit_message (_("OAuth authorization successful! Token saved."), GTK_MESSAGE_INFO);
+}
+
+/* Handle Authorize button click */
+static void
+servlist_oauth_authorize_cb (GtkWidget *button, gpointer userdata)
+{
+	const char *client_id, *client_secret, *scopes, *auth_url, *token_url;
+
+	if (!selected_net)
+		return;
+
+	/* Get values from entry fields */
+	client_id = hc_entry_get_text (edit_entry_oauth_clientid);
+	client_secret = hc_entry_get_text (edit_entry_oauth_clientsecret);
+	scopes = hc_entry_get_text (edit_entry_oauth_scopes);
+	auth_url = hc_entry_get_text (edit_entry_oauth_authurl);
+	token_url = hc_entry_get_text (edit_entry_oauth_tokenurl);
+
+	/* Validate required fields */
+	if (!client_id || !*client_id)
+	{
+		servlist_edit_message (_("Client ID is required"), GTK_MESSAGE_ERROR);
+		return;
+	}
+	if (!auth_url || !*auth_url)
+	{
+		servlist_edit_message (_("Authorization URL is required"), GTK_MESSAGE_ERROR);
+		return;
+	}
+	if (!token_url || !*token_url)
+	{
+		servlist_edit_message (_("Token URL is required"), GTK_MESSAGE_ERROR);
+		return;
+	}
+
+	/* Save values to the network before starting authorization */
+	g_free (selected_net->oauth_client_id);
+	selected_net->oauth_client_id = g_strdup (client_id);
+	g_free (selected_net->oauth_client_secret);
+	selected_net->oauth_client_secret = g_strdup (client_secret);
+	g_free (selected_net->oauth_scopes);
+	selected_net->oauth_scopes = g_strdup (scopes);
+	g_free (selected_net->oauth_authorization_url);
+	selected_net->oauth_authorization_url = g_strdup (auth_url);
+	g_free (selected_net->oauth_token_url);
+	selected_net->oauth_token_url = g_strdup (token_url);
+
+	/* Start OAuth authorization flow */
+	oauth_begin_authorization (selected_net, servlist_oauth_complete_cb, selected_net);
+}
+#endif
+
 /* Fills up the network's authentication type so that it's guaranteed to be either NULL or a valid value. */
 static void
 servlist_logintypecombo_cb (GtkComboBox *cb, gpointer *userdata)
@@ -1600,6 +1712,25 @@ servlist_logintypecombo_cb (GtkComboBox *cb, gpointer *userdata)
 #endif
 	else
 		gtk_widget_set_sensitive (edit_entry_pass, TRUE);
+
+#ifdef USE_LIBWEBSOCKETS
+	/* Show/hide OAuth configuration fields based on login type */
+	{
+		gboolean show_oauth = (login_types_conf[index] == LOGIN_SASL_OAUTHBEARER);
+		gtk_widget_set_visible (edit_label_oauth_section, show_oauth);
+		gtk_widget_set_visible (edit_entry_oauth_clientid, show_oauth);
+		gtk_widget_set_visible (edit_label_oauth_clientid, show_oauth);
+		gtk_widget_set_visible (edit_entry_oauth_clientsecret, show_oauth);
+		gtk_widget_set_visible (edit_label_oauth_clientsecret, show_oauth);
+		gtk_widget_set_visible (edit_entry_oauth_scopes, show_oauth);
+		gtk_widget_set_visible (edit_label_oauth_scopes, show_oauth);
+		gtk_widget_set_visible (edit_entry_oauth_authurl, show_oauth);
+		gtk_widget_set_visible (edit_label_oauth_authurl, show_oauth);
+		gtk_widget_set_visible (edit_entry_oauth_tokenurl, show_oauth);
+		gtk_widget_set_visible (edit_label_oauth_tokenurl, show_oauth);
+		gtk_widget_set_visible (edit_button_oauth_authorize, show_oauth);
+	}
+#endif
 }
 
 static void
@@ -1958,6 +2089,66 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	if (selected_net && selected_net->logintype == LOGIN_SASLEXTERNAL)
 		gtk_widget_set_sensitive (edit_entry_pass, FALSE);
 
+#ifdef USE_LIBWEBSOCKETS
+	/* OAuth configuration section - visible only when OAUTHBEARER is selected */
+	edit_label_oauth_section = gtk_label_new (NULL);
+	gtk_label_set_markup (GTK_LABEL (edit_label_oauth_section), _("<b>OAuth2 Configuration</b>"));
+	gtk_widget_set_halign (edit_label_oauth_section, GTK_ALIGN_START);
+	gtk_widget_set_margin_start (edit_label_oauth_section, SERVLIST_X_PADDING);
+	gtk_widget_set_margin_top (edit_label_oauth_section, 8);
+	gtk_grid_attach (GTK_GRID (table3), edit_label_oauth_section, 0, 12, 2, 1);
+
+	edit_entry_oauth_clientid = servlist_create_entry (table3, _("Client ID:"), 13,
+		net->oauth_client_id, &edit_label_oauth_clientid,
+		_("OAuth2 Client ID from your provider"));
+
+	edit_entry_oauth_clientsecret = servlist_create_entry (table3, _("Client Secret:"), 14,
+		net->oauth_client_secret, &edit_label_oauth_clientsecret,
+		_("OAuth2 Client Secret (optional for public clients)"));
+	gtk_entry_set_visibility (GTK_ENTRY (edit_entry_oauth_clientsecret), FALSE);
+
+	edit_entry_oauth_scopes = servlist_create_entry (table3, _("Scopes:"), 15,
+		net->oauth_scopes ? net->oauth_scopes : "openid",
+		&edit_label_oauth_scopes,
+		_("OAuth2 scopes to request (e.g., openid)"));
+
+	edit_entry_oauth_authurl = servlist_create_entry (table3, _("Authorization URL:"), 16,
+		net->oauth_authorization_url, &edit_label_oauth_authurl,
+		_("OAuth2 authorization endpoint URL"));
+
+	edit_entry_oauth_tokenurl = servlist_create_entry (table3, _("Token URL:"), 17,
+		net->oauth_token_url, &edit_label_oauth_tokenurl,
+		_("OAuth2 token endpoint URL"));
+
+	/* Authorize button */
+	edit_button_oauth_authorize = gtk_button_new_with_mnemonic (_("_Authorize..."));
+	gtk_widget_set_margin_start (edit_button_oauth_authorize, 4);
+	gtk_widget_set_margin_top (edit_button_oauth_authorize, 4);
+	gtk_widget_set_margin_bottom (edit_button_oauth_authorize, 4);
+	gtk_widget_set_tooltip_text (edit_button_oauth_authorize,
+		_("Open browser to authorize with OAuth2 provider"));
+	gtk_grid_attach (GTK_GRID (table3), edit_button_oauth_authorize, 1, 18, 1, 1);
+	g_signal_connect (G_OBJECT (edit_button_oauth_authorize), "clicked",
+		G_CALLBACK (servlist_oauth_authorize_cb), NULL);
+
+	/* Initially hide OAuth fields - will be shown when OAUTHBEARER is selected */
+	if (!selected_net || selected_net->logintype != LOGIN_SASL_OAUTHBEARER)
+	{
+		gtk_widget_set_visible (edit_label_oauth_section, FALSE);
+		gtk_widget_set_visible (edit_entry_oauth_clientid, FALSE);
+		gtk_widget_set_visible (edit_label_oauth_clientid, FALSE);
+		gtk_widget_set_visible (edit_entry_oauth_clientsecret, FALSE);
+		gtk_widget_set_visible (edit_label_oauth_clientsecret, FALSE);
+		gtk_widget_set_visible (edit_entry_oauth_scopes, FALSE);
+		gtk_widget_set_visible (edit_label_oauth_scopes, FALSE);
+		gtk_widget_set_visible (edit_entry_oauth_authurl, FALSE);
+		gtk_widget_set_visible (edit_label_oauth_authurl, FALSE);
+		gtk_widget_set_visible (edit_entry_oauth_tokenurl, FALSE);
+		gtk_widget_set_visible (edit_label_oauth_tokenurl, FALSE);
+		gtk_widget_set_visible (edit_button_oauth_authorize, FALSE);
+	}
+#endif
+
 	label34 = gtk_label_new (_("Character set:"));
 	gtk_widget_set_halign (label34, GTK_ALIGN_START);
 	gtk_widget_set_valign (label34, GTK_ALIGN_CENTER);
@@ -1965,13 +2156,13 @@ servlist_open_edit (GtkWidget *parent, ircnet *net)
 	gtk_widget_set_margin_end (label34, SERVLIST_X_PADDING);
 	gtk_widget_set_margin_top (label34, SERVLIST_Y_PADDING);
 	gtk_widget_set_margin_bottom (label34, SERVLIST_Y_PADDING);
-	gtk_grid_attach (GTK_GRID (table3), label34, 0, 12, 1, 1);
+	gtk_grid_attach (GTK_GRID (table3), label34, 0, 19, 1, 1);
 	comboboxentry_charset = servlist_create_charsetcombo ();
 	gtk_widget_set_margin_start (comboboxentry_charset, 4);
 	gtk_widget_set_margin_end (comboboxentry_charset, 4);
 	gtk_widget_set_margin_top (comboboxentry_charset, 2);
 	gtk_widget_set_margin_bottom (comboboxentry_charset, 2);
-	gtk_grid_attach (GTK_GRID (table3), comboboxentry_charset, 1, 12, 1, 1);
+	gtk_grid_attach (GTK_GRID (table3), comboboxentry_charset, 1, 19, 1, 1);
 
 
 	/* Rule and Close button */

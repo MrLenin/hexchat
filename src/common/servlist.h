@@ -57,6 +57,10 @@ typedef struct ircnet
 	char *oauth_client_id;
 	char *oauth_client_secret;
 	char *oauth_scopes;
+	/* OAuth2 token storage */
+	char *oauth_access_token;
+	char *oauth_refresh_token;
+	time_t oauth_token_expires;
 } ircnet;
 
 extern GSList *network_list;

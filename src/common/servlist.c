@@ -871,6 +871,9 @@ servlist_net_remove (ircnet *net)
 	g_free (net->oauth_client_id);
 	free_and_clear (net->oauth_client_secret);
 	g_free (net->oauth_scopes);
+	/* OAuth2 tokens (use free_and_clear for sensitive data) */
+	free_and_clear (net->oauth_access_token);
+	free_and_clear (net->oauth_refresh_token);
 	g_free (net);
 
 	/* for safety */
@@ -1049,6 +1052,16 @@ servlist_load (void)
 			case 'o':
 				net->oauth_scopes = g_strdup (buf + 2);
 				break;
+			/* OAuth2 token storage */
+			case 'T':
+				net->oauth_access_token = g_strdup (buf + 2);
+				break;
+			case 'r':
+				net->oauth_refresh_token = g_strdup (buf + 2);
+				break;
+			case 'x':
+				net->oauth_token_expires = (time_t) g_ascii_strtoll (buf + 2, NULL, 10);
+				break;
 			/* FIXME Migration code. In 2.9.5 the order was:
 			 *
 			 * P=serverpass, A=saslpass, B=nickservpass
@@ -1201,6 +1214,13 @@ servlist_save (void)
 			fprintf (fp, "s=%s\n", net->oauth_client_secret);
 		if (net->oauth_scopes)
 			fprintf (fp, "o=%s\n", net->oauth_scopes);
+		/* OAuth2 token storage */
+		if (net->oauth_access_token)
+			fprintf (fp, "T=%s\n", net->oauth_access_token);
+		if (net->oauth_refresh_token)
+			fprintf (fp, "r=%s\n", net->oauth_refresh_token);
+		if (net->oauth_token_expires)
+			fprintf (fp, "x=%" G_GINT64_FORMAT "\n", (gint64) net->oauth_token_expires);
 
 		netlist = net->servlist;
 		while (netlist)
