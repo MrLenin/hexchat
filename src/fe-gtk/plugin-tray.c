@@ -100,6 +100,9 @@ static int saved_width = 0, saved_height = 0;
 static gboolean was_maximized = FALSE;
 static gboolean was_fullscreen = FALSE;
 
+/* List of dialogs that were hidden when minimizing to tray */
+static GList *hidden_dialogs = NULL;
+
 /* Menu items */
 static struct tray_menu menu_items[10];
 
@@ -603,9 +606,14 @@ tray_init_impl (void)
 	tray_stop_flash ();
 }
 
+/* Forward declaration for weak ref callback */
+static void hidden_dialog_destroyed (gpointer data, GObject *where_the_object_was);
+
 static void
 tray_cleanup (void)
 {
+	GList *l;
+
 	tray_stop_flash ();
 
 	if (tray_idle_tag)
@@ -614,6 +622,12 @@ tray_cleanup (void)
 		tray_idle_tag = 0;
 	}
 
+	/* Clear the hidden dialogs list (remove weak refs) */
+	for (l = hidden_dialogs; l != NULL; l = l->next)
+		g_object_weak_unref (G_OBJECT (l->data), hidden_dialog_destroyed, NULL);
+	g_list_free (hidden_dialogs);
+	hidden_dialogs = NULL;
+
 	if (tray_initialized)
 	{
 		tray_exit ();
@@ -621,10 +635,20 @@ tray_cleanup (void)
 	}
 }
 
+/* Callback when a hidden dialog is destroyed - remove it from the list */
+static void
+hidden_dialog_destroyed (gpointer data, GObject *where_the_object_was)
+{
+	hidden_dialogs = g_list_remove (hidden_dialogs, where_the_object_was);
+}
+
 gboolean
 tray_toggle_visibility (gboolean force_hide)
 {
 	GtkWindow *win;
+	GListModel *toplevels;
+	guint i, n;
+	GList *l;
 
 	if (!tray_initialized)
 		return FALSE;
@@ -651,6 +675,33 @@ tray_toggle_visibility (gboolean force_hide)
 		if (prefs.hex_gui_tray_away)
 			hexchat_command (ph, "ALLSERV AWAY");
 
+		/* Clear any previous hidden dialogs list (remove weak refs) */
+		for (l = hidden_dialogs; l != NULL; l = l->next)
+			g_object_weak_unref (G_OBJECT (l->data), hidden_dialog_destroyed, NULL);
+		g_list_free (hidden_dialogs);
+		hidden_dialogs = NULL;
+
+		/* Hide all transient dialogs that are children of the main window */
+		toplevels = gtk_window_get_toplevels ();
+		n = g_list_model_get_n_items (toplevels);
+		for (i = 0; i < n; i++)
+		{
+			GtkWindow *toplevel = GTK_WINDOW (g_list_model_get_item (toplevels, i));
+			if (toplevel && toplevel != win)
+			{
+				GtkWindow *parent = gtk_window_get_transient_for (toplevel);
+				if (parent == win && gtk_widget_get_visible (GTK_WIDGET (toplevel)))
+				{
+					/* This dialog is transient to main window and visible - hide it */
+					hidden_dialogs = g_list_prepend (hidden_dialogs, toplevel);
+					g_object_weak_ref (G_OBJECT (toplevel), hidden_dialog_destroyed, NULL);
+					gtk_widget_set_visible (GTK_WIDGET (toplevel), FALSE);
+				}
+			}
+			if (toplevel)
+				g_object_unref (toplevel);
+		}
+
 		/* Hide using GTK - this keeps GTK's visibility state in sync */
 		gtk_widget_set_visible (GTK_WIDGET (win), FALSE);
 	}
@@ -668,6 +719,16 @@ tray_toggle_visibility (gboolean force_hide)
 
 		if (was_fullscreen)
 			gtk_window_fullscreen (win);
+
+		/* Restore dialogs that were hidden when minimizing to tray */
+		for (l = hidden_dialogs; l != NULL; l = l->next)
+		{
+			GtkWindow *dialog = GTK_WINDOW (l->data);
+			g_object_weak_unref (G_OBJECT (dialog), hidden_dialog_destroyed, NULL);
+			gtk_widget_set_visible (GTK_WIDGET (dialog), TRUE);
+		}
+		g_list_free (hidden_dialogs);
+		hidden_dialogs = NULL;
 
 		/* Bring to front */
 		gtk_window_present (win);
