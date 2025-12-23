@@ -30,26 +30,26 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(LibWebSocketsInclude);$(JanssonInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;USE_LIBSOUP;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(LibWebSocketsInclude);$(JanssonInclude);$(LibSoupInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(LibWebSocketsLib);$(JanssonLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(HexChatLib)common.lib;glib-2.0.lib;gio-2.0.lib;gobject-2.0.lib;gmodule-2.0.lib;intl.lib;libcrypto.lib;libssl.lib;websockets.lib;jansson.lib;ws2_32.lib;winmm.lib;wbemuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(LibWebSocketsLib);$(JanssonLib);$(LibSoupLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(HexChatLib)common.lib;glib-2.0.lib;gio-2.0.lib;gobject-2.0.lib;gmodule-2.0.lib;intl.lib;libcrypto.lib;libssl.lib;websockets.lib;jansson.lib;soup-3.0.lib;ws2_32.lib;winmm.lib;wbemuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;_WIN64;_AMD64_;NDEBUG;_CONSOLE;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(LibWebSocketsInclude);$(JanssonInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WIN64;_AMD64_;NDEBUG;_CONSOLE;USE_LIBSOUP;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(LibWebSocketsInclude);$(JanssonInclude);$(LibSoupInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;4267;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(LibWebSocketsLib);$(JanssonLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(HexChatLib)common.lib;glib-2.0.lib;gio-2.0.lib;gobject-2.0.lib;gmodule-2.0.lib;intl.lib;libcrypto.lib;libssl.lib;websockets.lib;jansson.lib;ws2_32.lib;winmm.lib;wbemuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(LibWebSocketsLib);$(JanssonLib);$(LibSoupLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(HexChatLib)common.lib;glib-2.0.lib;gio-2.0.lib;gobject-2.0.lib;gmodule-2.0.lib;intl.lib;libcrypto.lib;libssl.lib;websockets.lib;jansson.lib;soup-3.0.lib;ws2_32.lib;winmm.lib;wbemuuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup>

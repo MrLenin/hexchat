@@ -94,10 +94,12 @@ if libwebsockets_dep.found()
   common_sources += ['ws-server.c', 'oauth.c']
   common_deps += libwebsockets_dep
 
-  # libsoup3 for OAuth2 token exchange HTTP requests
+  # libsoup3 and jansson for OAuth2 token exchange HTTP requests
   libsoup_dep = dependency('libsoup-3.0', required: false)
-  if libsoup_dep.found()
-    common_deps += libsoup_dep
+  jansson_dep = dependency('jansson', version: '>= 2.10', required: false)
+  if libsoup_dep.found() and jansson_dep.found()
+    common_deps += [libsoup_dep, jansson_dep]
+    common_cflags += '-DUSE_LIBSOUP'
   endif
 endif
 

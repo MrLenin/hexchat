@@ -31,6 +31,11 @@
 #include <openssl/evp.h>
 #endif
 
+#ifdef USE_LIBSOUP
+#include <libsoup/soup.h>
+#include <jansson.h>
+#endif
+
 #include "oauth.h"
 #include "ws-server.h"
 #include "fe.h"
@@ -648,29 +653,244 @@ oauth_http_callback(HcServer *server,
 	return TRUE;
 }
 
+#ifdef USE_LIBSOUP
+/*
+ * Parse JSON token response using jansson
+ * Returns oauth_token on success, NULL on error (sets error_out)
+ */
+static oauth_token *
+oauth_parse_token_response(GBytes *body, char **error_out)
+{
+	const char *data;
+	gsize size;
+	oauth_token *token = NULL;
+	json_t *root = NULL;
+	json_error_t json_error;
+	json_t *value;
+
+	data = g_bytes_get_data(body, &size);
+	if (!data || size == 0)
+	{
+		*error_out = g_strdup("Empty response from token endpoint");
+		return NULL;
+	}
+
+	/* Parse JSON using jansson */
+	root = json_loadb(data, size, 0, &json_error);
+	if (!root)
+	{
+		*error_out = g_strdup_printf("Failed to parse token response: %s",
+		                             json_error.text);
+		return NULL;
+	}
+
+	if (!json_is_object(root))
+	{
+		*error_out = g_strdup("Token response is not a JSON object");
+		json_decref(root);
+		return NULL;
+	}
+
+	/* Check for error response */
+	value = json_object_get(root, "error");
+	if (value && json_is_string(value))
+	{
+		const char *err = json_string_value(value);
+		json_t *desc_value = json_object_get(root, "error_description");
+		const char *desc = (desc_value && json_is_string(desc_value))
+		                   ? json_string_value(desc_value)
+		                   : NULL;
+		*error_out = g_strdup_printf("OAuth error: %s%s%s", err,
+		                             desc ? " - " : "", desc ? desc : "");
+		json_decref(root);
+		return NULL;
+	}
+
+	/* Extract required access_token */
+	value = json_object_get(root, "access_token");
+	if (!value || !json_is_string(value))
+	{
+		*error_out = g_strdup("Token response missing access_token");
+		json_decref(root);
+		return NULL;
+	}
+
+	token = oauth_token_new();
+	token->access_token = g_strdup(json_string_value(value));
+
+	/* Extract optional fields */
+	value = json_object_get(root, "refresh_token");
+	if (value && json_is_string(value))
+		token->refresh_token = g_strdup(json_string_value(value));
+
+	value = json_object_get(root, "token_type");
+	if (value && json_is_string(value))
+		token->token_type = g_strdup(json_string_value(value));
+
+	value = json_object_get(root, "scope");
+	if (value && json_is_string(value))
+		token->scope = g_strdup(json_string_value(value));
+
+	value = json_object_get(root, "expires_in");
+	if (value && json_is_integer(value))
+	{
+		json_int_t expires_in = json_integer_value(value);
+		token->expires_at = time(NULL) + expires_in;
+	}
+
+	json_decref(root);
+	return token;
+}
+
+/*
+ * Callback for async token exchange completion
+ */
+static void
+oauth_token_exchange_callback(GObject *source, GAsyncResult *result, gpointer user_data)
+{
+	oauth_session *session = (oauth_session *)user_data;
+	SoupSession *soup_session = SOUP_SESSION(source);
+	GBytes *body = NULL;
+	GError *error = NULL;
+	oauth_token *token = NULL;
+	char *error_msg = NULL;
+
+	body = soup_session_send_and_read_finish(soup_session, result, &error);
+
+	if (error)
+	{
+		error_msg = g_strdup_printf("Token exchange failed: %s", error->message);
+		g_error_free(error);
+		oauth_complete_session(session, NULL, error_msg);
+		g_free(error_msg);
+		g_object_unref(soup_session);
+		return;
+	}
+
+	/* Parse the token response */
+	token = oauth_parse_token_response(body, &error_msg);
+	g_bytes_unref(body);
+
+	if (!token)
+	{
+		oauth_complete_session(session, NULL, error_msg);
+		g_free(error_msg);
+		g_object_unref(soup_session);
+		return;
+	}
+
+	/* Success! */
+	oauth_complete_session(session, token, NULL);
+	g_object_unref(soup_session);
+}
+
 /*
  * Exchange authorization code for access token
  * This is called on the main thread via g_idle_add
  */
+static gboolean
+oauth_exchange_code_impl(gpointer user_data)
+{
+	oauth_session *session = (oauth_session *)user_data;
+	SoupSession *soup_session;
+	SoupMessage *msg;
+	char *redirect_uri;
+	char *post_body;
+	char *code;
+
+	/* Retrieve the authorization code stored in error_message field */
+	code = session->error_message;
+	session->error_message = NULL;
+
+	if (!code)
+	{
+		oauth_complete_session(session, NULL, "No authorization code available");
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Build redirect URI (must match what was used for authorization) */
+	redirect_uri = g_strdup_printf("http://localhost:%d%s",
+	                               session->callback_port, OAUTH_CALLBACK_PATH);
+
+	/* Build POST body */
+	if (session->provider->client_secret && session->provider->client_secret[0])
+	{
+		post_body = g_strdup_printf(
+			"grant_type=authorization_code&code=%s&redirect_uri=%s"
+			"&client_id=%s&client_secret=%s&code_verifier=%s",
+			code,
+			redirect_uri,
+			session->provider->client_id,
+			session->provider->client_secret,
+			session->code_verifier);
+	}
+	else
+	{
+		/* Public client - no client_secret */
+		post_body = g_strdup_printf(
+			"grant_type=authorization_code&code=%s&redirect_uri=%s"
+			"&client_id=%s&code_verifier=%s",
+			code,
+			redirect_uri,
+			session->provider->client_id,
+			session->code_verifier);
+	}
+
+	g_free(redirect_uri);
+	g_free(code);
+
+	/* Create libsoup session */
+	soup_session = soup_session_new();
+
+	/* Create POST request */
+	msg = soup_message_new("POST", session->provider->token_url);
+	if (!msg)
+	{
+		oauth_complete_session(session, NULL, "Failed to create token request");
+		g_free(post_body);
+		g_object_unref(soup_session);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Set request body */
+	soup_message_set_request_body_from_bytes(msg, "application/x-www-form-urlencoded",
+	                                          g_bytes_new_take(post_body, strlen(post_body)));
+
+	/* Send async request */
+	soup_session_send_and_read_async(soup_session, msg, G_PRIORITY_DEFAULT, NULL,
+	                                  oauth_token_exchange_callback, session);
+
+	g_object_unref(msg);
+
+	return G_SOURCE_REMOVE;
+}
+
 static void
 oauth_exchange_code(oauth_session *session, const char *code)
 {
-	/* TODO: Implement HTTP POST to token endpoint using libsoup3
-	 * For now, this is a placeholder that will be completed when
-	 * libsoup3 integration is added.
-	 *
-	 * The request should:
-	 * 1. POST to session->provider->token_url
-	 * 2. Include: grant_type=authorization_code, code, redirect_uri,
-	 *    client_id, client_secret (if present), code_verifier
-	 * 3. Parse JSON response for access_token, refresh_token, expires_in
-	 * 4. Call oauth_complete_session with token or error
+	/* The code parameter is unused here - we get it from session->error_message
+	 * which was set in oauth_http_callback. This function is called via g_idle_add
+	 * which only passes the session pointer.
 	 */
-
-	/* Placeholder: Complete with error until libsoup3 is integrated */
-	oauth_complete_session(session, NULL,
-	                       "Token exchange not yet implemented (requires libsoup3)");
+	(void)code;
+	oauth_exchange_code_impl(session);
 }
+
+#else /* !USE_LIBSOUP */
+
+/*
+ * Exchange authorization code for access token
+ * Stub implementation when libsoup is not available
+ */
+static void
+oauth_exchange_code(oauth_session *session, const char *code)
+{
+	(void)code;
+	oauth_complete_session(session, NULL,
+	                       "Token exchange not available (libsoup3 not installed)");
+}
+
+#endif /* USE_LIBSOUP */
 
 /*
  * Timeout callback for OAuth flow
@@ -839,6 +1059,65 @@ oauth_cancel(oauth_session *session)
 	oauth_complete_session(session, NULL, session->error_message);
 }
 
+#ifdef USE_LIBSOUP
+
+/* Context for token refresh callback */
+typedef struct {
+	oauth_completion_callback callback;
+	gpointer user_data;
+	SoupSession *soup_session;
+} oauth_refresh_context;
+
+/*
+ * Callback for async token refresh completion
+ */
+static void
+oauth_token_refresh_callback(GObject *source, GAsyncResult *result, gpointer user_data)
+{
+	oauth_refresh_context *ctx = (oauth_refresh_context *)user_data;
+	SoupSession *soup_session = SOUP_SESSION(source);
+	GBytes *body = NULL;
+	GError *error = NULL;
+	oauth_token *token = NULL;
+	char *error_msg = NULL;
+
+	body = soup_session_send_and_read_finish(soup_session, result, &error);
+
+	if (error)
+	{
+		error_msg = g_strdup_printf("Token refresh failed: %s", error->message);
+		g_error_free(error);
+		if (ctx->callback)
+			ctx->callback(NULL, NULL, error_msg);
+		g_free(error_msg);
+		g_object_unref(soup_session);
+		g_free(ctx);
+		return;
+	}
+
+	/* Parse the token response */
+	token = oauth_parse_token_response(body, &error_msg);
+	g_bytes_unref(body);
+
+	if (!token)
+	{
+		if (ctx->callback)
+			ctx->callback(NULL, NULL, error_msg);
+		g_free(error_msg);
+		g_object_unref(soup_session);
+		g_free(ctx);
+		return;
+	}
+
+	/* Success! */
+	if (ctx->callback)
+		ctx->callback(NULL, token, NULL);
+
+	oauth_token_free(token);
+	g_object_unref(soup_session);
+	g_free(ctx);
+}
+
 /*
  * Refresh an expired token
  */
@@ -847,17 +1126,89 @@ oauth_refresh_token(struct ircnet *network,
                     oauth_completion_callback callback,
                     gpointer user_data)
 {
-	/* TODO: Implement token refresh using libsoup3
-	 * 1. POST to token_url with grant_type=refresh_token
-	 * 2. Include: refresh_token, client_id, client_secret (if present)
-	 * 3. Parse response for new access_token, refresh_token, expires_in
-	 * 4. Call callback with new token or error
+	(void)user_data; /* Not used until token storage is implemented */
+
+	if (!network)
+	{
+		if (callback)
+			callback(NULL, NULL, "No network specified");
+		return FALSE;
+	}
+
+	/* Validate required fields */
+	if (!network->oauth_token_url || !network->oauth_client_id)
+	{
+		if (callback)
+			callback(NULL, NULL, "Missing OAuth configuration (token URL or client ID)");
+		return FALSE;
+	}
+
+	/* Note: We need a refresh_token stored somewhere to refresh.
+	 * For now, this function expects the caller to have stored the refresh_token.
+	 * A proper implementation would store tokens in a secure location.
+	 * This is a placeholder until token storage is implemented.
 	 */
+	if (callback)
+		callback(NULL, NULL, "Token refresh requires stored refresh_token (not yet implemented)");
+	return FALSE;
+
+	/* The code below is ready for when token storage is implemented:
+	 *
+	 * Build POST body
+	 * if (network->oauth_client_secret && network->oauth_client_secret[0])
+	 * {
+	 *     post_body = g_strdup_printf(
+	 *         "grant_type=refresh_token&refresh_token=%s"
+	 *         "&client_id=%s&client_secret=%s",
+	 *         stored_refresh_token,
+	 *         network->oauth_client_id,
+	 *         network->oauth_client_secret);
+	 * }
+	 * else
+	 * {
+	 *     post_body = g_strdup_printf(
+	 *         "grant_type=refresh_token&refresh_token=%s&client_id=%s",
+	 *         stored_refresh_token,
+	 *         network->oauth_client_id);
+	 * }
+	 *
+	 * soup_session = soup_session_new();
+	 * msg = soup_message_new("POST", network->oauth_token_url);
+	 * soup_message_set_request_body_from_bytes(msg, "application/x-www-form-urlencoded",
+	 *                                           g_bytes_new_take(post_body, strlen(post_body)));
+	 *
+	 * ctx = g_new0(oauth_refresh_context, 1);
+	 * ctx->callback = callback;
+	 * ctx->user_data = user_data;
+	 * ctx->soup_session = soup_session;
+	 *
+	 * soup_session_send_and_read_async(soup_session, msg, G_PRIORITY_DEFAULT, NULL,
+	 *                                   oauth_token_refresh_callback, ctx);
+	 * g_object_unref(msg);
+	 * return TRUE;
+	 */
+}
+
+#else /* !USE_LIBSOUP */
+
+/*
+ * Refresh an expired token
+ * Stub implementation when libsoup is not available
+ */
+gboolean
+oauth_refresh_token(struct ircnet *network,
+                    oauth_completion_callback callback,
+                    gpointer user_data)
+{
+	(void)network;
+	(void)user_data;
 
 	if (callback)
-		callback(NULL, NULL, "Token refresh not yet implemented (requires libsoup3)");
+		callback(NULL, NULL, "Token refresh not available (libsoup3 not installed)");
 
 	return FALSE;
 }
+
+#endif /* USE_LIBSOUP */
 
 #endif /* USE_LIBWEBSOCKETS */
