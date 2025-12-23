@@ -30,25 +30,25 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;TRAY_EXPORTS;USE_LIBSOUP;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);$(LibSoupInclude);$(JanssonInclude);..\..\external\tray\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;TRAY_EXPORTS;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);$(JanssonInclude);$(LibCurlInclude);..\..\external\tray\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(LibSoupLib);$(JanssonLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(DepLibs);$(HexChatLib)common.lib;soup-3.0.lib;jansson.lib;wbemuuid.lib;comsupp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(JanssonLib);$(LibWebSocketsLib);$(LibCurlLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(DepLibs);$(HexChatLib)common.lib;jansson.lib;websockets.lib;libcurl.lib;wbemuuid.lib;comsupp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;_WIN64;_AMD64_;NDEBUG;_WINDOWS;TRAY_EXPORTS;USE_LIBSOUP;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);$(LibSoupInclude);$(JanssonInclude);..\..\external\tray\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_WIN64;_AMD64_;NDEBUG;_WINDOWS;TRAY_EXPORTS;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>..\common;$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);$(JanssonInclude);$(LibCurlInclude);..\..\external\tray\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4244;4267;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(LibSoupLib);$(JanssonLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(DepLibs);$(HexChatLib)common.lib;soup-3.0.lib;jansson.lib;wbemuuid.lib;comsupp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(DepsRoot)\lib;$(OpenSSLLib);$(JanssonLib);$(LibWebSocketsLib);$(LibCurlLib);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(DepLibs);$(HexChatLib)common.lib;jansson.lib;websockets.lib;libcurl.lib;wbemuuid.lib;comsupp.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
     </Link>
   </ItemDefinitionGroup>

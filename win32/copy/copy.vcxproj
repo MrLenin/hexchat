@@ -81,8 +81,22 @@
     <!-- GTK4 DLLs -->
     <None Include="$(DepsRoot)\bin\gtk-4-1.dll" />
     <None Include="$(DepsRoot)\bin\graphene-1.0-0.dll" />
+    <!-- Additional GTK4 dependencies -->
+    <None Include="$(DepsRoot)\bin\jpeg62.dll" />
+    <None Include="$(DepsRoot)\bin\tiff.dll" />
+    <None Include="$(DepsRoot)\bin\harfbuzz-subset.dll" />
+    <None Include="$(DepsRoot)\bin\cairo-gobject-2.dll" />
+    <None Include="$(DepsRoot)\bin\cairo-script-interpreter-2.dll" />
+    <None Include="$(DepsRoot)\bin\rsvg-2-2.dll" />
+    <None Include="$(DepsRoot)\bin\pixman-1-0.dll" />
+    <None Include="$(DepsRoot)\bin\libexpat.dll" />
+    <!-- libsoup3 for OAuth2 (optional - install via gvsbuild if needed) -->
+    <OptionalFiles Include="$(DepsRoot)\bin\soup-3.0-0.dll" Condition="Exists('$(DepsRoot)\bin\soup-3.0-0.dll')" />
     <!-- Enchant is optional - may be installed separately -->
     <OptionalFiles Include="$(DepsRoot)\bin\libenchant-2.dll" Condition="Exists('$(DepsRoot)\bin\libenchant-2.dll')" />
+    <!-- libcurl for OAuth2 (optional - may be installed separately) -->
+    <OptionalFiles Include="$(LibCurlRoot)\bin\libcurl.dll" Condition="Exists('$(LibCurlRoot)\bin\libcurl.dll')" />
+    <OptionalFiles Include="$(LibCurlRoot)\bin\libcurl-x64.dll" Condition="Exists('$(LibCurlRoot)\bin\libcurl-x64.dll')" />
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

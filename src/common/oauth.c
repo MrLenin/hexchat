@@ -36,6 +36,11 @@
 #include <jansson.h>
 #endif
 
+#ifdef USE_LIBCURL
+#include <curl/curl.h>
+#include <jansson.h>
+#endif
+
 #include "oauth.h"
 #include "ws-server.h"
 #include "fe.h"
@@ -876,21 +881,294 @@ oauth_exchange_code(oauth_session *session, const char *code)
 	oauth_exchange_code_impl(session);
 }
 
-#else /* !USE_LIBSOUP */
+#elif defined(USE_LIBCURL)
+
+/*
+ * libcurl write callback - accumulates response data
+ */
+typedef struct {
+	char *data;
+	size_t size;
+} curl_response;
+
+static size_t
+oauth_curl_write_cb(void *contents, size_t size, size_t nmemb, void *userp)
+{
+	size_t realsize = size * nmemb;
+	curl_response *resp = (curl_response *)userp;
+
+	char *ptr = g_realloc(resp->data, resp->size + realsize + 1);
+	if (!ptr)
+		return 0;
+
+	resp->data = ptr;
+	memcpy(&(resp->data[resp->size]), contents, realsize);
+	resp->size += realsize;
+	resp->data[resp->size] = '\0';
+
+	return realsize;
+}
+
+/*
+ * Parse JSON token response using jansson
+ * Returns oauth_token on success, NULL on error (sets error_out)
+ */
+static oauth_token *
+oauth_parse_token_response_curl(const char *data, size_t size, char **error_out)
+{
+	oauth_token *token = NULL;
+	json_t *root = NULL;
+	json_error_t json_error;
+	json_t *value;
+
+	if (!data || size == 0)
+	{
+		*error_out = g_strdup("Empty response from token endpoint");
+		return NULL;
+	}
+
+	/* Parse JSON using jansson */
+	root = json_loadb(data, size, 0, &json_error);
+	if (!root)
+	{
+		*error_out = g_strdup_printf("Failed to parse token response: %s",
+		                             json_error.text);
+		return NULL;
+	}
+
+	if (!json_is_object(root))
+	{
+		*error_out = g_strdup("Token response is not a JSON object");
+		json_decref(root);
+		return NULL;
+	}
+
+	/* Check for error response */
+	value = json_object_get(root, "error");
+	if (value && json_is_string(value))
+	{
+		const char *err = json_string_value(value);
+		json_t *desc_value = json_object_get(root, "error_description");
+		const char *desc = (desc_value && json_is_string(desc_value))
+		                   ? json_string_value(desc_value)
+		                   : NULL;
+		*error_out = g_strdup_printf("OAuth error: %s%s%s", err,
+		                             desc ? " - " : "", desc ? desc : "");
+		json_decref(root);
+		return NULL;
+	}
+
+	/* Extract required access_token */
+	value = json_object_get(root, "access_token");
+	if (!value || !json_is_string(value))
+	{
+		*error_out = g_strdup("Token response missing access_token");
+		json_decref(root);
+		return NULL;
+	}
+
+	token = oauth_token_new();
+	token->access_token = g_strdup(json_string_value(value));
+
+	/* Extract optional fields */
+	value = json_object_get(root, "refresh_token");
+	if (value && json_is_string(value))
+		token->refresh_token = g_strdup(json_string_value(value));
+
+	value = json_object_get(root, "token_type");
+	if (value && json_is_string(value))
+		token->token_type = g_strdup(json_string_value(value));
+
+	value = json_object_get(root, "scope");
+	if (value && json_is_string(value))
+		token->scope = g_strdup(json_string_value(value));
+
+	value = json_object_get(root, "expires_in");
+	if (value && json_is_integer(value))
+	{
+		json_int_t expires_in = json_integer_value(value);
+		token->expires_at = time(NULL) + expires_in;
+	}
+
+	json_decref(root);
+	return token;
+}
+
+/* Context for libcurl async token exchange */
+typedef struct {
+	oauth_session *session;
+	char *post_body;
+	curl_response response;
+} curl_exchange_context;
+
+/*
+ * Perform synchronous token exchange with libcurl
+ * Called from idle callback to avoid blocking
+ */
+static gboolean
+oauth_curl_exchange_idle(gpointer user_data)
+{
+	curl_exchange_context *ctx = (curl_exchange_context *)user_data;
+	oauth_session *session = ctx->session;
+	CURL *curl;
+	CURLcode res;
+	char *error_msg = NULL;
+	oauth_token *token = NULL;
+	long http_code = 0;
+
+	curl = curl_easy_init();
+	if (!curl)
+	{
+		oauth_complete_session(session, NULL, "Failed to initialize libcurl");
+		g_free(ctx->post_body);
+		g_free(ctx);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Set up the request */
+	curl_easy_setopt(curl, CURLOPT_URL, session->provider->token_url);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, ctx->post_body);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, oauth_curl_write_cb);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &ctx->response);
+
+	/* Follow redirects */
+	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+	/* Set a reasonable timeout */
+	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+
+	/* Perform the request */
+	res = curl_easy_perform(curl);
+
+	if (res != CURLE_OK)
+	{
+		error_msg = g_strdup_printf("Token exchange failed: %s",
+		                            curl_easy_strerror(res));
+		oauth_complete_session(session, NULL, error_msg);
+		g_free(error_msg);
+		curl_easy_cleanup(curl);
+		g_free(ctx->response.data);
+		g_free(ctx->post_body);
+		g_free(ctx);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Check HTTP status */
+	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+	curl_easy_cleanup(curl);
+
+	if (http_code < 200 || http_code >= 300)
+	{
+		/* Try to parse error from response body */
+		token = oauth_parse_token_response_curl(ctx->response.data,
+		                                        ctx->response.size, &error_msg);
+		if (!token && !error_msg)
+			error_msg = g_strdup_printf("Token endpoint returned HTTP %ld", http_code);
+
+		oauth_complete_session(session, NULL, error_msg);
+		g_free(error_msg);
+		g_free(ctx->response.data);
+		g_free(ctx->post_body);
+		g_free(ctx);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Parse the token response */
+	token = oauth_parse_token_response_curl(ctx->response.data,
+	                                        ctx->response.size, &error_msg);
+	g_free(ctx->response.data);
+	g_free(ctx->post_body);
+	g_free(ctx);
+
+	if (!token)
+	{
+		oauth_complete_session(session, NULL, error_msg);
+		g_free(error_msg);
+		return G_SOURCE_REMOVE;
+	}
+
+	/* Success! */
+	oauth_complete_session(session, token, NULL);
+	return G_SOURCE_REMOVE;
+}
+
+/*
+ * Exchange authorization code for access token using libcurl
+ */
+static void
+oauth_exchange_code(oauth_session *session, const char *code_unused)
+{
+	curl_exchange_context *ctx;
+	char *redirect_uri;
+	char *code;
+
+	(void)code_unused;
+
+	/* Retrieve the authorization code stored in error_message field */
+	code = session->error_message;
+	session->error_message = NULL;
+
+	if (!code)
+	{
+		oauth_complete_session(session, NULL, "No authorization code available");
+		return;
+	}
+
+	ctx = g_new0(curl_exchange_context, 1);
+	ctx->session = session;
+	ctx->response.data = NULL;
+	ctx->response.size = 0;
+
+	/* Build redirect URI (must match what was used for authorization) */
+	redirect_uri = g_strdup_printf("http://localhost:%d%s",
+	                               session->callback_port, OAUTH_CALLBACK_PATH);
+
+	/* Build POST body */
+	if (session->provider->client_secret && session->provider->client_secret[0])
+	{
+		ctx->post_body = g_strdup_printf(
+			"grant_type=authorization_code&code=%s&redirect_uri=%s"
+			"&client_id=%s&client_secret=%s&code_verifier=%s",
+			code,
+			redirect_uri,
+			session->provider->client_id,
+			session->provider->client_secret,
+			session->code_verifier);
+	}
+	else
+	{
+		/* Public client - no client_secret */
+		ctx->post_body = g_strdup_printf(
+			"grant_type=authorization_code&code=%s&redirect_uri=%s"
+			"&client_id=%s&code_verifier=%s",
+			code,
+			redirect_uri,
+			session->provider->client_id,
+			session->code_verifier);
+	}
+
+	g_free(redirect_uri);
+	g_free(code);
+
+	/* Schedule the exchange on idle to avoid blocking the callback */
+	g_idle_add(oauth_curl_exchange_idle, ctx);
+}
+
+#else /* !USE_LIBSOUP && !USE_LIBCURL */
 
 /*
  * Exchange authorization code for access token
- * Stub implementation when libsoup is not available
+ * Stub implementation when no HTTP client is available
  */
 static void
 oauth_exchange_code(oauth_session *session, const char *code)
 {
 	(void)code;
 	oauth_complete_session(session, NULL,
-	                       "Token exchange not available (libsoup3 not installed)");
+	                       "Token exchange not available (no HTTP client library)");
 }
 
-#endif /* USE_LIBSOUP */
+#endif /* USE_LIBSOUP / USE_LIBCURL */
 
 /*
  * Timeout callback for OAuth flow
@@ -1189,11 +1467,49 @@ oauth_refresh_token(struct ircnet *network,
 	 */
 }
 
-#else /* !USE_LIBSOUP */
+#elif defined(USE_LIBCURL)
+
+/*
+ * Refresh an expired token using libcurl
+ * Note: This is a placeholder until token storage is implemented
+ */
+gboolean
+oauth_refresh_token(struct ircnet *network,
+                    oauth_completion_callback callback,
+                    gpointer user_data)
+{
+	(void)user_data;
+
+	if (!network)
+	{
+		if (callback)
+			callback(NULL, NULL, "No network specified");
+		return FALSE;
+	}
+
+	/* Validate required fields */
+	if (!network->oauth_token_url || !network->oauth_client_id)
+	{
+		if (callback)
+			callback(NULL, NULL, "Missing OAuth configuration (token URL or client ID)");
+		return FALSE;
+	}
+
+	/* Note: We need a refresh_token stored somewhere to refresh.
+	 * For now, this function expects the caller to have stored the refresh_token.
+	 * A proper implementation would store tokens in a secure location.
+	 * This is a placeholder until token storage is implemented.
+	 */
+	if (callback)
+		callback(NULL, NULL, "Token refresh requires stored refresh_token (not yet implemented)");
+	return FALSE;
+}
+
+#else /* !USE_LIBSOUP && !USE_LIBCURL */
 
 /*
  * Refresh an expired token
- * Stub implementation when libsoup is not available
+ * Stub implementation when no HTTP client is available
  */
 gboolean
 oauth_refresh_token(struct ircnet *network,
@@ -1204,11 +1520,11 @@ oauth_refresh_token(struct ircnet *network,
 	(void)user_data;
 
 	if (callback)
-		callback(NULL, NULL, "Token refresh not available (libsoup3 not installed)");
+		callback(NULL, NULL, "Token refresh not available (no HTTP client library)");
 
 	return FALSE;
 }
 
-#endif /* USE_LIBSOUP */
+#endif /* USE_LIBSOUP / USE_LIBCURL */
 
 #endif /* USE_LIBWEBSOCKETS */
