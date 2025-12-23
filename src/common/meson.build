@@ -91,8 +91,14 @@ endif
 
 # WebSocket/HTTP server support (for OAuth2 callbacks and Electron frontend)
 if libwebsockets_dep.found()
-  common_sources += 'ws-server.c'
+  common_sources += ['ws-server.c', 'oauth.c']
   common_deps += libwebsockets_dep
+
+  # libsoup3 for OAuth2 token exchange HTTP requests
+  libsoup_dep = dependency('libsoup-3.0', required: false)
+  if libsoup_dep.found()
+    common_deps += libsoup_dep
+  endif
 endif
 
 hexchat_common = static_library('hexchatcommon',

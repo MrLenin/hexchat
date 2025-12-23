@@ -51,6 +51,12 @@ typedef struct ircnet
 	GSList *favchanlist;
 	int selected;
 	guint32 flags;
+	/* OAuth2/OIDC configuration */
+	char *oauth_authorization_url;
+	char *oauth_token_url;
+	char *oauth_client_id;
+	char *oauth_client_secret;
+	char *oauth_scopes;
 } ircnet;
 
 extern GSList *network_list;
@@ -82,6 +88,7 @@ extern GSList *network_list;
 #define LOGIN_SASL_SCRAM_SHA_1	11
 #define LOGIN_SASL_SCRAM_SHA_256	12
 #define LOGIN_SASL_SCRAM_SHA_512	13
+#define LOGIN_SASL_OAUTHBEARER		14
 
 #define CHALLENGEAUTH_ALGO		"HMAC-SHA-256"
 #define CHALLENGEAUTH_NICK		"Q@CServe.quakenet.org"

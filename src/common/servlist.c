@@ -840,6 +840,8 @@ servlist_cleanup (void)
 	{
 		net = list->data;
 		free_and_clear (net->pass);
+		/* Clear OAuth secrets */
+		free_and_clear (net->oauth_client_secret);
 	}
 }
 
@@ -863,6 +865,12 @@ servlist_net_remove (ircnet *net)
 		g_slist_free_full (net->commandlist, (GDestroyNotify) servlist_command_free);
 	g_free (net->encoding);
 	g_free (net->name);
+	/* OAuth2/OIDC configuration */
+	g_free (net->oauth_authorization_url);
+	g_free (net->oauth_token_url);
+	g_free (net->oauth_client_id);
+	free_and_clear (net->oauth_client_secret);
+	g_free (net->oauth_scopes);
 	g_free (net);
 
 	/* for safety */
@@ -1025,6 +1033,22 @@ servlist_load (void)
 			case 'D':
 				net->selected = atoi (buf + 2);
 				break;
+			/* OAuth2/OIDC configuration */
+			case 'a':
+				net->oauth_authorization_url = g_strdup (buf + 2);
+				break;
+			case 't':
+				net->oauth_token_url = g_strdup (buf + 2);
+				break;
+			case 'c':
+				net->oauth_client_id = g_strdup (buf + 2);
+				break;
+			case 's':
+				net->oauth_client_secret = g_strdup (buf + 2);
+				break;
+			case 'o':
+				net->oauth_scopes = g_strdup (buf + 2);
+				break;
 			/* FIXME Migration code. In 2.9.5 the order was:
 			 *
 			 * P=serverpass, A=saslpass, B=nickservpass
@@ -1165,6 +1189,18 @@ servlist_save (void)
 		}
 
 		fprintf (fp, "F=%d\nD=%d\n", net->flags, net->selected);
+
+		/* OAuth2/OIDC configuration */
+		if (net->oauth_authorization_url)
+			fprintf (fp, "a=%s\n", net->oauth_authorization_url);
+		if (net->oauth_token_url)
+			fprintf (fp, "t=%s\n", net->oauth_token_url);
+		if (net->oauth_client_id)
+			fprintf (fp, "c=%s\n", net->oauth_client_id);
+		if (net->oauth_client_secret)
+			fprintf (fp, "s=%s\n", net->oauth_client_secret);
+		if (net->oauth_scopes)
+			fprintf (fp, "o=%s\n", net->oauth_scopes);
 
 		netlist = net->servlist;
 		while (netlist)

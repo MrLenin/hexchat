@@ -47,6 +47,9 @@
 #include "ctcp.h"
 #include "hexchatc.h"
 #include "chanopt.h"
+#ifdef USE_LIBWEBSOCKETS
+#include "oauth.h"
+#endif
 
 
 void
@@ -1651,7 +1654,8 @@ static const char *sasl_mechanisms[] =
 	"EXTERNAL",
 	"SCRAM-SHA-1",
 	"SCRAM-SHA-256",
-	"SCRAM-SHA-512"
+	"SCRAM-SHA-512",
+	"OAUTHBEARER"
 };
 
 static void
@@ -1698,6 +1702,10 @@ inbound_toggle_caps (server *serv, const char *extensions_str, gboolean enable)
 					serv->sasl_mech = MECH_SCRAM_SHA_256;
 				else if (serv->loginmethod == LOGIN_SASL_SCRAM_SHA_512)
 					serv->sasl_mech = MECH_SCRAM_SHA_512;
+#endif
+#ifdef USE_LIBWEBSOCKETS
+				if (serv->loginmethod == LOGIN_SASL_OAUTHBEARER)
+					serv->sasl_mech = MECH_OAUTHBEARER;
 #endif
 				/* Mechanism either defaulted to PLAIN or server gave us list */
 				tcp_sendf (serv, "AUTHENTICATE %s\r\n", sasl_mechanisms[serv->sasl_mech]);
@@ -2065,6 +2073,57 @@ inbound_sasl_authenticate (server *serv, char *data)
 		case MECH_SCRAM_SHA_512:
 			scram_authenticate(serv, data, "SHA512", user, serv->password);
 			return;
+#endif
+#ifdef USE_LIBWEBSOCKETS
+		case MECH_OAUTHBEARER:
+			if (!serv->oauth_access_token || serv->oauth_access_token[0] == '\0')
+			{
+				/* No token available - abort SASL */
+				PrintText (serv->server_session, _("OAuth: No access token available. Please authorize first in Network List."));
+				tcp_sendf (serv, "AUTHENTICATE *\r\n");
+				return;
+			}
+			/* Check if token is expired */
+			if (serv->oauth_token_expires > 0 && time(NULL) >= serv->oauth_token_expires)
+			{
+				PrintText (serv->server_session, _("OAuth: Access token has expired. Please re-authorize in Network List."));
+				tcp_sendf (serv, "AUTHENTICATE *\r\n");
+				return;
+			}
+			{
+				char *encoded = oauth_encode_sasl_oauthbearer(serv->oauth_access_token,
+				                                              serv->servername,
+				                                              serv->port);
+				if (!encoded)
+				{
+					PrintText (serv->server_session, _("OAuth: Failed to encode OAUTHBEARER message."));
+					tcp_sendf (serv, "AUTHENTICATE *\r\n");
+					return;
+				}
+				/* Handle 400-byte chunking per IRCv3 SASL 3.1 */
+				size_t len = strlen(encoded);
+				if (len <= 400)
+				{
+					tcp_sendf (serv, "AUTHENTICATE %s\r\n", encoded);
+				}
+				else
+				{
+					size_t sent = 0;
+					while (sent < len)
+					{
+						size_t chunk_size = (len - sent > 400) ? 400 : (len - sent);
+						char *chunk = g_strndup(encoded + sent, chunk_size);
+						tcp_sendf (serv, "AUTHENTICATE %s\r\n", chunk);
+						g_free(chunk);
+						sent += chunk_size;
+					}
+					/* If final chunk was exactly 400 bytes, send empty to signal end */
+					if (len % 400 == 0)
+						tcp_sendf (serv, "AUTHENTICATE +\r\n");
+				}
+				g_free(encoded);
+			}
+			break;
 #endif
 		}
 

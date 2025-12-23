@@ -136,6 +136,9 @@ static int login_types_conf[] =
 	LOGIN_SASL_SCRAM_SHA_256,
 	LOGIN_SASL_SCRAM_SHA_512,
 #endif
+#ifdef USE_LIBWEBSOCKETS
+	LOGIN_SASL_OAUTHBEARER,
+#endif
 	LOGIN_PASS,
 	LOGIN_MSG_NICKSERV,
 	LOGIN_NICKSERV,
@@ -159,6 +162,9 @@ static const char *login_types[]=
 	"SASL SCRAM-SHA-1",
 	"SASL SCRAM-SHA-256",
 	"SASL SCRAM-SHA-512",
+#endif
+#ifdef USE_LIBWEBSOCKETS
+	"SASL OAUTHBEARER (OAuth2/OIDC)",
 #endif
 	"Server password (/PASS password)",
 	"NickServ (/MSG NickServ + password)",
@@ -1583,6 +1589,15 @@ servlist_logintypecombo_cb (GtkComboBox *cb, gpointer *userdata)
 	/* EXTERNAL uses a cert, not a pass */
 	if (login_types_conf[index] == LOGIN_SASLEXTERNAL)
 		gtk_widget_set_sensitive (edit_entry_pass, FALSE);
+#ifdef USE_LIBWEBSOCKETS
+	/* OAUTHBEARER uses tokens, not passwords - password field shows OAuth config hint */
+	else if (login_types_conf[index] == LOGIN_SASL_OAUTHBEARER)
+	{
+		gtk_widget_set_sensitive (edit_entry_pass, FALSE);
+		gtk_entry_set_placeholder_text (GTK_ENTRY (edit_entry_pass),
+			_("Configure OAuth below"));
+	}
+#endif
 	else
 		gtk_widget_set_sensitive (edit_entry_pass, TRUE);
 }

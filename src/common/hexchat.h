@@ -434,6 +434,7 @@ typedef struct session
 #define MECH_SCRAM_SHA_1 2
 #define MECH_SCRAM_SHA_256 3
 #define MECH_SCRAM_SHA_512 4
+#define MECH_OAUTHBEARER 5
 
 typedef struct server
 {
@@ -590,6 +591,12 @@ typedef struct server
 	unsigned int use_ssl:1;				  /* is server SSL capable? */
 	unsigned int accept_invalid_cert:1;/* ignore result of server's cert. verify */
 	scram_session *scram_session; /* session for SASL SCRAM authentication */
+#endif
+#ifdef USE_LIBWEBSOCKETS
+	/* OAuth2/OIDC state */
+	struct oauth_session *oauth_session;	/* Active OAuth flow, if any */
+	char *oauth_access_token;				/* Current access token for SASL OAUTHBEARER */
+	time_t oauth_token_expires;				/* When current token expires */
 #endif
 } server;
 
