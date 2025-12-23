@@ -1806,10 +1806,18 @@ get_supported_mech (server *serv, const char *list)
 				ret = MECH_SCRAM_SHA_512;
 				break;
 			}
-        }
+		}
 		else
 #endif
-		if (!strcmp (mechs[i], "PLAIN"))
+		if (serv->loginmethod == LOGIN_SASL_OAUTHBEARER)
+		{
+			if (!strcmp (mechs[i], "OAUTHBEARER"))
+			{
+				ret = MECH_OAUTHBEARER;
+				break;
+			}
+		}
+		else if (!strcmp (mechs[i], "PLAIN"))
 		{
 			ret = MECH_PLAIN;
 			break;
@@ -1867,7 +1875,8 @@ inbound_cap_ls (server *serv, char *nick, char *extensions_str,
 				|| serv->loginmethod == LOGIN_SASL_SCRAM_SHA_256
 				|| serv->loginmethod == LOGIN_SASL_SCRAM_SHA_512)
 					&& strlen (serv->password) != 0)
-				|| serv->loginmethod == LOGIN_SASLEXTERNAL))
+				|| serv->loginmethod == LOGIN_SASLEXTERNAL
+				|| serv->loginmethod == LOGIN_SASL_OAUTHBEARER))
 		{
 			if (value)
 			{
