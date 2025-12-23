@@ -37,11 +37,16 @@ config_h.set_quoted('LOCALEDIR', join_paths(get_option('prefix'),
 config_h.set_quoted('G_LOG_DOMAIN', 'hexchat')
 config_h.set10('ENABLE_NLS', true)
 
+# WebSocket/HTTP server support (for OAuth2 callbacks and Electron frontend)
+libwebsockets_dep = dependency('libwebsockets', version: '>= 4.0',
+                               required: get_option('with-libwebsockets'))
+
 # Optional features
 config_h.set('USE_OPENSSL', libssl_dep.found())
 config_h.set('USE_LIBCANBERRA', libcanberra_dep.found())
 config_h.set('USE_DBUS', dbus_glib_dep.found())
 config_h.set('USE_PLUGIN', get_option('plugin'))
+config_h.set('USE_LIBWEBSOCKETS', libwebsockets_dep.found())
 
 config_h.set('G_DISABLE_SINGLE_INCLUDES', true)
 # GTK_DISABLE_DEPRECATED disabled during GTK migration - re-enable after migration complete

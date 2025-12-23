@@ -89,6 +89,12 @@ if get_option('plugin')
   install_headers('hexchat-plugin.h')
 endif
 
+# WebSocket/HTTP server support (for OAuth2 callbacks and Electron frontend)
+if libwebsockets_dep.found()
+  common_sources += 'ws-server.c'
+  common_deps += libwebsockets_dep
+endif
+
 hexchat_common = static_library('hexchatcommon',
   sources: [textevents] + marshal + common_sources,
   include_directories: config_h_include,

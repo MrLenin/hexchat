@@ -62,7 +62,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="fe-electron.c" />
-    <ClCompile Include="ws-server.c" />
     <ClCompile Include="json-protocol.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -49,6 +49,7 @@
     <ClInclude Include="hexchat-plugin.h" />
     <ClInclude Include="hexchat.h" />
     <ClInclude Include="hexchatc.h" />
+    <ClInclude Include="ws-server.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cfgfiles.c" />
@@ -78,6 +79,7 @@
     <ClCompile Include="userlist.c" />
     <ClCompile Include="util.c" />
     <ClCompile Include="hexchat.c" />
+    <ClCompile Include="ws-server.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\win32\config.h.tt" />
@@ -99,13 +101,13 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);$(LibWebSocketsInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <PreprocessorDefinitions>WIN32;_WIN64;_AMD64_;NDEBUG;_LIB;$(OwnFlags);%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(HexChatLib);$(DepsRoot)\include;$(OpenSSLInclude);$(Glib);$(Gtk);$(LibWebSocketsInclude);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableSpecificWarnings>4267;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
   </ItemDefinitionGroup>

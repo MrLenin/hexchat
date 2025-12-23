@@ -1,18 +1,20 @@
 # Electron frontend WebSocket backend
-# Requires libwebsockets and jansson for WebSocket server and JSON
+# Requires libwebsockets (from common) and jansson for JSON protocol
 
-libwebsockets_dep = dependency('libwebsockets', version: '>= 4.0', required: true)
+# Ensure libwebsockets was found (should be enabled automatically)
+if not libwebsockets_dep.found()
+  error('Electron frontend requires libwebsockets. Enable with-libwebsockets option.')
+endif
+
 jansson_dep = dependency('jansson', version: '>= 2.10', required: true)
 
 hexchat_electron_sources = [
   'fe-electron.c',
-  'ws-server.c',
   'json-protocol.c',
 ]
 
 hexchat_electron_deps = [
   hexchat_common_dep,
-  libwebsockets_dep,
   jansson_dep,
 ]
 

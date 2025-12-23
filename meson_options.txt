@@ -8,6 +8,9 @@ option('text-frontend', type: 'boolean', value: false,
 option('electron-frontend', type: 'boolean', value: false,
   description: 'WebSocket backend for Electron GUI, requires libwebsockets and jansson'
 )
+option('with-libwebsockets', type: 'feature', value: 'auto',
+  description: 'WebSocket/HTTP server support for OAuth2 and remote control, requires libwebsockets'
+)
 option('theme-manager', type: 'boolean', value: false,
   description: 'Utility to help manage themes, requires mono/.net'
 )

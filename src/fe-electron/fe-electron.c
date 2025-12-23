@@ -21,6 +21,7 @@
 #include <unistd.h>
 #endif
 #include <glib.h>
+#include <jansson.h>
 
 #include "../common/hexchat.h"
 #include "../common/hexchatc.h"
@@ -35,6 +36,16 @@ static GHashTable *session_map = NULL;  /* session* -> session_id string */
 static GHashTable *server_map = NULL;   /* server* -> server_id string */
 static guint session_counter = 0;
 static guint server_counter = 0;
+
+/* WebSocket server instance */
+static HcServer *ws_server = NULL;
+
+/* Get the server instance */
+HcServer *
+fe_electron_get_server (void)
+{
+	return ws_server;
+}
 
 /* Generate unique session ID */
 char *
@@ -115,6 +126,145 @@ handle_ws_input (const char *session_id, const char *text)
 	}
 }
 
+/* Idle callback for command execution on main thread */
+static gboolean
+handle_ws_command_idle (gpointer data)
+{
+	char *str = (char *)data;
+	char **parts = g_strsplit (str, "\t", 2);
+	if (parts[0] && parts[1])
+	{
+		handle_ws_command (parts[0], parts[1]);
+	}
+	g_strfreev (parts);
+	return G_SOURCE_REMOVE;
+}
+
+/* Idle callback for input execution on main thread */
+static gboolean
+handle_ws_input_idle (gpointer data)
+{
+	char *str = (char *)data;
+	char **parts = g_strsplit (str, "\t", 2);
+	if (parts[0] && parts[1])
+	{
+		handle_ws_input (parts[0], parts[1]);
+	}
+	g_strfreev (parts);
+	return G_SOURCE_REMOVE;
+}
+
+/* Send full state to a newly connected client */
+void
+electron_send_state_sync (HcClient *client)
+{
+	GSList *list;
+	struct session *sess;
+	char *json;
+
+	if (!ws_server || !client)
+		return;
+
+	/* Send all existing sessions */
+	for (list = sess_list; list; list = list->next)
+	{
+		sess = (struct session *)list->data;
+		json = json_session_created (sess, FALSE);
+		if (json)
+		{
+			hc_server_send (ws_server, client, json);
+			g_free (json);
+		}
+	}
+
+	printf ("Sent state sync to client (%d sessions)\n", g_slist_length (sess_list));
+}
+
+/* WebSocket connect callback */
+static void
+on_ws_connect (HcServer *server, HcClient *client, gpointer user_data)
+{
+	/* Send current state to the new client */
+	electron_send_state_sync (client);
+}
+
+/* WebSocket disconnect callback */
+static void
+on_ws_disconnect (HcServer *server, HcClient *client, gpointer user_data)
+{
+	/* Nothing special to do on disconnect */
+}
+
+/* WebSocket message callback */
+static void
+on_ws_message (HcServer *server, HcClient *client,
+               const char *message, size_t len, gpointer user_data)
+{
+	json_t *root;
+	json_error_t error;
+	const char *type;
+
+	root = json_loadb (message, len, 0, &error);
+	if (!root)
+	{
+		fprintf (stderr, "JSON parse error: %s\n", error.text);
+		return;
+	}
+
+	type = json_string_value (json_object_get (root, "type"));
+	if (!type)
+	{
+		json_decref (root);
+		return;
+	}
+
+	if (g_strcmp0 (type, "command.execute") == 0)
+	{
+		json_t *payload = json_object_get (root, "payload");
+		const char *session_id = json_string_value (json_object_get (payload, "sessionId"));
+		const char *command = json_string_value (json_object_get (payload, "command"));
+
+		if (session_id && command)
+		{
+			/* Schedule on main thread via idle callback */
+			g_idle_add_full (G_PRIORITY_DEFAULT_IDLE,
+			                 (GSourceFunc)handle_ws_command_idle,
+			                 g_strdup_printf ("%s\t%s", session_id, command),
+			                 g_free);
+		}
+	}
+	else if (g_strcmp0 (type, "input.text") == 0)
+	{
+		json_t *payload = json_object_get (root, "payload");
+		const char *session_id = json_string_value (json_object_get (payload, "sessionId"));
+		const char *text = json_string_value (json_object_get (payload, "text"));
+
+		if (session_id && text)
+		{
+			/* Schedule on main thread via idle callback */
+			g_idle_add_full (G_PRIORITY_DEFAULT_IDLE,
+			                 (GSourceFunc)handle_ws_input_idle,
+			                 g_strdup_printf ("%s\t%s", session_id, text),
+			                 g_free);
+		}
+	}
+	else if (g_strcmp0 (type, "state.requestSync") == 0)
+	{
+		/* Send full state sync to this client */
+		electron_send_state_sync (client);
+	}
+
+	json_decref (root);
+}
+
+/* Helper to broadcast JSON message */
+static void
+broadcast_json (const char *json)
+{
+	if (ws_server && json)
+		hc_server_broadcast (ws_server, json);
+}
+
 /* === Frontend Interface Implementation === */
 
 void
@@ -137,7 +287,7 @@ fe_new_window (struct session *sess, int focus)
 	json = json_session_created (sess, focus);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -157,7 +307,7 @@ fe_print_text (struct session *sess, char *text, time_t stamp,
 	json = json_print_text (sess, text, stamp, no_activity);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -170,7 +320,7 @@ fe_close_window (struct session *sess)
 	json = json_session_closed (sess);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 
@@ -186,7 +336,7 @@ fe_set_topic (struct session *sess, char *topic, char *stripped_topic)
 	json = json_set_topic (sess, topic, stripped_topic);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -199,7 +349,7 @@ fe_set_channel (struct session *sess)
 	json = json_set_channel (sess);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -212,7 +362,7 @@ fe_set_title (struct session *sess)
 	json = json_set_title (sess);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -225,7 +375,7 @@ fe_set_nick (struct server *serv, char *newnick)
 	json = json_set_nick (serv, newnick);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -238,7 +388,7 @@ fe_set_away (server *serv)
 	json = json_set_away (serv);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -251,7 +401,7 @@ fe_set_lag (server *serv, long lag)
 	json = json_set_lag (serv, lag);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -264,7 +414,7 @@ fe_set_tab_color (struct session *sess, tabcolor col)
 	json = json_tab_color (sess, col);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -277,7 +427,7 @@ fe_server_event (server *serv, int type, int arg)
 	json = json_server_event (serv, type, arg);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -290,7 +440,7 @@ fe_message (char *msg, int flags)
 	json = json_message (msg, flags);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -303,7 +453,7 @@ fe_userlist_insert (struct session *sess, struct User *newuser, gboolean sel)
 	json = json_userlist_insert (sess, newuser, sel);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -316,7 +466,7 @@ fe_userlist_remove (struct session *sess, struct User *user)
 	json = json_userlist_remove (sess, user->nick);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 	return 0;
@@ -330,7 +480,7 @@ fe_userlist_update (struct session *sess, struct User *user)
 	json = json_userlist_update (sess, user);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -343,7 +493,7 @@ fe_userlist_clear (struct session *sess)
 	json = json_userlist_clear (sess);
 	if (json)
 	{
-		ws_server_broadcast_json (json);
+		broadcast_json (json);
 		g_free (json);
 	}
 }
@@ -504,6 +654,13 @@ fe_args (int argc, char *argv[])
 void
 fe_init (void)
 {
+	HcServerCallbacks callbacks = {
+		.on_connect = on_ws_connect,
+		.on_disconnect = on_ws_disconnect,
+		.on_message = on_ws_message,
+		.on_http = NULL  /* No HTTP handler for now */
+	};
+
 	/* Initialize session/server maps */
 	session_map = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_free);
 	server_map = g_hash_table_new_full (g_direct_hash, g_direct_equal, NULL, g_free);
@@ -514,8 +671,9 @@ fe_init (void)
 	prefs.hex_gui_lagometer = 0;
 	prefs.hex_gui_slist_skip = 1;
 
-	/* Initialize WebSocket server */
-	if (ws_server_init (arg_ws_port) != 0)
+	/* Initialize WebSocket server using common API */
+	ws_server = hc_server_new (arg_ws_port, "hexchat-protocol", &callbacks, NULL);
+	if (!ws_server)
 	{
 		fprintf (stderr, "Failed to start WebSocket server on port %d\n", arg_ws_port);
 	}
@@ -540,7 +698,11 @@ fe_main (void)
 void
 fe_exit (void)
 {
-	ws_server_shutdown ();
+	if (ws_server)
+	{
+		hc_server_destroy (ws_server);
+		ws_server = NULL;
+	}
 	g_main_loop_quit (main_loop);
 }
 

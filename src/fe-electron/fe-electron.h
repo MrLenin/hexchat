@@ -11,6 +11,7 @@
 #define HEXCHAT_FE_ELECTRON_H
 
 #include <glib.h>
+#include "../common/ws-server.h"
 
 /* Default WebSocket server port */
 #define ELECTRON_WS_PORT 9867
@@ -19,11 +20,8 @@
 char *fe_electron_get_session_id(struct session *sess);
 char *fe_electron_get_server_id(struct server *serv);
 
-/* WebSocket server functions */
-int ws_server_init(int port);
-void ws_server_shutdown(void);
-void ws_server_broadcast_json(const char *json);
-gboolean ws_server_poll(gpointer data);
+/* Get the server instance */
+HcServer *fe_electron_get_server(void);
 
 /* JSON protocol functions */
 char *json_session_created(struct session *sess, int focus);
@@ -47,11 +45,7 @@ char *json_message(const char *msg, int flags);
 void handle_ws_command(const char *session_id, const char *command);
 void handle_ws_input(const char *session_id, const char *text);
 
-/* Idle callback wrappers for thread-safe command handling */
-gboolean handle_ws_command_idle(gpointer data);
-gboolean handle_ws_input_idle(gpointer data);
-
 /* Send full state to a newly connected client */
-void ws_send_state_sync(struct lws *wsi);
+void electron_send_state_sync(HcClient *client);
 
 #endif /* HEXCHAT_FE_ELECTRON_H */
