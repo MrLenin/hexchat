@@ -47,6 +47,7 @@
 #include "hexchat.h"
 #include "servlist.h"
 #include "util.h"
+#include "secure-storage.h"
 
 /* PKCE code_verifier character set: unreserved URI characters */
 static const char pkce_charset[] =
@@ -84,6 +85,7 @@ void
 oauth_init(void)
 {
 	g_mutex_init(&sessions_mutex);
+	secure_storage_init();
 }
 
 /*
@@ -110,6 +112,65 @@ oauth_cleanup(void)
 
 	g_mutex_unlock(&sessions_mutex);
 	g_mutex_clear(&sessions_mutex);
+	secure_storage_shutdown();
+}
+
+/*
+ * Save OAuth tokens to secure storage
+ */
+gboolean
+oauth_save_tokens(const char *network_name, const oauth_token *token)
+{
+	if (!network_name || !token || !token->access_token)
+		return FALSE;
+
+	return secure_storage_store_oauth_tokens(network_name,
+	                                         token->access_token,
+	                                         token->refresh_token,
+	                                         token->expires_at);
+}
+
+/*
+ * Load OAuth tokens from secure storage
+ */
+oauth_token *
+oauth_load_tokens(const char *network_name)
+{
+	oauth_token *token;
+	char *access_token = NULL;
+	char *refresh_token = NULL;
+	gint64 expires_at = 0;
+
+	if (!network_name)
+		return NULL;
+
+	if (!secure_storage_retrieve_oauth_tokens(network_name,
+	                                          &access_token,
+	                                          &refresh_token,
+	                                          &expires_at))
+	{
+		return NULL;
+	}
+
+	token = oauth_token_new();
+	token->access_token = access_token;
+	token->refresh_token = refresh_token;
+	token->expires_at = expires_at;
+	token->token_type = g_strdup("Bearer");
+
+	return token;
+}
+
+/*
+ * Clear stored OAuth tokens
+ */
+gboolean
+oauth_clear_tokens(const char *network_name)
+{
+	if (!network_name)
+		return FALSE;
+
+	return secure_storage_clear_oauth_tokens(network_name);
 }
 
 /*

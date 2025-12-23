@@ -91,7 +91,7 @@ endif
 
 # WebSocket/HTTP server support (for OAuth2 callbacks and Electron frontend)
 if libwebsockets_dep.found()
-  common_sources += ['ws-server.c', 'oauth.c']
+  common_sources += ['ws-server.c', 'oauth.c', 'secure-storage.c']
   common_deps += libwebsockets_dep
 
   # libsoup3 and jansson for OAuth2 token exchange HTTP requests
@@ -100,6 +100,13 @@ if libwebsockets_dep.found()
   if libsoup_dep.found() and jansson_dep.found()
     common_deps += [libsoup_dep, jansson_dep]
     common_cflags += '-DUSE_LIBSOUP'
+  endif
+
+  # libsecret for secure token storage on Linux
+  libsecret_dep = dependency('libsecret-1', required: false)
+  if libsecret_dep.found()
+    common_deps += libsecret_dep
+    common_cflags += '-DUSE_LIBSECRET'
   endif
 endif
 

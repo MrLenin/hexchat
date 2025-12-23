@@ -98,6 +98,15 @@ gboolean oauth_token_is_valid(const oauth_token *token);
 gboolean oauth_token_is_expired(const oauth_token *token);
 
 /*
+ * Secure token storage
+ * Tokens are stored in platform keychain (Windows Credential Manager,
+ * Linux libsecret/GNOME Keyring, etc.)
+ */
+gboolean oauth_save_tokens(const char *network_name, const oauth_token *token);
+oauth_token *oauth_load_tokens(const char *network_name);
+gboolean oauth_clear_tokens(const char *network_name);
+
+/*
  * PKCE support (RFC 7636)
  * code_verifier: 43-128 character random string
  * code_challenge: BASE64URL(SHA256(code_verifier))

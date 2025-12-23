@@ -36,6 +36,10 @@
 
 #include "servlist.h"
 
+#ifdef USE_LIBWEBSOCKETS
+#include "oauth.h"
+#endif
+
 
 struct defaultserver
 {
@@ -401,6 +405,31 @@ servlist_connect (session *sess, ircnet *net, gboolean join)
 	{
 		safe_strcpy (serv->password, net->pass, sizeof (serv->password));
 	}
+
+#ifdef USE_LIBWEBSOCKETS
+	/* Load OAuth tokens from secure storage when using OAUTHBEARER */
+	if (serv->loginmethod == LOGIN_SASL_OAUTHBEARER && net->name)
+	{
+		oauth_token *token = oauth_load_tokens (net->name);
+		if (token)
+		{
+			g_free (serv->oauth_access_token);
+			serv->oauth_access_token = g_strdup (token->access_token);
+			serv->oauth_token_expires = token->expires_at;
+			oauth_token_free (token);
+		}
+		else
+		{
+			/* No token in secure storage, try the in-memory/config fallback */
+			if (net->oauth_access_token)
+			{
+				g_free (serv->oauth_access_token);
+				serv->oauth_access_token = g_strdup (net->oauth_access_token);
+				serv->oauth_token_expires = net->oauth_token_expires;
+			}
+		}
+	}
+#endif
 
 	if (net->flags & FLAG_USE_GLOBAL)
 	{

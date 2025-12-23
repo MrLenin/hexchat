@@ -1601,25 +1601,43 @@ servlist_edit_message (const char *msg, int type)
 
 /* OAuth authorization completion callback */
 static void
-servlist_oauth_complete_cb (oauth_token *token, const char *error, void *user_data)
+servlist_oauth_complete_cb (struct server *serv, oauth_token *token, const char *error)
 {
+	ircnet *net = (ircnet *)serv; /* user_data was passed as the network */
+	(void)serv; /* serv is actually the network pointer passed as user_data */
+
 	if (error)
 	{
 		servlist_edit_message (error, GTK_MESSAGE_ERROR);
 		return;
 	}
 
-	if (!selected_net || !token)
+	if (!net || !token)
 		return;
 
-	/* Store the token in the network */
-	g_free (selected_net->oauth_access_token);
-	selected_net->oauth_access_token = g_strdup (token->access_token);
-	g_free (selected_net->oauth_refresh_token);
-	selected_net->oauth_refresh_token = g_strdup (token->refresh_token);
-	selected_net->oauth_token_expires = token->expires_at;
+	/* Save token to secure storage (Credential Manager, keychain, etc.) */
+	if (oauth_save_tokens (net->name, token))
+	{
+		/* Keep a copy in memory for immediate use */
+		g_free (net->oauth_access_token);
+		net->oauth_access_token = g_strdup (token->access_token);
+		g_free (net->oauth_refresh_token);
+		net->oauth_refresh_token = g_strdup (token->refresh_token);
+		net->oauth_token_expires = token->expires_at;
 
-	servlist_edit_message (_("OAuth authorization successful! Token saved."), GTK_MESSAGE_INFO);
+		servlist_edit_message (_("OAuth authorization successful! Token saved securely."), GTK_MESSAGE_INFO);
+	}
+	else
+	{
+		/* Secure storage not available, keep in memory and config file */
+		g_free (net->oauth_access_token);
+		net->oauth_access_token = g_strdup (token->access_token);
+		g_free (net->oauth_refresh_token);
+		net->oauth_refresh_token = g_strdup (token->refresh_token);
+		net->oauth_token_expires = token->expires_at;
+
+		servlist_edit_message (_("OAuth authorization successful! Token saved to config."), GTK_MESSAGE_INFO);
+	}
 }
 
 /* Handle Authorize button click */

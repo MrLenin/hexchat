@@ -51,6 +51,7 @@
     <ClInclude Include="hexchatc.h" />
     <ClInclude Include="ws-server.h" />
     <ClInclude Include="oauth.h" />
+    <ClInclude Include="secure-storage.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cfgfiles.c" />
@@ -82,6 +83,7 @@
     <ClCompile Include="hexchat.c" />
     <ClCompile Include="ws-server.c" />
     <ClCompile Include="oauth.c" />
+    <ClCompile Include="secure-storage.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\win32\config.h.tt" />
